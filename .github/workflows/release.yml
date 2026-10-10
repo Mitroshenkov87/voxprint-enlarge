@@ -75,7 +75,11 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value (Split-Path $iscc)
           Write-Host "Using $iscc"
       - name: Compile the installer
-        run: ISCC.exe /DSource=dist\payload installer\windows\enlarge.iss
+        shell: pwsh
+        run: |
+          $root = $env:GITHUB_WORKSPACE
+          & ISCC.exe "/DSource=$root\dist\payload" "/O$root\dist" "$root\installer\windows\enlarge.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC exited $LASTEXITCODE" }
       - uses: actions/upload-artifact@v4
         with:
           name: enlarge-windows

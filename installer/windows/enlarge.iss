@@ -1,6 +1,6 @@
 ; Per-user installer. No admin. Registers the Lucent hand-off and a Start menu shortcut.
 #ifndef Source
-  #define Source "dist\payload"
+  #define Source "..\..\dist\payload"
 #endif
 #ifndef AppVersion
   #define AppVersion "0.1.0-alpha"
@@ -16,7 +16,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-OutputDir=dist
+OutputDir=..\..\dist
 OutputBaseFilename=VoxprintEnlarge-Setup
 UninstallDisplayIcon={app}\assets\enlarge.ico
 Compression=lzma2
@@ -33,4 +33,4 @@ Name: "{userprograms}\Voxprint\Voxprint AI Enlarge"; Filename: "{app}\VoxprintEn
 Filename: "{app}\VoxprintEnlarge.exe"; Parameters: "--register --exe ""{app}\VoxprintEnlarge.exe"""; Flags: runhidden waituntilterminated
 
 [UninstallRun]
-Filename: "{app}\VoxprintEnlarge.exe"; Parameters: "--unregister"; Flags: runhidden waituntilterminated; RunOnceId=unregister
+Filename: "{app}\VoxprintEnlarge.exe"; Parameters: "--unregister"; Flags: runhidden waituntilterminated; RunOnceId: unregister
