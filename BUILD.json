@@ -1,5 +1,5 @@
 {
   "offset": 0,
-  "codename": "Hagdil",
-  "offset_note": "The release workflow's GITHUB_RUN_NUMBER plus offset. Hagdil names the v0.1.0-rc.1 installer."
+  "codename": "Petach",
+  "offset_note": "The release workflow's GITHUB_RUN_NUMBER plus offset. Petach names the v0.2.0-rc.1 installer."
 }

@@ -19,7 +19,7 @@ from pathlib import Path
 from tools.build_number import build_number, codename
 
 ROOT = Path(__file__).resolve().parent.parent
-RELEASE_VERSION = "0.1.0-rc.1"
+RELEASE_VERSION = "0.2.0-rc.1"
 DIRS = ("enlarge", "voxprint_engine", "assets", "samples", "docs")
 FILES = ("main.py", "LICENSE", "NOTICE", "README.md", "requirements.txt", "requirements-gpu.txt", "BUILD.json")
 SKIP_SUFFIXES = {".pth", ".onnx", ".pyc"}
