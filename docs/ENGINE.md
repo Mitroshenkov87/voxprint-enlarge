@@ -173,6 +173,10 @@ from the ONNX file.
   (`$XDG_CACHE_HOME` is honoured)
 * Override: `VOXPRINT_TRT_CACHE`
 
+The first TensorRT session reports `building the TensorRT engine`. A later
+session that already finds a file in that folder reports `loading the cached
+TensorRT engine`.
+
 ## Tiling
 
 Tile size comes from `free_now - max(2 GB, 8% of total)`, measured again for

@@ -16,6 +16,7 @@ from voxprint_engine.hardware import NO_GPU_MESSAGE, OLD_DRIVER_MESSAGE, GpuInfo
 
 from enlarge.appinfo import version_line
 from enlarge.images import collect, plan_outputs
+from enlarge.queue_state import dump_queue
 from enlarge.platform_win import MIN_BUILD, START_MENU_FOLDER, check_os
 from enlarge.ui.splash import BAR
 from enlarge.ui.theme import CARD_GLASS, CONTRAST_PAIRS, MENU_BG, PRIMARY, ROOT_GLASS, TEXT, TEXT_FAINT, TEXT_MUTED, build_style
@@ -84,6 +85,20 @@ def test_platform_names() -> None:
     assert "22H2" not in source
 
 
+def test_collect_includes_subfolders(tmp_path: Path) -> None:
+    root = tmp_path / "album"
+    nested = root / "trip"
+    nested.mkdir(parents=True)
+    (root / "top.png").write_bytes(b"png")
+    (nested / "deep.png").write_bytes(b"png")
+    (nested / "clip.mp4").write_bytes(b"video")
+    deep, warnings = collect([root], recursive=True)
+    assert {path.name for path in deep} == {"top.png", "deep.png"}
+    assert any("Clarity" in warning for warning in warnings)
+    shallow, _quiet = collect([root], recursive=False)
+    assert [path.name for path in shallow] == ["top.png"]
+
+
 def test_collect_skips_video(tmp_path: Path) -> None:
     image = tmp_path / "a.png"
     image.write_bytes(b"not really")
@@ -137,11 +152,17 @@ def test_window_starts_and_runs_a_sample(tmp_path: Path) -> None:
     window.run_page.compare.set_pair(sample, output)
     assert not window.run_page.compare.before.isNull()
     assert not window.run_page.compare.after.isNull()
-    dialog = CreditsDialog(window, window.catalog.credits(), [])
+    window.run_page.compare.zoom_by(2)
+    assert window.run_page.compare.zoom == 2.0
+    window.run_page.compare.zoom_fit()
+    assert window.run_page.compare.zoom == 1.0
+    dialog = CreditsDialog(window, list(window.catalog.models), [])
     body = dialog.findChild(QLabel, "creditsBody")
     assert body is not None
     assert "Philip Hofmann" in body.text()
     assert "CC-BY-4.0" in body.text()
+    assert "BSD-3-Clause" in body.text()
+    assert "RealESRGAN_x4plus" in body.text()
     dialog.close()
     settings_dialog = SettingsDialog(window, window.settings)
     setting_labels = [settings_dialog.format_box.itemText(i) for i in range(settings_dialog.format_box.count())]
@@ -158,6 +179,27 @@ def test_window_starts_and_runs_a_sample(tmp_path: Path) -> None:
     assert settings_dialog.result_settings["format"] == "jxl"
     assert settings_dialog.result_settings["lossless"] is True
     settings_dialog.close()
+    window.close()
+
+
+def test_a_crashed_queue_is_restored(tmp_path: Path) -> None:
+    _app()
+    image = tmp_path / "hill.png"
+    Image.new("RGB", (8, 6), (9, 9, 9)).save(image)
+    done = image.with_name("hill_x4.avif")
+    done.write_bytes(b"keep")
+    pending = image.with_name("hill-b.png")
+    Image.new("RGB", (8, 6), (3, 3, 3)).save(pending)
+    dump_queue(
+        [
+            {"id": "done", "src": str(image), "dst": str(done), "status": "Done", "message": "ok"},
+            {"id": "open", "src": str(pending), "dst": str(pending.with_name("hill-b_x4.avif")), "status": "Running", "message": ""},
+        ]
+    )
+    window = MainWindow()
+    statuses = {str(row["status"]) for row in window.rows}
+    assert "Done" in statuses
+    assert "Interrupted" in statuses
     window.close()
 
 

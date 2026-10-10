@@ -96,6 +96,31 @@ def register_quietly(key: str = ENLARGE_USER, root: Path | None = None) -> None:
         return
 
 
+def weight_report(model: ModelManifest, root: Path | None = None) -> tuple[str, str]:
+    """``missing``, ``ready``, ``mismatch``, or ``unpinned``, plus a short detail."""
+    if not model.sha256 or not model.filename:
+        return "unpinned", "this model has no pinned file"
+    target = (root or models_dir()) / model.filename
+    if not target.is_file():
+        return "missing", "not downloaded"
+    found = sha256_file(target)
+    if found != model.sha256.lower():
+        return "mismatch", "the file does not match the pinned sha256"
+    return "ready", "sha256 matches"
+
+
+def delete_weight(model: ModelManifest, root: Path | None = None, *, user: str = ENLARGE_USER) -> None:
+    """Delete one weight file when no other suite program still lists itself in ``.users.json``."""
+    others = sorted(name for name, present in read_users(root).items() if present and name != user)
+    if others:
+        raise StoreError("still used by " + ", ".join(others))
+    if not model.filename or "/" in model.filename or "\\" in model.filename:
+        raise StoreError(f"{model.id} has an unsafe filename")
+    target = (root or models_dir()) / model.filename
+    target.unlink(missing_ok=True)
+    target.with_name(target.name + ".partial").unlink(missing_ok=True)
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:

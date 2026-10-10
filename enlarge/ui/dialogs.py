@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from enlarge.appinfo import APP_DISPLAY_NAME, STATUS, version_label
+from enlarge.credits import credit_sections
 from enlarge.suite import gpu, resolved_models_dir, set_gpu, set_models_dir
 from enlarge.ui.theme import build_style
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY, choices, normalize_format
@@ -319,17 +320,21 @@ class CreditsDialog(QDialog):
             "<p>Voxprint AI Enlarge is free software under the Apache License 2.0. "
             "Copyright 2026 Aleksandr Mitroshenkov. Pinned models download into the shared "
             "Voxprint models folder when you run them.</p>",
-            "<p><b>CC-BY models</b> — credit is required when these weights are used.</p>",
+            "<p>The models below are read from the registry.</p>",
         ]
-        if not credits:
-            parts.append("<p>No CC-BY models are registered.</p>")
-        for model in credits:
-            parts.append(
-                "<p><b>" + _esc(model.name) + "</b><br>"
-                + _esc(model.attribution) + "<br>"
-                + _esc(model.author) + " · " + _esc(model.licence) + "<br>"
-                + _link(model.source_url, model.source_url) + "</p>"
-            )
+        sections = credit_sections(credits)
+        if not sections:
+            parts.append("<p>No models are registered.</p>")
+        for licence, models in sections:
+            heading = "CC-BY models — credit is required when these weights are used." if licence.startswith("CC-BY") else licence
+            parts.append("<p><b>" + _esc(heading) + "</b></p>")
+            for model in models:
+                parts.append(
+                    "<p><b>" + _esc(model.name) + "</b><br>"
+                    + _esc(model.attribution) + "<br>"
+                    + _esc(model.author) + " · " + _esc(model.licence) + "<br>"
+                    + _link(model.source_url, model.source_url) + "</p>"
+                )
         if warnings:
             parts.append("<p><b>Custom folder</b></p>")
             for warning in warnings:
