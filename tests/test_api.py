@@ -66,6 +66,7 @@ def test_distribution_is_the_engine_only() -> None:
     assert project["project"]["name"] == "voxprint-engine"
     assert project["project"]["version"] == "1.0.0"
     assert project["project"]["requires-python"] == ">=3.14,<3.15"
+    assert "psutil>=5.9,<8" in project["project"]["dependencies"]
     include = project["tool"]["setuptools"]["packages"]["find"]["include"]
     assert include == ["voxprint_engine*"]
     text = (ROOT / "docs" / "ENGINE.md").read_text(encoding="utf-8")
