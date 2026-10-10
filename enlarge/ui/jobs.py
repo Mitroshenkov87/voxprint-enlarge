@@ -5,7 +5,7 @@ from collections.abc import Callable
 
 from PySide6.QtCore import QThread, Signal
 
-from enlarge.batch import run_batch
+from enlarge.batch import BatchControl, run_batch
 from voxprint_engine.worker import UpscaleRequest
 
 
@@ -17,6 +17,10 @@ class BatchThread(QThread):
         super().__init__()
         self.requests = requests
         self._cancel = cancel
+        self.control = BatchControl()
+
+    def cancel(self) -> None:
+        self.control.cancel()
 
     def run(self) -> None:
         run_batch(
@@ -24,4 +28,5 @@ class BatchThread(QThread):
             on_progress=self.progressed.emit,
             on_item=self.item_finished.emit,
             cancel=self._cancel,
+            control=self.control,
         )

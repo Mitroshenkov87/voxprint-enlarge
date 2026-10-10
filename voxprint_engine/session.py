@@ -21,6 +21,21 @@ def available_providers() -> list[str]:
     return list(ort.get_available_providers())
 
 
+def cache_is_warm(folder: Path) -> bool:
+    """True when the TensorRT cache folder already holds an engine file."""
+    try:
+        return any(path.is_file() and path.stat().st_size > 0 for path in folder.iterdir())
+    except OSError:
+        return False
+
+
+def trt_build_message(folder: Path) -> str:
+    """What the first provider attempt should tell the user."""
+    if cache_is_warm(folder):
+        return "loading the cached TensorRT engine"
+    return "building the TensorRT engine"
+
+
 def open_session(model_path: Path, choices: list[ProviderChoice]) -> tuple[ort.InferenceSession, str]:
     """Load ``model_path`` with the first provider that accepts it."""
     if not choices:

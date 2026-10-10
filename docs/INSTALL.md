@@ -21,6 +21,8 @@ Smoke test, no window left open:
 python main.py --selftest
 ```
 
+Add a folder on the Images step to include subfolders. Run keeps a queue file and continues unfinished images after a restart. Cancel stops the image that is running. The Model step can download a pinned file, check its sha256, and remove it when no other Voxprint app is listed in `.users.json`. Credits are built from the registry.
+
 One image, without the window:
 
 ```bash

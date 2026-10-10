@@ -22,7 +22,7 @@ from PIL import Image
 
 from voxprint_engine.formats import open_rgb, require_output_format, save_image
 from voxprint_engine.hardware import ci_lanczos
-from voxprint_engine.providers import choices_for, cpu_ep_requested, cuda_fallback_choices, gpu_provider_names
+from voxprint_engine.providers import TRT, choices_for, cpu_ep_requested, cuda_fallback_choices, gpu_provider_names
 from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.session import (
     EngineBuildError,
@@ -30,6 +30,7 @@ from voxprint_engine.session import (
     available_providers,
     open_session,
     run_tile,
+    trt_build_message,
 )
 from voxprint_engine.store import StoreError, ensure_weight
 from voxprint_engine.tile import upscale_tiled
@@ -346,7 +347,12 @@ def upscale_file(
             if not choices:
                 continue
             try:
+                if on_progress is not None and choices[0].name == TRT:
+                    cache = Path(choices[0].options.get("trt_engine_cache_path") or "")
+                    on_progress(0.4, trt_build_message(cache))
                 session, provider = open_session(network, choices)
+                if on_progress is not None and provider == TRT:
+                    on_progress(0.45, "TensorRT engine is cached")
             except EngineBuildError:
                 continue
             try:

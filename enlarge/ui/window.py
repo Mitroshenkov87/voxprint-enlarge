@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QStackedWidget,
     QTableWidgetItem,
@@ -23,14 +24,18 @@ from PySide6.QtWidgets import (
 from enlarge import platform_win, settings, suite
 from enlarge.appinfo import APP_DISPLAY_NAME, STATUS, resource_dir, version_label
 from enlarge.images import collect, plan_outputs
+from enlarge.queue_state import dump_queue, load_queue, still_open
 from enlarge.ui import pages
 from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
 from enlarge.ui.jobs import BatchThread
+from enlarge.ui.models import DownloadThread
 from enlarge.ui.theme import build_style
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
 from voxprint_engine.hardware import assess_gpu
 from voxprint_engine.registry import DEFAULT_MODEL_ID, combined_catalog
 from voxprint_engine.registry.catalog import Catalog
+from voxprint_engine.registry.schema import ModelManifest
+from voxprint_engine.store import StoreError, delete_weight, weight_report
 from voxprint_engine.vram import choose_tile, device_index, measure, overlap_for
 from voxprint_engine.worker import UpscaleRequest
 
@@ -52,12 +57,14 @@ class MainWindow(QWidget):
         self.sources: list[Path] = []
         self.rows: list[dict[str, object]] = []
         self.job: BatchThread | None = None
+        self.download: DownloadThread | None = None
         self._cancel = False
         self._loading = False
         self._snapshot = measure(suite.gpu())
         self._build()
         self.setStyleSheet(build_style(False))
         self._apply_settings()
+        self._restore_queue()
         self._fit()
 
     def _load_catalog(self) -> Catalog:
@@ -124,6 +131,9 @@ class MainWindow(QWidget):
         self.images_page.remove_selected.connect(self.remove_selected)
         self.images_page.clear_all.connect(self.clear_images)
         self.model_page.models.currentItemChanged.connect(lambda *_args: self._on_model())
+        self.model_page.download_clicked.connect(self.download_model)
+        self.model_page.check_clicked.connect(self.check_model)
+        self.model_page.remove_clicked.connect(self.remove_model)
         self.output_page.scale_x2.clicked.connect(lambda: self._set_scale(2))
         self.output_page.scale_x4.clicked.connect(lambda: self._set_scale(4))
         self.output_page.double.toggled.connect(lambda _on: self._on_output_changed())
@@ -303,17 +313,19 @@ class MainWindow(QWidget):
         rebuilt: list[dict[str, object]] = []
         for src, dst in zip(self.sources, planned, strict=True):
             old = previous.get(self._key(src))
-            keep = (
-                old is not None
-                and Path(str(old["dst"])) == dst
-                and old.get("status") == "Done"
-            )
+            status = str(old.get("status") or "") if old is not None else ""
+            if old is not None and status in {"Done", "Failed", "Interrupted", "Cancelled"}:
+                dst = Path(str(old["dst"]))
+            same_file = old is not None and Path(str(old["dst"])) == dst
+            keep = same_file and status in {"Done", "Failed", "Interrupted", "Cancelled"}
+            if keep and status == "Done" and not dst.is_file():
+                keep = False
             message = str(old.get("message") or "") if keep and old is not None else ""
             rebuilt.append({
                 "id": str(old["id"]) if old is not None else uuid.uuid4().hex,
                 "src": src,
                 "dst": dst,
-                "status": "Done" if keep else "Waiting",
+                "status": status if keep else "Waiting",
                 "message": message,
             })
         self.rows = rebuilt
@@ -334,6 +346,7 @@ class MainWindow(QWidget):
             self.model_page.detail.setText("")
         else:
             self.model_page.detail.setText(f"{model.author}  ·  {model.licence}  ·  {model.filename}")
+        self._refresh_model_file()
         self._update_tile_label()
         self._persist()
 
@@ -393,6 +406,8 @@ class MainWindow(QWidget):
         self._update_tile_label()
         requests: list[UpscaleRequest] = []
         for row in self.rows:
+            if not still_open(row):
+                continue
             row["status"] = "Waiting"
             row["message"] = ""
             requests.append(UpscaleRequest(
@@ -411,7 +426,11 @@ class MainWindow(QWidget):
                 engine="auto",
                 custom_models_dir=str(self.settings.get("custom_models_dir") or ""),
             ))
+        if not requests:
+            self.run_page.status.setText("Everything in this queue is already done.")
+            return
         self._fill_table()
+        self._save_queue()
         self._cancel = False
         self.job = BatchThread(requests, lambda: self._cancel)
         self.job.progressed.connect(self._on_progress)
@@ -424,10 +443,19 @@ class MainWindow(QWidget):
 
     def cancel_run(self) -> None:
         self._cancel = True
+        if self.job is not None:
+            self.job.cancel()
         self.run_page.btn_cancel.setEnabled(False)
-        self.run_page.status.setText("Cancelling after the current image…")
+        self.run_page.status.setText("Cancelling the current image…")
 
-    def _on_progress(self, _job_id: str, _fraction: float, message: str) -> None:
+    def _on_progress(self, job_id: str, fraction: float, message: str) -> None:
+        for row in self.rows:
+            if str(row["id"]) != job_id or str(row["status"]) in {"Done", "Failed", "Cancelled"}:
+                continue
+            row["status"] = f"{int(round(fraction * 100))}%"
+            row["message"] = message
+            self._fill_table()
+            break
         self.run_page.status.setText(message)
 
     def _on_item(self, job_id: str, ok: bool, message: str, dst: str) -> None:
@@ -446,6 +474,7 @@ class MainWindow(QWidget):
                 self.run_page.table.selectRow(index)
                 self._show_row(index)
             break
+        self._save_queue()
         finished = sum(1 for row in self.rows if row["status"] in ("Done", "Failed", "Cancelled"))
         self.run_page.status.setText(f"{finished} of {len(self.rows)}  ·  {message}")
 
@@ -499,7 +528,90 @@ class MainWindow(QWidget):
         self._rebuild_rows()
 
     def open_credits(self) -> None:
-        CreditsDialog(self, self.catalog.credits(), self.catalog.warnings).exec()
+        CreditsDialog(self, list(self.catalog.models), self.catalog.warnings).exec()
+
+    def _current_model(self) -> ModelManifest | None:
+        model = self.catalog.get(self.model_page.current_id())
+        if model is None or not model.selectable:
+            return None
+        return model
+
+    def _refresh_model_file(self) -> None:
+        model = self._current_model()
+        if model is None:
+            self.model_page.file_status.setText("")
+            return
+        _state, detail = weight_report(model, suite.resolved_models_dir())
+        self.model_page.file_status.setText(f"{model.filename}  ·  {detail}")
+
+    def check_model(self) -> None:
+        self._refresh_model_file()
+
+    def download_model(self) -> None:
+        model = self._current_model()
+        if model is None or (self.download is not None and self.download.isRunning()):
+            return
+        self.model_page.btn_download.setEnabled(False)
+        thread = DownloadThread(model, suite.resolved_models_dir())
+        self.download = thread
+        thread.progressed.connect(lambda _fraction, message: self.model_page.file_status.setText(message))
+        thread.succeeded.connect(self._download_done)
+        thread.failed.connect(self._download_failed)
+        thread.start()
+
+    def _download_done(self, path: str) -> None:
+        self.model_page.btn_download.setEnabled(True)
+        self.model_page.file_status.setText(f"saved {Path(path).name}  ·  sha256 matches")
+
+    def _download_failed(self, message: str) -> None:
+        self.model_page.btn_download.setEnabled(True)
+        self.model_page.file_status.setText(message)
+
+    def remove_model(self) -> None:
+        model = self._current_model()
+        if model is None:
+            return
+        answer = QMessageBox.question(
+            self,
+            APP_DISPLAY_NAME,
+            f"Remove {model.filename} from the shared models folder?",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            delete_weight(model, suite.resolved_models_dir())
+        except (OSError, StoreError) as exc:
+            QMessageBox.warning(self, APP_DISPLAY_NAME, str(exc))
+            return
+        self._refresh_model_file()
+
+    def _save_queue(self) -> None:
+        if not self.rows:
+            return
+        try:
+            dump_queue(self.rows)
+        except OSError:
+            return
+
+    def _restore_queue(self) -> None:
+        saved = load_queue()
+        if not saved:
+            return
+        self.sources = [Path(str(row["src"])) for row in saved if Path(str(row["src"])).is_file()]
+        self.rows = [
+            {
+                "id": str(row["id"]) or uuid.uuid4().hex,
+                "src": Path(str(row["src"])),
+                "dst": Path(str(row["dst"])),
+                "status": str(row["status"]),
+                "message": str(row["message"]),
+            }
+            for row in saved
+            if Path(str(row["src"])).is_file()
+        ]
+        self._sync_list()
+        if any(still_open(row) for row in self.rows):
+            self.run_page.status.setText("A previous queue was restored. Run continues the unfinished images.")
 
     def _running(self) -> bool:
         return self.job is not None and self.job.isRunning()
@@ -531,6 +643,7 @@ class MainWindow(QWidget):
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt name
         self._cancel = True
         if self.job is not None and self.job.isRunning():
+            self.job.cancel()
             self.job.wait(8000)
         super().closeEvent(event)
 

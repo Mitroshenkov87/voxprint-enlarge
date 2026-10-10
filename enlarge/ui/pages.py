@@ -80,6 +80,10 @@ class ImagesPage(QWidget):
 
 
 class ModelPage(QWidget):
+    download_clicked = Signal()
+    check_clicked = Signal()
+    remove_clicked = Signal()
+
     def __init__(self) -> None:
         super().__init__()
         root = QVBoxLayout(self)
@@ -100,6 +104,23 @@ class ModelPage(QWidget):
         self.detail.setObjectName("status")
         self.detail.setWordWrap(True)
         layout.addWidget(self.detail)
+        self.file_status = QLabel("")
+        self.file_status.setObjectName("hint")
+        self.file_status.setWordWrap(True)
+        layout.addWidget(self.file_status)
+        actions = QHBoxLayout()
+        self.btn_download = QPushButton("Download")
+        self.btn_download.setObjectName("primary")
+        self.btn_check = QPushButton("Check hash")
+        self.btn_remove = QPushButton("Remove")
+        self.btn_download.clicked.connect(self.download_clicked.emit)
+        self.btn_check.clicked.connect(self.check_clicked.emit)
+        self.btn_remove.clicked.connect(self.remove_clicked.emit)
+        actions.addWidget(self.btn_download)
+        actions.addWidget(self.btn_check)
+        actions.addWidget(self.btn_remove)
+        actions.addStretch(1)
+        layout.addLayout(actions)
         root.addWidget(card, 1)
 
     def fill(self, models: list[ModelManifest], selected: str) -> None:

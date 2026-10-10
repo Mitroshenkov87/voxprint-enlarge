@@ -96,6 +96,13 @@ class WorkerClient:
                 return result
             raise WorkerError(f"unexpected worker message: {message}")
 
+    def interrupt(self) -> None:
+        """Stop a job that is already running. The blocked read then returns."""
+        proc = self.proc
+        if proc is None or proc.poll() is not None:
+            return
+        proc.kill()
+
     def close(self) -> None:
         proc = self.proc
         self.proc = None
