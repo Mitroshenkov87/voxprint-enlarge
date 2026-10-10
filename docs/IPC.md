@@ -21,7 +21,7 @@ Windows, per user:
 
 Linux:
 
-* `$XDG_DATA_HOME/applications/ai.voxprint.Enlarge.desktop` (`~/.local/share` when `XDG_DATA_HOME` is unset). `NoDisplay=true`. `Exec` is the executable plus `--serve --hidden`. `X-Voxprint-Ipc` is the socket path. `X-Voxprint-Protocol=1`.
+* `$XDG_DATA_HOME/applications/ai.voxprint.Enlarge.desktop` (`~/.local/share` when `XDG_DATA_HOME` is unset). `NoDisplay=true`. `Exec` is the executable plus `--serve --hidden`. `X-Voxprint-Ipc` is the socket path. `X-Voxprint-Ipc-Base` is `voxprint-enlarge`. `X-Voxprint-Protocol=1`. `X-Voxprint-Version` is the version string. `X-Voxprint-Exe` is the absolute executable path. The installed executable is `~/.local/share/voxprint/enlarge/voxprint-enlarge`.
 * An executable `voxprint-enlarge` in `~/.local/bin`, which is expected to be on `PATH`.
 
 The socket path is `$XDG_RUNTIME_DIR/voxprint/enlarge.sock`. The directory is mode `0700` and the socket is mode `0600`. When `XDG_RUNTIME_DIR` is unset the directory is under the temp folder as `voxprint-run-<uid>`. A Flatpak build, when one exists, is `flatpak run ai.voxprint.Enlarge`.
@@ -41,10 +41,12 @@ Prints one JSON object on stdout and exits 0, including on a machine with no usa
 | Field | Meaning |
 |---|---|
 | `protocol` | `1` |
+| `app` | `enlarge` |
 | `version` | Enlarge version string, currently `0.1.0-pre` |
-| `gpu.status` | `ok`, `warn`, or `none` |
-| `gpu.reason` | Present only when `status` is `none`: `no_nvidia` or `driver_too_old` |
-| `models` | List of `{id, preset, quality, scales}` |
+| `gpu` | `name`, `cc` (`8.9`), `status` (`ok`, `warn`, or `none`), `reason` (`null` unless `status` is `none`: `no_nvidia` or `driver_too_old`) |
+| `models` | List of `{id, preset, quality, scales, installed}` |
+| `presets` | `photo`, `art` |
+| `max_scale` | `4` |
 | `input_formats` | Extensions Enlarge can open, as names (`png`, `jpeg`, `webp`, `avif`, `jxl`, `bmp`, `tiff`) |
 | `output_formats` | `avif`, `jxl`, `webp`, `jpeg`, and `heic` only when a system HEIC encoder is present. PNG is never an output |
 | `default_output_format` | `avif` |
@@ -95,7 +97,7 @@ Jobs run one at a time. Each job holds the suite GPU lock (`owner` `enlarge`) un
 
 `accepted` — `id`, `queue_pos` (how many jobs were already ahead when this one was queued).
 
-`progress` — `id`, `pct` (0–100), `stage`. Stages are `queued`, `waiting_gpu`, `loading`, `tiles`, `encoding`. `eta_s` is optional and this server does not send it.
+`progress` — `id`, `pct` (0–100), `stage`, `eta_s` (a number, or `null` when there is no estimate). Stages are `queued`, `waiting_gpu`, `loading`, `tiles`, `encoding`. A `waiting_gpu` line also carries `lock_holder` with `owner`, `pid`, and `job` from the suite lock file.
 
 `done` — `id`, `output` (path), `width`, `height`, `format`, `ms`.
 
@@ -104,27 +106,27 @@ Jobs run one at a time. Each job holds the suite GPU lock (`owner` `enlarge`) un
 | Code | Retryable | When |
 |---|---|---|
 | `gpu_unsupported` | no | No NVIDIA GPU, or the driver is older than the 600 series |
-| `gpu_busy` | yes | The suite GPU lock is still held after 2 seconds |
-| `oom` | yes | The worker ran out of memory |
-| `bad_input` | no | Missing file, scale not 2 or 4, quality not `fast` or `max`, unknown preset with no model |
+| `gpu_busy` | yes | The suite GPU lock was not acquired before the job's lock timeout. A socket client that omits `lock_timeout` still waits 2 seconds. The CLI default is 600 |
+| `oom` | no | The worker ran out of memory |
+| `bad_input` | no | Missing file, scale not 2 or 4, quality not `fast` or `max`, unknown preset with no model, or a parent-lock pid that is not the lock file's pid |
 | `unsupported_format` | no | The source type or the output format is not supported. PNG is not an output |
-| `io_error` | yes | The output path could not be reserved or written |
+| `io_error` | no | The output path could not be reserved or written |
 | `cancelled` | no | The client cancelled the job, or disconnected |
-| `model_missing` | no | The model id is absent or not selectable |
-| `internal` | yes | Anything else, including a bad message |
+| `model_missing` | yes | The model id is absent, not selectable, or the pinned weights are not on disk. A headless job does not download them |
+| `internal` | no | Anything else, including a bad message |
 
 ### Output names
 
 The default path is `<name>.enlarged-<scale>x.<ext>` next to the source (or inside `output_dir`). `<ext>` is `.avif`, `.jxl`, `.webp`, `.jpg`, or `.heic`. If that file exists, the next candidate is `<name>.enlarged-<scale>x-2.<ext>`, then `-3`, and so on. The server reserves the name with an exclusive create and never overwrites an existing file. A job that fails or is cancelled deletes the placeholder it reserved.
 
-## CLI fallback
+Messages carry both `op` and `type` set to the same name. Readers that already match `op` keep working. `type` is the name in `docs/CLI.md`.
 
-The same `accepted`, `progress`, `done`, and `error` objects are written to stdout, one per line. Exit 0 after `done`. Exit 1 after `error`. Exit 2 when the arguments are incomplete. `--json-progress` is required.
+## CLI
+
+The command other apps call, including exit codes, `--long-side`, `--dry-run`, the parent GPU lock, and warm-server forwarding, is `docs/CLI.md`. `--json-progress` is required. The process does not open a window. `VOXPRINT_CI_LANCZOS=1` is for tests. It is not a user mode, and it does not change `--capabilities`.
 
 ```bash
 python main.py --input FILE --scale 2|4 --preset photo|art \
   [--model ID] [--quality fast|max] [--format avif|jxl|webp|jpeg|heic] \
   [--output PATH] --json-progress
 ```
-
-`open_ui` is not available on this command. The job still holds the GPU lock. On a machine with no usable GPU the stream ends with `gpu_unsupported` and the process exits 1, unless the internal CI flag `VOXPRINT_CI_LANCZOS=1` is set. That flag is for tests. It is not a user mode, and it does not change `--capabilities`.

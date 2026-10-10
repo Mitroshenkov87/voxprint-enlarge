@@ -7,6 +7,8 @@ from enlarge.appinfo import APP_VERSION
 from enlarge.ipc.protocol import PROTOCOL
 from voxprint_engine.formats import DEFAULT_FORMAT, heic_backend
 from voxprint_engine.hardware import MIN_DRIVER_MAJOR, capability_warning, driver_major, query_gpus
+from voxprint_engine.registry import load_builtin
+from voxprint_engine.store import weight_report
 from voxprint_engine.worker.lanczos import IMAGE_EXTENSIONS
 
 PHOTO_FAST = "4x-nomos2-realplksr-dysample"
@@ -26,29 +28,50 @@ _INPUT_NAMES = {
 }
 
 
-def gpu_capability() -> dict[str, str]:
-    """``status`` is ``ok``, ``warn``, or ``none``. ``reason`` is present only when ``none``."""
+def _cc(compute: tuple[int, int] | None) -> str | None:
+    if compute is None:
+        return None
+    return f"{compute[0]}.{compute[1]}"
+
+
+def gpu_capability() -> dict[str, Any]:
+    """``status`` is ``ok``, ``warn``, or ``none``. ``reason`` is null unless ``status`` is ``none``."""
     gpus = query_gpus()
     if not gpus:
-        return {"status": "none", "reason": "no_nvidia"}
+        return {"name": None, "cc": None, "status": "none", "reason": "no_nvidia"}
     gpu = gpus[0]
+    cc = _cc(gpu.compute)
     major = driver_major(gpu.driver)
     if major is None or major < MIN_DRIVER_MAJOR:
-        return {"status": "none", "reason": "driver_too_old"}
+        return {"name": gpu.name, "cc": cc, "status": "none", "reason": "driver_too_old"}
     if capability_warning(gpu.compute):
-        return {"status": "warn"}
-    return {"status": "ok"}
+        return {"name": gpu.name, "cc": cc, "status": "warn", "reason": None}
+    return {"name": gpu.name, "cc": cc, "status": "ok", "reason": None}
 
 
 def model_catalog() -> list[dict[str, Any]]:
-    """Presets shipped today. The preset enum is open: later presets can be added."""
+    """Presets shipped today. ``installed`` is true only when the pinned file is on disk."""
+    catalog = load_builtin(release=True)
     rows = [
         ("photo", "fast", PHOTO_FAST),
         ("photo", "max", PHOTO_MAX),
         ("art", "fast", ART),
         ("art", "max", ART),
     ]
-    return [{"id": model_id, "preset": preset, "quality": quality, "scales": list(SCALES)} for preset, quality, model_id in rows]
+    listed: list[dict[str, Any]] = []
+    for preset, quality, model_id in rows:
+        model = catalog.get(model_id)
+        installed = model is not None and weight_report(model)[0] == "ready"
+        listed.append(
+            {
+                "id": model_id,
+                "preset": preset,
+                "quality": quality,
+                "scales": list(SCALES),
+                "installed": installed,
+            }
+        )
+    return listed
 
 
 def input_formats() -> list[str]:
@@ -67,9 +90,12 @@ def output_formats() -> list[str]:
 def capabilities() -> dict[str, Any]:
     return {
         "protocol": PROTOCOL,
+        "app": "enlarge",
         "version": APP_VERSION,
         "gpu": gpu_capability(),
         "models": model_catalog(),
+        "presets": ["photo", "art"],
+        "max_scale": 4,
         "input_formats": input_formats(),
         "output_formats": output_formats(),
         "default_output_format": DEFAULT_FORMAT,

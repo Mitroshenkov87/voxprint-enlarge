@@ -107,17 +107,50 @@ def _reserve(candidates: list[Path]) -> Path:
     raise OSError(f"could not reserve an output path near {last}")
 
 
-def reserve_default(source: Path, scale: int, extension: str, directory: Path | None = None) -> Path:
-    """``<name>.enlarged-<scale>x.<ext>``, then ``-2``, ``-3``, without replacing a file."""
+def _default_names(source: Path, scale: int, extension: str, directory: Path | None) -> list[Path]:
     folder = directory or source.parent
     stem = source.stem
     names = [folder / f"{stem}.enlarged-{scale}x{extension}"]
     names.extend(folder / f"{stem}.enlarged-{scale}x-{index}{extension}" for index in range(2, 1000))
-    return _reserve(names)
+    return names
+
+
+def _explicit_names(path: Path) -> list[Path]:
+    names = [path]
+    names.extend(path.with_name(f"{path.stem}-{index}{path.suffix}") for index in range(2, 1000))
+    return names
+
+
+def _unwritable(path: Path) -> bool:
+    parent = path.parent
+    return parent.exists() and not parent.is_dir()
+
+
+def peek_default(source: Path, scale: int, extension: str, directory: Path | None = None) -> Path:
+    """The path ``reserve_default`` would create, without creating it."""
+    for candidate in _default_names(source, scale, extension, directory):
+        if _unwritable(candidate):
+            raise OSError(f"could not reserve an output path near {candidate}")
+        if not candidate.exists():
+            return candidate
+    raise OSError(f"could not reserve an output path near {source}")
+
+
+def peek_explicit(path: Path) -> Path:
+    """The path ``reserve_explicit`` would create, without creating it."""
+    for candidate in _explicit_names(path):
+        if _unwritable(candidate):
+            raise OSError(f"could not reserve an output path near {candidate}")
+        if not candidate.exists():
+            return candidate
+    raise OSError(f"could not reserve an output path near {path}")
+
+
+def reserve_default(source: Path, scale: int, extension: str, directory: Path | None = None) -> Path:
+    """``<name>.enlarged-<scale>x.<ext>``, then ``-2``, ``-3``, without replacing a file."""
+    return _reserve(_default_names(source, scale, extension, directory))
 
 
 def reserve_explicit(path: Path) -> Path:
     """Use ``path`` when it is free, otherwise ``<stem>-2<suffix>`` and so on."""
-    names = [path]
-    names.extend(path.with_name(f"{path.stem}-{index}{path.suffix}") for index in range(2, 1000))
-    return _reserve(names)
+    return _reserve(_explicit_names(path))

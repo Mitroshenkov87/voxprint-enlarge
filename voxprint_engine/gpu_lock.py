@@ -4,6 +4,8 @@ JSON object ``{owner, pid, job, started, eta}`` with ISO-8601 UTC timestamps.
 The file is stale when its pid is gone or its ``eta`` is more than two hours
 in the past. Enlarge's owner name is ``enlarge``. A job this process already
 holds is re-entered and released only by the outermost block.
+``VOXPRINT_GPU_PARENT_PID``, when it matches the lock file's pid, runs inside
+that lock and does not release it, whatever the owner name is.
 """
 from __future__ import annotations
 
@@ -105,6 +107,56 @@ def _ours(data: dict[str, Any] | None, owner: str | None = None) -> bool:
     return data.get("owner") == expected and data.get("pid") == os.getpid()
 
 
+def _declared_parent_pid() -> int | None:
+    """``VOXPRINT_GPU_PARENT_PID`` is a caller that already holds the suite lock.
+
+    The pid is checked against the lock file. The owner name is not.
+    """
+    raw = os.environ.get("VOXPRINT_GPU_PARENT_PID", "").strip()
+    if not raw:
+        return None
+    try:
+        number = int(raw)
+    except ValueError:
+        return None
+    if number <= 0:
+        return None
+    return number
+
+
+def _pid_value(pid: object) -> int | None:
+    if isinstance(pid, bool) or not isinstance(pid, (int, str)):
+        return None
+    try:
+        number = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if number <= 0:
+        return None
+    return number
+
+
+def parent_lock_matches(pid: int, path: Path | None = None) -> bool:
+    """True when the suite lock file exists and its ``pid`` is ``pid``."""
+    if pid <= 0:
+        return False
+    data = read_lock(path)
+    if not data:
+        return False
+    return _pid_value(data.get("pid")) == pid
+
+
+def _held_by_declared_parent(data: dict[str, Any] | None) -> bool:
+    """A caller passed the pid of the process that already holds the lock.
+
+    Enlarge runs inside that lock and does not release it, whoever the owner is.
+    """
+    declared = _declared_parent_pid()
+    if declared is None or not data:
+        return False
+    return _pid_value(data.get("pid")) == declared
+
+
 def _held_by_parent(data: dict[str, Any] | None, owner: str | None = None) -> bool:
     """The worker subprocess shares a lock its parent already holds for this job.
 
@@ -139,7 +191,7 @@ def try_acquire(
     target = path or lock_path()
     current = read_lock(target)
     if current is not None:
-        if _ours(current, name) or _held_by_parent(current, name):
+        if _ours(current, name) or _held_by_parent(current, name) or _held_by_declared_parent(current):
             return None
         if not is_stale(current):
             return current or {"owner": "?"}
@@ -171,6 +223,8 @@ def release(path: Path | None = None, owner: str | None = None) -> None:
     """Delete the lock when this process owns it."""
     target = path or lock_path()
     current = read_lock(target)
+    if _held_by_declared_parent(current):
+        return
     if not _ours(current, owner):
         return
     try:

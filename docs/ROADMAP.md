@@ -1,17 +1,15 @@
 # Next iteration
 
-These items are the next pass after `v0.1.0-rc.1`. They are not in this build, and this document does not schedule them.
+These items are still ahead of the headless command in `docs/CLI.md`. This document does not schedule them.
 
 ## CLI parity
 
-Everything the window can do should be available with no window open.
+`docs/CLI.md` is the single-image command Canvas and Lucent call: scale or long side, format, quality, lossless JPEG XL, model tier, JSON lines, exit codes, dry-run, and the suite GPU lock. It does not open a window.
 
-* One headless command covers add, model choice, scale, format, quality, lossless JPEG XL, output folder, batch (a folder and its subfolders), cancel, and resume.
-* `--json` prints one JSON object per event on stdout, the same way `--json-progress` already does for a single Lucent job.
-* Exit codes are stable and documented: success, bad arguments, GPU missing or too old, model missing, a failed item, and cancel.
-* The reference is `docs/CLI.md`, including the codes and one example of each command.
+Still ahead:
 
-The window and the current `--upscale` and `--json-progress` commands stay as they are until that document exists.
+* A folder and its subfolders, with one JSON event per item.
+* Cancel and resume of that batch from the command line, the way the window already restores `queue.json`.
 
 ## VRAM-aware model tiers
 

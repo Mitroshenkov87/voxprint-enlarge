@@ -19,16 +19,13 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from enlarge.appinfo import APP_DISPLAY_NAME, version_line
 from enlarge.batch import run_batch
-from enlarge.ipc.capabilities import capabilities
-from enlarge.ipc.jobs import JobControl, run_job
-from enlarge.ipc.protocol import EnlargeRequest, dumps
+from enlarge.cli import run_capabilities, run_contract
 from enlarge.ipc.register import register_install, unregister_install
 from enlarge.ipc.server import IpcServer
 from enlarge.paths import logs_dir
@@ -156,23 +153,6 @@ def _gui(argv: list[str]) -> int:
     return app.exec()
 
 
-def _write_json(message: dict[str, Any]) -> None:
-    data = dumps(message)
-    stream = sys.stdout
-    buffer = getattr(stream, "buffer", None)
-    if buffer is None:
-        stream.write(data.decode("utf-8"))
-        stream.flush()
-        return
-    buffer.write(data)
-    buffer.flush()
-
-
-def _capabilities() -> int:
-    _write_json(capabilities())
-    return 0
-
-
 def _register(argv: list[str]) -> int:
     exe = Path(_arg(argv, "--exe") or str(ROOT / "main.py"))
     register_install(exe)
@@ -210,43 +190,12 @@ def _serve() -> int:
     return int(app.exec())
 
 
-def _json_progress(argv: list[str]) -> int:
-    if "--json-progress" not in argv:
-        print(
-            "usage: main.py --input FILE --scale 2|4 --preset photo|art "
-            "[--model ID] [--quality fast|max] [--format FMT] [--output PATH] --json-progress",
-            file=sys.stderr,
-        )
-        return 2
-    source = _arg(argv, "--input")
-    preset = _arg(argv, "--preset", "") or ""
-    model = _arg(argv, "--model", "") or ""
-    if not source or (not preset and not model):
-        print("input and preset (or model) are required", file=sys.stderr)
-        return 2
-    try:
-        scale = int(_arg(argv, "--scale", "4") or "4")
-    except ValueError:
-        print("scale must be an integer", file=sys.stderr)
-        return 2
-    request = EnlargeRequest(
-        id="cli",
-        input=source,
-        scale=scale,
-        preset=preset,
-        model=model,
-        quality=_arg(argv, "--quality", "fast") or "fast",
-        format=_arg(argv, "--format", "") or "",
-        output=_arg(argv, "--output", "") or "",
-        output_dir="",
-        open_ui=False,
-    )
-    return run_job(request, _write_json, JobControl())
-
-
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     _guard_stdio()
+    if args and args[0] == "upscale":
+        _setup_logging()
+        return run_contract(args[1:])
     if "--version" in args:
         print(version_line())
         return 0
@@ -256,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
         if "--json" not in args:
             print("usage: main.py --capabilities --json", file=sys.stderr)
             return 2
-        return _capabilities()
+        return run_capabilities()
     if "--register" in args:
         return _register(args)
     if "--unregister" in args:
@@ -266,8 +215,8 @@ def main(argv: list[str] | None = None) -> int:
     _setup_logging()
     if "--serve" in args:
         return _serve()
-    if "--input" in args:
-        return _json_progress(args)
+    if "--input" in args or "--dry-run" in args:
+        return run_contract(args)
     if "--upscale" in args:
         blocked = _gpu_block()
         if blocked:

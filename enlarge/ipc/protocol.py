@@ -9,6 +9,8 @@ import json
 from dataclasses import dataclass
 from typing import Any, Literal, assert_never
 
+from voxprint_engine.formats import DEFAULT_QUALITY
+
 PROTOCOL = 1
 PROTOCOL_MIN = 1
 PROTOCOL_MAX = 1
@@ -40,16 +42,42 @@ ERROR_CODES: tuple[ErrorCode, ...] = (
 
 
 def is_retryable(code: ErrorCode) -> bool:
-    if code == "gpu_busy" or code == "oom" or code == "io_error" or code == "internal":
+    """IPC-ENLARGE retry table. ``gpu_busy`` and ``model_missing`` can be tried again."""
+    if code == "gpu_busy" or code == "model_missing":
         return True
     if (
         code == "gpu_unsupported"
+        or code == "oom"
         or code == "bad_input"
         or code == "unsupported_format"
+        or code == "io_error"
         or code == "cancelled"
-        or code == "model_missing"
+        or code == "internal"
     ):
         return False
+    assert_never(code)
+
+
+def exit_code(code: ErrorCode) -> int:
+    """Process status for one error code. Success is 0 and is not a code."""
+    if code == "internal":
+        return 1
+    if code == "bad_input":
+        return 2
+    if code == "unsupported_format":
+        return 3
+    if code == "gpu_unsupported":
+        return 4
+    if code == "gpu_busy":
+        return 5
+    if code == "oom":
+        return 6
+    if code == "model_missing":
+        return 7
+    if code == "io_error":
+        return 8
+    if code == "cancelled":
+        return 130
     assert_never(code)
 
 
@@ -73,27 +101,54 @@ def loads(line: bytes | str) -> dict[str, Any]:
     return data
 
 
+def _kind(name: str) -> dict[str, str]:
+    """``op`` keeps published readers working. ``type`` is the IPC-ENLARGE name."""
+    return {"op": name, "type": name}
+
+
 def hello_message(version: str) -> dict[str, Any]:
     return {
-        "op": "hello",
+        **_kind("hello"),
         "version": version,
         "protocol_min": PROTOCOL_MIN,
         "protocol_max": PROTOCOL_MAX,
+        "server": "enlarge",
+        "protocols": [PROTOCOL],
     }
 
 
 def accepted_message(job_id: str, queue_pos: int) -> dict[str, Any]:
-    return {"op": "accepted", "id": job_id, "queue_pos": queue_pos}
+    return {**_kind("accepted"), "id": job_id, "queue_pos": queue_pos}
 
 
-def progress_message(job_id: str, pct: float, stage: Stage) -> dict[str, Any]:
+def progress_message(
+    job_id: str,
+    pct: float,
+    stage: Stage,
+    eta_s: float | None = None,
+    lock_holder: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     bounded = max(0.0, min(100.0, float(pct)))
-    return {"op": "progress", "id": job_id, "pct": round(bounded, 1), "stage": stage}
+    eta = None if eta_s is None else round(max(0.0, float(eta_s)), 1)
+    body: dict[str, Any] = {
+        **_kind("progress"),
+        "id": job_id,
+        "pct": round(bounded, 1),
+        "stage": stage,
+        "eta_s": eta,
+    }
+    if stage == "waiting_gpu" and lock_holder is not None:
+        body["lock_holder"] = {
+            "owner": lock_holder.get("owner"),
+            "pid": lock_holder.get("pid"),
+            "job": lock_holder.get("job"),
+        }
+    return body
 
 
 def done_message(job_id: str, output: str, width: int, height: int, image_format: str, ms: float) -> dict[str, Any]:
     return {
-        "op": "done",
+        **_kind("done"),
         "id": job_id,
         "output": output,
         "width": width,
@@ -105,12 +160,23 @@ def done_message(job_id: str, output: str, width: int, height: int, image_format
 
 def error_message(job_id: str, code: ErrorCode, message: str) -> dict[str, Any]:
     return {
-        "op": "error",
+        **_kind("error"),
         "id": job_id,
         "code": code,
         "message": message,
         "retryable": is_retryable(code),
     }
+
+
+def message_kind(message: dict[str, Any]) -> str:
+    """``type`` when a client sends the IPC-ENLARGE name, otherwise ``op``."""
+    kind = message.get("type")
+    if isinstance(kind, str) and kind.strip():
+        return kind.strip()
+    kind = message.get("op")
+    if isinstance(kind, str):
+        return kind.strip()
+    return ""
 
 
 @dataclass(frozen=True)
@@ -125,6 +191,29 @@ class EnlargeRequest:
     output: str
     output_dir: str
     open_ui: bool
+    lossless: bool = False
+    encode_quality: int = DEFAULT_QUALITY
+    long_side: int = 0
+    lock_timeout: float = 2.0
+    parent_lock_pid: int = 0
+
+
+def _text(message: dict[str, Any], key: str) -> str:
+    value = message.get(key, "")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"{key} must be a string")
+    return value.strip()
+
+
+def _whole(message: dict[str, Any], key: str, default: int) -> int:
+    value = message.get(key, default)
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{key} must be an integer")
+    return value
 
 
 def request_from_message(message: dict[str, Any]) -> EnlargeRequest:
@@ -138,45 +227,40 @@ def request_from_message(message: dict[str, Any]) -> EnlargeRequest:
     scale = message.get("scale")
     if isinstance(scale, bool) or not isinstance(scale, int):
         raise ValueError("scale must be 2 or 4")
-    preset = message.get("preset", "")
-    if preset is None:
-        preset = ""
-    if not isinstance(preset, str):
-        raise ValueError("preset must be a string")
-    model = message.get("model", "")
-    if model is None:
-        model = ""
-    if not isinstance(model, str):
-        raise ValueError("model must be a string")
+    preset = _text(message, "preset")
+    model = _text(message, "model")
     quality = message.get("quality", "fast")
     if quality is None or quality == "":
         quality = "fast"
     if not isinstance(quality, str):
         raise ValueError("quality must be fast or max")
-    image_format = message.get("format", "")
-    if image_format is None:
-        image_format = ""
-    if not isinstance(image_format, str):
-        raise ValueError("format must be a string")
-    output = message.get("output", "")
-    if output is None:
-        output = ""
-    if not isinstance(output, str):
-        raise ValueError("output must be a file path")
-    output_dir = message.get("output_dir", "")
-    if output_dir is None:
-        output_dir = ""
-    if not isinstance(output_dir, str):
-        raise ValueError("output_dir must be a directory path")
+    image_format = _text(message, "format")
+    output = _text(message, "output")
+    output_dir = _text(message, "output_dir")
+    encode_quality = _whole(message, "encode_quality", DEFAULT_QUALITY)
+    long_side = _whole(message, "long_side", 0)
+    parent_lock_pid = _whole(message, "parent_lock_pid", 0)
+    timeout = message.get("lock_timeout", 2.0)
+    if timeout is None or timeout == "":
+        timeout_s = 2.0
+    elif isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+        raise ValueError("lock_timeout must be a number of seconds")
+    else:
+        timeout_s = float(timeout)
     return EnlargeRequest(
         id=job_id.strip(),
         input=source.strip(),
         scale=scale,
-        preset=preset.strip().lower(),
-        model=model.strip(),
+        preset=preset.lower(),
+        model=model,
         quality=quality.strip().lower(),
-        format=image_format.strip().lower(),
-        output=output.strip(),
-        output_dir=output_dir.strip(),
+        format=image_format.lower(),
+        output=output,
+        output_dir=output_dir,
         open_ui=message.get("open_ui") is True,
+        lossless=message.get("lossless") is True,
+        encode_quality=encode_quality,
+        long_side=long_side,
+        lock_timeout=timeout_s,
+        parent_lock_pid=parent_lock_pid,
     )

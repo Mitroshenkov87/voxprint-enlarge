@@ -76,10 +76,12 @@ def test_pipe_name_uses_the_sid_hash() -> None:
 
 
 def test_retryable_flags() -> None:
-    assert is_retryable("gpu_busy") and is_retryable("oom") and is_retryable("io_error") and is_retryable("internal")
+    assert is_retryable("gpu_busy") and is_retryable("model_missing")
+    assert not is_retryable("oom")
+    assert not is_retryable("io_error")
+    assert not is_retryable("internal")
     assert not is_retryable("gpu_unsupported")
     assert not is_retryable("cancelled")
-    assert not is_retryable("model_missing")
     assert not is_retryable("bad_input")
     assert not is_retryable("unsupported_format")
 
@@ -100,7 +102,10 @@ def test_capabilities_with_no_gpu(monkeypatch: pytest.MonkeyPatch, capsys: pytes
     assert main(["--capabilities", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["protocol"] == 1
-    assert payload["gpu"] == {"status": "none", "reason": "no_nvidia"}
+    assert payload["app"] == "enlarge"
+    assert payload["presets"] == ["photo", "art"]
+    assert payload["max_scale"] == 4
+    assert payload["gpu"] == {"name": None, "cc": None, "status": "none", "reason": "no_nvidia"}
     assert payload["default_output_format"] == "avif"
     assert "png" not in payload["output_formats"]
     expected = ["avif", "jxl", "webp", "jpeg"]
@@ -113,6 +118,7 @@ def test_capabilities_with_no_gpu(monkeypatch: pytest.MonkeyPatch, capsys: pytes
     for row in payload["models"]:
         assert row["quality"] in {"fast", "max"}
         assert row["scales"] == [2, 4]
+        assert row["installed"] is False
         assert row["id"]
 
 
@@ -125,21 +131,36 @@ def test_capabilities_report_an_old_driver_and_a_warning(
     )
     assert main(["--capabilities", "--json"]) == 0
     old = json.loads(capsys.readouterr().out)
-    assert old["gpu"] == {"status": "none", "reason": "driver_too_old"}
+    assert old["gpu"] == {
+        "name": "NVIDIA GeForce RTX 4090",
+        "cc": "8.9",
+        "status": "none",
+        "reason": "driver_too_old",
+    }
     monkeypatch.setattr(
         "enlarge.ipc.capabilities.query_gpus",
         lambda runner=None: [GpuInfo("NVIDIA GeForce RTX 3090", "610.73.01", (8, 6))],
     )
     assert main(["--capabilities", "--json"]) == 0
     warn = json.loads(capsys.readouterr().out)
-    assert warn["gpu"] == {"status": "warn"}
+    assert warn["gpu"] == {
+        "name": "NVIDIA GeForce RTX 3090",
+        "cc": "8.6",
+        "status": "warn",
+        "reason": None,
+    }
     monkeypatch.setattr(
         "enlarge.ipc.capabilities.query_gpus",
         lambda runner=None: [GpuInfo("NVIDIA GeForce RTX 4090", "610.73.01", (8, 9))],
     )
     assert main(["--capabilities", "--json"]) == 0
     ok = json.loads(capsys.readouterr().out)
-    assert ok["gpu"] == {"status": "ok"}
+    assert ok["gpu"] == {
+        "name": "NVIDIA GeForce RTX 4090",
+        "cc": "8.9",
+        "status": "ok",
+        "reason": None,
+    }
 
 
 def test_linux_discovery_files(tmp_path: Path) -> None:
@@ -150,6 +171,9 @@ def test_linux_discovery_files(tmp_path: Path) -> None:
     assert desktop.name == "ai.voxprint.Enlarge.desktop"
     assert "X-Voxprint-Ipc=/run/user/1/voxprint/enlarge.sock" in text
     assert "X-Voxprint-Protocol=1" in text
+    assert "X-Voxprint-Ipc-Base=voxprint-enlarge" in text
+    assert "X-Voxprint-Version=0.1.0-pre" in text
+    assert f"X-Voxprint-Exe={exe}" in text
     launcher = tmp_path / "bin" / "voxprint-enlarge"
     assert os.access(launcher, os.X_OK)
     assert "main.py" in launcher.read_text(encoding="utf-8")

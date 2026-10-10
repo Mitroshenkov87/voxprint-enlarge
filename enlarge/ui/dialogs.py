@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from enlarge.appinfo import APP_DISPLAY_NAME, STATUS, version_label
 from enlarge.credits import credit_sections
 from enlarge.suite import gpu, resolved_models_dir, set_gpu, set_models_dir
+from enlarge.ui.icons import apply_suite_icon
 from enlarge.ui.theme import build_style
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY, choices, normalize_format
 from voxprint_engine.hardware import assess_gpu
@@ -162,6 +163,7 @@ class SettingsDialog(QDialog):
         cancel.clicked.connect(self.reject)
         save = QPushButton("Save")
         save.setObjectName("primary")
+        apply_suite_icon(save, "save", on_primary=True)
         save.clicked.connect(self._save)
         buttons.addWidget(cancel)
         buttons.addWidget(save)

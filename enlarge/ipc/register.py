@@ -16,6 +16,7 @@ else:
     winreg = None
 
 from enlarge.appinfo import APP_DISPLAY_NAME, APP_VERSION
+from enlarge.ipc.discovery import IPC_BASE
 from enlarge.ipc.naming import listen_name
 from enlarge.ipc.protocol import PROTOCOL
 
@@ -31,6 +32,7 @@ def discovery_values(exe: Path, ipc_name: str | None = None, version: str = APP_
         "Exe": str(exe),
         "Version": version,
         "IpcName": ipc_name if ipc_name is not None else listen_name(),
+        "IpcBase": IPC_BASE,
         "ProtocolVersion": str(PROTOCOL),
     }
 
@@ -46,7 +48,10 @@ def desktop_text(values: dict[str, str]) -> str:
         f"Exec={command} --serve --hidden\n"
         "NoDisplay=true\n"
         f"X-Voxprint-Ipc={values['IpcName']}\n"
+        f"X-Voxprint-Ipc-Base={values['IpcBase']}\n"
         f"X-Voxprint-Protocol={values['ProtocolVersion']}\n"
+        f"X-Voxprint-Version={values['Version']}\n"
+        f"X-Voxprint-Exe={exe}\n"
     )
 
 
@@ -80,7 +85,10 @@ def write_windows(exe: Path, ipc_name: str | None = None) -> None:
     enlarge_key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY)
     try:
         for name, value in values.items():
-            winreg.SetValueEx(enlarge_key, name, 0, winreg.REG_SZ, value)
+            if name == "ProtocolVersion":
+                winreg.SetValueEx(enlarge_key, name, 0, winreg.REG_DWORD, int(value))
+            else:
+                winreg.SetValueEx(enlarge_key, name, 0, winreg.REG_SZ, value)
     finally:
         enlarge_key.Close()
     app_key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, APP_PATHS_KEY)
