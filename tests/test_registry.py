@@ -36,10 +36,32 @@ def _manifest(**overrides: object) -> dict[str, object]:
     return data
 
 
+FAST_SHA = "96c8476ed2c42107628d10562b32ae89e7be3c2f7a53d29504823e9bafe8121d"
+HQ_SHA = "1f2be2b4786b5031776aed90e1818564f5576ab1e44da9355c7f3788ea25bdea"
+ANIME_SHA = "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da"
+
+
 def test_builtin_catalog_is_release_safe() -> None:
     catalog = load_builtin(release=True)
-    assert catalog.get(DEFAULT_MODEL_ID) is not None
-    assert catalog.get(DEFAULT_MODEL_ID).selectable  # type: ignore[union-attr]
+    fast = catalog.get(DEFAULT_MODEL_ID)
+    assert fast is not None and fast.selectable
+    assert fast.licence == "CC-BY-4.0"
+    assert fast.sha256 == FAST_SHA
+    assert fast.download_url.startswith("https://github.com/Phhofm/models/releases/download/")
+    hq = catalog.get("4x-nomos2-hq-dat2")
+    anime = catalog.get("realesrgan-x4plus-anime6b")
+    lanczos = catalog.get("lanczos")
+    assert hq is not None and hq.sha256 == HQ_SHA and hq.licence == "CC-BY-4.0"
+    assert anime is not None and anime.sha256 == ANIME_SHA and anime.licence == "BSD-3-Clause"
+    assert lanczos is not None and lanczos.selectable and lanczos.download_url == ""
+    assert [model.id for model in catalog.selectable()] == [
+        DEFAULT_MODEL_ID,
+        "4x-nomos2-hq-dat2",
+        "realesrgan-x4plus-anime6b",
+        "lanczos",
+    ]
+    plain = catalog.get("realesrgan-x4plus")
+    assert plain is not None and not plain.selectable
     credits = catalog.credits()
     assert credits
     assert all(model.licence == "CC-BY-4.0" for model in credits)
@@ -69,6 +91,16 @@ def test_release_rejects_licences_outside_the_allow_list() -> None:
         validate_manifest(_manifest(licence="GPL-3.0"), release=True)
     model = validate_manifest(_manifest(licence="GPL-3.0"), release=False)
     assert model.licence == "gpl-3.0"
+
+
+def test_download_url_must_be_https_and_pinned() -> None:
+    digest = "a" * 64
+    with pytest.raises(ManifestError, match="https"):
+        validate_manifest(_manifest(download_url="http://example.com/a.pth", sha256=digest), release=True)
+    with pytest.raises(ManifestError, match="sha256"):
+        validate_manifest(_manifest(download_url="https://example.com/a.pth", sha256=""), release=True)
+    pinned = validate_manifest(_manifest(download_url="https://example.com/a.pth", sha256=digest), release=True)
+    assert pinned.download_url == "https://example.com/a.pth"
 
 
 def test_bad_sha_and_scale_are_rejected() -> None:

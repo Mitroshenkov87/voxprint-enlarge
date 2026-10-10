@@ -3,9 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from voxprint_engine.formats import output_extension
 from voxprint_engine.worker.lanczos import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, output_scale
-
-_EXT = {"png": ".png", "jpeg": ".jpg", "webp": ".webp"}
 
 
 def is_image(path: Path) -> bool:
@@ -64,7 +63,7 @@ def plan_outputs(
 ) -> list[Path]:
     """One output path per source. Collisions get a numeric suffix before the extension."""
     factor = output_scale(scale, double)
-    ext = _EXT[image_format]
+    ext = output_extension(image_format)
     used: set[Path] = set()
     planned: list[Path] = []
     for src in sources:

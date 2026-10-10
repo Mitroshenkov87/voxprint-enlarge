@@ -6,27 +6,30 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PIL import Image
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPen, QPixmap, QWheelEvent
+from PySide6.QtGui import QColor, QFont, QImage, QMouseEvent, QPainter, QPen, QPixmap, QWheelEvent
 from PySide6.QtWidgets import QWidget
+
+from voxprint_engine.formats import open_rgb
 
 _MAX_EDGE = 4096
 
 
 def _load(path: Path | None) -> QPixmap:
+    """Decode with Pillow so AVIF and JPEG XL show up. Qt cannot read those files."""
     if path is None or not path.is_file():
         return QPixmap()
-    image = QPixmap(str(path))
-    if image.isNull():
-        return image
-    if max(image.width(), image.height()) > _MAX_EDGE:
-        image = image.scaled(
-            _MAX_EDGE,
-            _MAX_EDGE,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-    return image
+    try:
+        frame = open_rgb(path)
+    except (OSError, ValueError):
+        return QPixmap()
+    if max(frame.size) > _MAX_EDGE:
+        frame.thumbnail((_MAX_EDGE, _MAX_EDGE), Image.Resampling.LANCZOS)
+    rgb = frame.convert("RGB")
+    data = rgb.tobytes("raw", "RGB")
+    qimage = QImage(data, rgb.width, rgb.height, rgb.width * 3, QImage.Format.Format_RGB888)
+    return QPixmap.fromImage(qimage.copy())
 
 
 class CompareView(QWidget):

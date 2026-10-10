@@ -26,22 +26,26 @@ Licence-safe entries, checked against the project's pages on 2026-10-10:
 | restoreformer-plus | Apache-2.0 | Zhou et al. | github.com/wzhouxiff/RestoreFormerPlusPlus |
 | seedvr2-3b | Apache-2.0 | ByteDance Seed | github.com/ByteDance-Seed/SeedVR |
 
-`sha256` stays empty until a weight file is pinned. Face and generative models
-are registered and not selectable in phase 1.
+The three MVP weights are pinned in `catalog.json` (sha256 of the GitHub
+release asset). Face, generative, and the other photo entries are registered
+and not selectable. See `docs/ENGINE.md` for the licence notes, including the
+`CC-BY-0.4` typo on the Nomos release pages.
 
 Not in the registry, and not accepted if someone drops them in the custom
 folder under a non-commercial or missing licence: Kim2091 models published as
 non-commercial, SUPIR, HYPIR, CodeFormer, StableSR, InvSR, LucidFlux, PiSA-SR,
 and Upscayl's UltraSharp / Remacri (CC-BY-NC-SA).
 
-## Runtime, later phases
+## Runtime
 
-ONNX Runtime, with TensorRT EP preferred over CUDA EP. DirectML is a fallback
-only. Windows ML on 24H2 is in scope later. The path is spandrel's MIT core
-(not `spandrel_extra_arches`) from `.pth` to ONNX fp16, with TensorRT engines
-cached under `<Voxprint home>/trt-cache/<gpu>-<driver>-<trt>/`. Tiles overlap
-by the feather reported today (`overlap_for`) and are sized from the VRAM
-budget. Inference stays in the worker process.
+ONNX Runtime opens TensorRT. CUDA EP runs when that engine does not build.
+DirectML and Windows ML are not used. A GPU below compute capability 8.9 warns
+and does not block. The offline conversion is spandrel's MIT core (not
+`spandrel_extra_arches`) from `.pth` to ONNX fp16. TensorRT engines are cached
+under `%LOCALAPPDATA%\Voxprint\trt-cache\<gpu>-<driver>-<trt>\` on Windows and
+`~/.cache/voxprint/trt-cache/...` on Linux. They are not refcounted. Tiles
+overlap by `overlap_for` and are sized from the VRAM budget. Inference stays
+in the worker process. The implementation notes are `docs/ENGINE.md`.
 
 VRAM budget, measured again before each batch: `free_now - max(2 GB, 8% of total)`.
 If a batch spills into system memory, the next batch is half the size (at least 1).

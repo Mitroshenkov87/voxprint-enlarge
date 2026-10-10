@@ -46,6 +46,21 @@ def note_spill(batch: int, spilled: bool) -> int:
     return size
 
 
+def halve_tile(tile: int, minimum: int = 32) -> int | None:
+    """Next tile after an out-of-memory or system-memory spill. None means stop shrinking."""
+    nxt = int(tile) // 2
+    if nxt < minimum or nxt >= int(tile):
+        return None
+    return nxt
+
+
+def is_memory_error(exc: BaseException) -> bool:
+    """True when a runtime error is an allocator failure rather than a bad image."""
+    text = f"{type(exc).__name__} {exc}".lower()
+    needles = ("out of memory", "outofmemory", "oom", "failed to allocate", "cuda error", "cublas")
+    return any(needle in text for needle in needles)
+
+
 def auto_tile(budget_gb: float) -> int:
     """Pick a tile from the memory that is actually free to use."""
     if budget_gb < 1.5:

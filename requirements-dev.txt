@@ -1,4 +1,5 @@
 pytest>=8
+onnx>=1.16,<2
 ruff>=0.8
 mypy>=1.13
 bandit>=1.8

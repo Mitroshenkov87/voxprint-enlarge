@@ -1,5 +1,9 @@
-# Voxprint AI Enlarge, phase 1. Neural runtimes (onnxruntime, torch) are not
-# dependencies until a later phase loads real weights.
+# CPU ONNX Runtime. TensorRT is the GPU session. CUDA EP is the engine-build
+# failure path. docs/ENGINE.md has the GPU packages. CI has no GPU.
 PySide6>=6.7,<7
-Pillow>=10,<13
+Pillow>=11.3,<13
 psutil>=5.9,<8
+numpy>=2,<3
+onnxruntime>=1.20,<2
+# 2026.5+ wheels are cp312-abi3 only. CI runs Python 3.11.
+imagecodecs==2026.3.6

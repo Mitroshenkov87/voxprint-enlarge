@@ -29,6 +29,7 @@ class ModelManifest:
     filename: str
     summary: str
     selectable: bool
+    download_url: str = ""
 
     def requires_credit(self) -> bool:
         """CC-BY (any version) needs a line on the credits screen. NC never reaches here."""

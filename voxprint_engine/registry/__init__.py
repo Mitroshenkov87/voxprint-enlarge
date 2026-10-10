@@ -10,9 +10,11 @@ from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.registry.validate import ManifestError, validate_manifest
 
 DEFAULT_MODEL_ID = "4x-nomos2-realplksr-dysample"
+LANCZOS_MODEL_ID = "lanczos"
 
 __all__ = [
     "DEFAULT_MODEL_ID",
+    "LANCZOS_MODEL_ID",
     "Catalog",
     "ManifestError",
     "ModelManifest",

@@ -24,9 +24,9 @@ def _picture(path: Path, size: tuple[int, int] = (40, 24)) -> None:
 
 def test_lanczos_scales_and_refuses_video(tmp_path: Path) -> None:
     src = tmp_path / "in.png"
-    dst = tmp_path / "out.png"
+    dst = tmp_path / "out.avif"
     _picture(src, (30, 20))
-    width, height = lanczos_resize(src, dst, 2, "png", 95, double=False)
+    width, height = lanczos_resize(src, dst, 2, "avif", 60, double=False)
     assert (width, height) == (60, 40)
     assert Image.open(dst).size == (60, 40)
     doubled = tmp_path / "double.jpg"
@@ -35,7 +35,7 @@ def test_lanczos_scales_and_refuses_video(tmp_path: Path) -> None:
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"not a video")
     with pytest.raises(ValueError, match="images only"):
-        lanczos_resize(video, tmp_path / "no.png", 2, "png", 95)
+        lanczos_resize(video, tmp_path / "no.avif", 2, "avif", 60)
 
 
 def test_vram_budget_and_tiles() -> None:
@@ -108,7 +108,7 @@ def test_gpu_lock_blocks_a_live_owner_and_takes_a_stale_one(tmp_path: Path, monk
 def test_worker_process_resizes_and_releases_the_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("VOXPRINT_FAKE_DELAY", "0.4")
     src = tmp_path / "photo.png"
-    dst = tmp_path / "photo_x2.png"
+    dst = tmp_path / "photo_x2.avif"
     _picture(src)
     seen: list[bool] = []
 
@@ -127,8 +127,8 @@ def test_worker_process_resizes_and_releases_the_lock(tmp_path: Path, monkeypatc
         src=str(src),
         dst=str(dst),
         scale=2,
-        format="png",
-        quality=95,
+        format="avif",
+        quality=60,
         model_id="4x-nomos2-realplksr-dysample",
         tile=0,
         model_tile=256,
@@ -146,6 +146,7 @@ def test_worker_process_resizes_and_releases_the_lock(tmp_path: Path, monkeypatc
     assert result.next_batch == 1
     assert seen == [True]
     assert read_lock() is None
+    assert not (Path(os.environ["VOXPRINT_HOME"]) / "models" / "4xNomos2_realplksr_dysample.pth").exists()
 
 
 def test_thermal_rule() -> None:

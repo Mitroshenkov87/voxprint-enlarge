@@ -10,7 +10,7 @@ pytest.importorskip("PySide6")
 from PIL import Image
 from PySide6.QtWidgets import QApplication, QLabel
 
-from enlarge.ui.dialogs import CreditsDialog
+from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
 from main import main
 
 from enlarge.appinfo import version_line
@@ -55,6 +55,9 @@ def test_platform_names() -> None:
     assert check_os(build=26100, is_windows=True).ok
     assert not check_os(build=22000, is_windows=True).ok
     assert "pre-alpha" in version_line()
+    source = Path("enlarge/platform_win.py").read_text(encoding="utf-8")
+    assert "22621" not in source
+    assert "22H2" not in source
 
 
 def test_collect_skips_video(tmp_path: Path) -> None:
@@ -66,8 +69,10 @@ def test_collect_skips_video(tmp_path: Path) -> None:
     # The png is not a decodable image but the suffix is allowed at the picker.
     assert image in found
     assert any("Clarity" in warning for warning in warnings)
-    planned = plan_outputs([image], None, 4, "png", False)
-    assert planned[0].name == "a_x4.png"
+    planned = plan_outputs([image], None, 4, "avif", False)
+    assert planned[0].name == "a_x4.avif"
+    with pytest.raises(ValueError, match="PNG"):
+        plan_outputs([image], None, 4, "png", False)
 
 
 def test_window_starts_and_runs_a_sample(tmp_path: Path) -> None:
@@ -98,6 +103,12 @@ def test_window_starts_and_runs_a_sample(tmp_path: Path) -> None:
         raise AssertionError(f"upscale did not finish: {status} {message} {window.run_page.status.text()}")
     output = Path(str(window.rows[0]["dst"]))
     assert output.is_file()
+    assert output.suffix == ".avif"
+    assert window.output_page.image_format() == "avif"
+    labels = [window.output_page.format_box.itemText(i) for i in range(window.output_page.format_box.count())]
+    assert labels[0] == "AVIF"
+    assert "PNG" not in labels
+    assert any(label == "JPEG (legacy)" for label in labels)
     assert Image.open(output).size == (32, 20)
     window.run_page.compare.set_pair(sample, output)
     assert not window.run_page.compare.before.isNull()
@@ -108,6 +119,19 @@ def test_window_starts_and_runs_a_sample(tmp_path: Path) -> None:
     assert "Philip Hofmann" in body.text()
     assert "CC-BY-4.0" in body.text()
     dialog.close()
+    settings_dialog = SettingsDialog(window, window.settings)
+    setting_labels = [settings_dialog.format_box.itemText(i) for i in range(settings_dialog.format_box.count())]
+    assert setting_labels[0] == "AVIF"
+    assert settings_dialog.format_box.currentData() == "avif"
+    assert "PNG" not in setting_labels
+    assert any(label == "JPEG (legacy)" for label in setting_labels)
+    jxl = settings_dialog.format_box.findData("jxl")
+    settings_dialog.format_box.setCurrentIndex(jxl)
+    settings_dialog.lossless.setChecked(True)
+    settings_dialog._save()
+    assert settings_dialog.result_settings["format"] == "jxl"
+    assert settings_dialog.result_settings["lossless"] is True
+    settings_dialog.close()
     window.close()
 
 

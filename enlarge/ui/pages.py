@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from enlarge.ui.compare import CompareView
+from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY, choices, normalize_format
 from voxprint_engine.registry.schema import ModelManifest
 
 
@@ -87,7 +88,10 @@ class ModelPage(QWidget):
         title = QLabel("Model")
         title.setObjectName("sectiontitle")
         layout.addWidget(title)
-        hint = QLabel("Licence-safe models from the registry. The choice is sent with the job. Weights are not loaded in this build.")
+        hint = QLabel(
+            "The three neural models download into the shared models folder when you run them. "
+            "Lanczos stays on the CPU and does not download anything."
+        )
         hint.setObjectName("hint")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -104,8 +108,12 @@ class ModelPage(QWidget):
     def fill(self, models: list[ModelManifest], selected: str) -> None:
         self.models.clear()
         for model in models:
-            vram = f"~{model.vram_mb} MB VRAM hint" if model.vram_mb else "VRAM hint not set"
-            text = f"{model.name}\n{model.summary}\n{model.arch}  ·  native {model.scale}x  ·  {model.licence}  ·  {vram}"
+            if model.arch == "lanczos":
+                meta = f"{model.licence}  ·  no download"
+            else:
+                vram = f"~{model.vram_mb} MB VRAM hint" if model.vram_mb else "VRAM hint not set"
+                meta = f"{model.arch}  ·  native {model.scale}x  ·  {model.licence}  ·  {vram}"
+            text = f"{model.name}\n{model.summary}\n{meta}"
             item = QListWidgetItem(text)
             item.setData(Qt.ItemDataRole.UserRole, model.id)
             item.setToolTip(model.attribution)
@@ -148,19 +156,27 @@ class OutputPage(QWidget):
         format_row = QHBoxLayout()
         format_row.addWidget(QLabel("Format"))
         self.format_box = QComboBox()
-        self.format_box.addItem("PNG", "png")
-        self.format_box.addItem("JPEG", "jpeg")
-        self.format_box.addItem("WebP", "webp")
+        self.fill_formats()
         format_row.addWidget(self.format_box)
         format_row.addStretch(1)
         layout.addLayout(format_row)
 
-        self.quality_label = QLabel("Quality 95")
+        self.lossless = QCheckBox("Lossless (JPEG XL)")
+        layout.addWidget(self.lossless)
+
+        self.quality_label = QLabel(f"Quality {DEFAULT_QUALITY}")
         layout.addWidget(self.quality_label)
         self.quality = QSlider(Qt.Orientation.Horizontal)
         self.quality.setRange(50, 100)
-        self.quality.setValue(95)
+        self.quality.setValue(DEFAULT_QUALITY)
         layout.addWidget(self.quality)
+        format_note = QLabel(
+            "AVIF is the default. JPEG XL can be lossless. WebP is the other main option. "
+            "JPEG is legacy. HEIC is listed only when this computer already has a codec."
+        )
+        format_note.setObjectName("hint")
+        format_note.setWordWrap(True)
+        layout.addWidget(format_note)
 
         layout.addWidget(QLabel("Output folder"))
         folder_row = QHBoxLayout()
@@ -177,10 +193,17 @@ class OutputPage(QWidget):
         self.tile_label.setObjectName("hint")
         self.tile_label.setWordWrap(True)
         layout.addWidget(self.tile_label)
-        note = QLabel("This build writes a Lanczos preview at the scale you pick. The neural model is not applied yet.")
+        note = QLabel(
+            "A neural model runs in the worker on TensorRT. CUDA is used when that engine does not build. "
+            "Lanczos, or the CPU setting, resamples on the CPU and does not download a model."
+        )
         note.setObjectName("hint")
         note.setWordWrap(True)
         layout.addWidget(note)
+        self.gpu_warning = QLabel("")
+        self.gpu_warning.setObjectName("warn")
+        self.gpu_warning.setWordWrap(True)
+        layout.addWidget(self.gpu_warning)
         layout.addStretch(1)
         root.addWidget(card, 1)
 
@@ -191,8 +214,23 @@ class OutputPage(QWidget):
         self.scale_x2.setChecked(scale == 2)
         self.scale_x4.setChecked(scale != 2)
 
+    def fill_formats(self) -> None:
+        current = str(self.format_box.currentData() or DEFAULT_FORMAT) if self.format_box.count() else DEFAULT_FORMAT
+        self.format_box.clear()
+        for label, key in choices():
+            self.format_box.addItem(label, key)
+        index = self.format_box.findData(normalize_format(current))
+        self.format_box.setCurrentIndex(index if index >= 0 else 0)
+
     def image_format(self) -> str:
-        return str(self.format_box.currentData() or "png")
+        return str(self.format_box.currentData() or DEFAULT_FORMAT)
+
+    def apply_output(self, image_format: str, quality: int, lossless: bool) -> None:
+        key = normalize_format(image_format)
+        index = self.format_box.findData(key)
+        self.format_box.setCurrentIndex(index if index >= 0 else 0)
+        self.lossless.setChecked(bool(lossless) and key == "jxl")
+        self.quality.setValue(int(quality))
 
 
 class RunPage(QWidget):

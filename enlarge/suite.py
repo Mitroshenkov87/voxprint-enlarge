@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from enlarge.paths import voxprint_home
+from voxprint_engine.paths import models_dir as engine_models_dir
 
 SCHEMA = 1
 FILENAME = "suite.json"
@@ -66,12 +67,7 @@ def models_dir() -> Path | None:
 
 def resolved_models_dir() -> Path:
     """``VOXPRINT_MODELS_DIR``, else the suite value, else the default shared folder."""
-    env = os.environ.get("VOXPRINT_MODELS_DIR", "").strip().strip('"')
-    if env:
-        folder = Path(os.path.expandvars(os.path.expanduser(env)))
-        if folder.is_absolute():
-            return folder
-    return models_dir() or (voxprint_home() / "models")
+    return engine_models_dir()
 
 
 def _write(data: dict[str, Any]) -> None:

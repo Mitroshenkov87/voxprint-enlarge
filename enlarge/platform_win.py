@@ -15,7 +15,6 @@ from typing import Optional
 IS_WINDOWS = sys.platform == "win32"
 MIN_BUILD = 26100            # Windows 11 24H2
 START_MENU_FOLDER = "Voxprint"
-BACKDROP_MIN_BUILD = 22621   # DWMWA_SYSTEMBACKDROP_TYPE appeared in 22H2
 DWMWA_USE_IMMERSIVE_DARK_MODE, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWA_SYSTEMBACKDROP_TYPE = 20, 33, 38
 DWMSBT_TRANSIENTWINDOW = 3     # Acrylic
 DWMWCP_ROUND = 2
@@ -54,8 +53,12 @@ def check_os(build: Optional[int] = None, is_windows: Optional[bool] = None) -> 
 
 
 def apply_backdrop(hwnd: int, dark: bool = True) -> str:
-    """Enable Acrylic through ``DwmSetWindowAttribute``; returns ``'acrylic'`` or ``'plain'`` (older Windows / any error)."""
-    if not IS_WINDOWS or (windows_build() or 0) < BACKDROP_MIN_BUILD:
+    """Enable Acrylic through ``DwmSetWindowAttribute``. Returns ``acrylic`` or ``plain``.
+
+    The supported Windows floor is 11 24H2, which already has this attribute.
+    A DWM error still returns ``plain``.
+    """
+    if not IS_WINDOWS:
         return "plain"
     try:
         windll = getattr(ctypes, "windll", None)

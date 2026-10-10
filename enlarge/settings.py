@@ -8,13 +8,15 @@ from pathlib import Path
 from typing import Any
 
 from enlarge.paths import app_home
+from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY, normalize_format
 from voxprint_engine.registry import DEFAULT_MODEL_ID
 
 DEFAULTS: dict[str, Any] = {
     "model_id": DEFAULT_MODEL_ID,
     "scale": 4,
-    "format": "png",
-    "quality": 95,
+    "format": DEFAULT_FORMAT,
+    "quality": DEFAULT_QUALITY,
+    "lossless": False,
     "double_upscale": False,
     "tile": "auto",
     "output_dir": "",
@@ -22,7 +24,6 @@ DEFAULTS: dict[str, Any] = {
     "include_subfolders": True,
 }
 TILES = ("auto", "128", "256", "512", "768")
-FORMATS = ("png", "jpeg", "webp")
 
 
 def path() -> Path:
@@ -36,11 +37,14 @@ def _clean(raw: object) -> dict[str, Any]:
         data["model_id"] = source["model_id"].strip()
     if source.get("scale") in (2, 4):
         data["scale"] = source["scale"]
-    if source.get("format") in FORMATS:
-        data["format"] = source["format"]
+    data["format"] = normalize_format(source.get("format"))
     quality = source.get("quality")
     if isinstance(quality, int) and not isinstance(quality, bool) and 1 <= quality <= 100:
         data["quality"] = quality
+    if isinstance(source.get("lossless"), bool):
+        data["lossless"] = source["lossless"]
+    if data["lossless"] and data["format"] != "jxl":
+        data["lossless"] = False
     if isinstance(source.get("double_upscale"), bool):
         data["double_upscale"] = source["double_upscale"]
     tile = source.get("tile")
