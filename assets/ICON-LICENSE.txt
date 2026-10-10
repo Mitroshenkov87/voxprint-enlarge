@@ -1,0 +1,15 @@
+Voxprint AI Enlarge icon
+=========================
+
+assets/enlarge.png is the application icon (1024 px): a picture glyph and a
+two-way enlarge arrow inside a dashed selection, on a dark navy rounded tile.
+
+tools/make_icon.py only scales that file. It writes:
+
+  * assets/enlarge.ico (16, 24, 32, 48, 64, 128, 256) for the window, the
+    taskbar, and the Start menu
+  * assets/enlarge-256.png and installer/linux/voxprint-enlarge-256.png
+  * assets/splash.jpg is the same mark used as the start-up splash
+
+The mark is original artwork for Voxprint AI Enlarge by Aleksandr Mitroshenkov.
+tools/render_mark.py can redraw the source PNG from that design.

@@ -1,0 +1,20 @@
+Voxprint AI Enlarge
+Copyright 2026 Aleksandr Mitroshenkov
+
+The source code of this program is licensed under the Apache License, Version 2.0
+(see LICENSE).
+
+Not covered by that licence (each keeps its own terms):
+
+  * Model weights. They are not in this repository. Each manifest under
+    voxprint_engine/registry/catalog.json records the model's licence,
+    author, and source. Release builds refuse non-commercial and unlicensed
+    weights. CC-BY models are listed on the Credits screen.
+  * The application icon (assets/enlarge.png and the sizes made from it).
+    See assets/ICON-LICENSE.txt.
+  * The dark glass theme and the Windows Acrylic backdrop were adapted from
+    Voxprint AI Movie Dubber and follow Voxprint AI Audiobook Builder.
+    Both are Apache-2.0. See enlarge/ui/theme.py and enlarge/platform_win.py.
+
+Voxprint AI Enlarge is an independent project and is not affiliated with
+other products or services with similar names.

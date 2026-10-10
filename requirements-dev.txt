@@ -1,0 +1,7 @@
+pytest>=8
+ruff>=0.8
+mypy>=1.13
+bandit>=1.8
+pip-audit>=2.7
+vulture>=2.14
+radon>=6.0

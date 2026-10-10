@@ -1,0 +1,128 @@
+"""The window comes up offscreen, and a queued image survives a fake upscale."""
+from __future__ import annotations
+
+import time
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("PySide6")
+from PIL import Image
+from PySide6.QtWidgets import QApplication, QLabel
+
+from enlarge.ui.dialogs import CreditsDialog
+from main import main
+
+from enlarge.appinfo import version_line
+from enlarge.images import collect, plan_outputs
+from enlarge.platform_win import MIN_BUILD, START_MENU_FOLDER, check_os
+from enlarge.ui.theme import CONTRAST_PAIRS, build_style
+from enlarge.ui.window import STEPS, MainWindow
+
+
+def _lum(hex_color: str) -> float:
+    raw = hex_color.lstrip("#")
+    channels = [int(raw[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    linear = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _ratio(foreground: str, background: str) -> float:
+    lighter, darker = sorted((_lum(foreground), _lum(background)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def _app() -> QApplication:
+    running = QApplication.instance()
+    if isinstance(running, QApplication):
+        return running
+    return QApplication([])
+
+
+@pytest.mark.parametrize("foreground,background", CONTRAST_PAIRS)
+def test_theme_contrast(foreground: str, background: str) -> None:
+    assert _ratio(foreground, background) >= 4.5
+
+
+def test_stylesheet_has_no_leftover_braces() -> None:
+    css = build_style(True)
+    assert "{{" not in css and "QPushButton" in css
+
+
+def test_platform_names() -> None:
+    assert START_MENU_FOLDER == "Voxprint"
+    assert MIN_BUILD == 26100
+    assert check_os(build=26100, is_windows=True).ok
+    assert not check_os(build=22000, is_windows=True).ok
+    assert "pre-alpha" in version_line()
+
+
+def test_collect_skips_video(tmp_path: Path) -> None:
+    image = tmp_path / "a.png"
+    image.write_bytes(b"not really")
+    # collect checks the suffix and is_file, then plan/worker checks pixels.
+    (tmp_path / "movie.mkv").write_bytes(b"video")
+    found, warnings = collect([tmp_path], recursive=False)
+    # The png is not a decodable image but the suffix is allowed at the picker.
+    assert image in found
+    assert any("Clarity" in warning for warning in warnings)
+    planned = plan_outputs([image], None, 4, "png", False)
+    assert planned[0].name == "a_x4.png"
+
+
+def test_window_starts_and_runs_a_sample(tmp_path: Path) -> None:
+    _app()
+    sample = tmp_path / "hill.png"
+    Image.new("RGB", (16, 10), (180, 40, 40)).save(sample)
+    window = MainWindow()
+    assert [button.text() for button in window.step_buttons] == [f"{i}. {name}" for i, name in enumerate(STEPS, start=1)]
+    assert window.stack.count() == 4
+    window.add_paths([sample])
+    assert len(window.sources) == 1
+    window.output_page.set_scale(2)
+    window.output_page.output_edit.setText(str(tmp_path / "out"))
+    (tmp_path / "out").mkdir()
+    window._on_output_changed()
+    window.go(3)
+    window.show()
+    _app().processEvents()
+    window.start_run()
+    for _ in range(200):
+        _app().processEvents()
+        if window.job is None and window.rows and window.rows[0]["status"] == "Done":
+            break
+        time.sleep(0.05)
+    else:
+        status = window.rows[0]["status"] if window.rows else "no rows"
+        message = window.rows[0]["message"] if window.rows else ""
+        raise AssertionError(f"upscale did not finish: {status} {message} {window.run_page.status.text()}")
+    output = Path(str(window.rows[0]["dst"]))
+    assert output.is_file()
+    assert Image.open(output).size == (32, 20)
+    window.run_page.compare.set_pair(sample, output)
+    assert not window.run_page.compare.before.isNull()
+    assert not window.run_page.compare.after.isNull()
+    dialog = CreditsDialog(window, window.catalog.credits(), [])
+    body = dialog.findChild(QLabel, "creditsBody")
+    assert body is not None
+    assert "Philip Hofmann" in body.text()
+    assert "CC-BY-4.0" in body.text()
+    dialog.close()
+    window.close()
+
+
+def test_main_selftest_and_version() -> None:
+    assert main(["--version"]) == 0
+    _app()
+    assert main(["--selftest"]) == 0
+
+
+def test_cli_upscale(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    source = tmp_path / "in.png"
+    dest = tmp_path / "out.webp"
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(source)
+    code = main(["--upscale", str(source), "--out", str(dest), "--scale", "4", "--format", "webp", "--quality", "80"])
+    captured = capsys.readouterr()
+    assert code == 0, captured.err
+    assert dest.is_file()
+    assert Image.open(dest).size == (32, 32)
