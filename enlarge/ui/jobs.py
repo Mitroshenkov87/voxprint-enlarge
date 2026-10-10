@@ -10,19 +10,23 @@ from voxprint_engine.worker import UpscaleRequest
 
 
 class BatchThread(QThread):
+    """Background thread that runs one batch and emits progress."""
     progressed = Signal(str, float, str)
     item_finished = Signal(str, bool, str, str)
 
     def __init__(self, requests: list[UpscaleRequest], cancel: Callable[[], bool]) -> None:
+        """Hold the requests and the shared cancel flag."""
         super().__init__()
         self.requests = requests
         self._cancel = cancel
         self.control = BatchControl()
 
     def cancel(self) -> None:
+        """Ask the batch to stop."""
         self.control.cancel()
 
     def run(self) -> None:
+        """Run the batch and emit item and finished signals."""
         run_batch(
             self.requests,
             on_progress=self.progressed.emit,

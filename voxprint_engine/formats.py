@@ -76,6 +76,7 @@ def normalize_format(value: object) -> str:
 
 
 def output_extension(image_format: str) -> str:
+    """File suffix for an output format. JPEG is .jpg."""
     key = require_output_format(image_format, lossless=False)
     return _EXTENSIONS[key]
 

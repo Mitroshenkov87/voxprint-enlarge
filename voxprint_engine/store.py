@@ -35,6 +35,7 @@ class StoreError(RuntimeError):
 
 
 def users_path(root: Path | None = None) -> Path:
+    """Path of .users.json beside the shared weights."""
     return (root or models_dir()) / USERS_FILE
 
 
@@ -122,6 +123,7 @@ def delete_weight(model: ModelManifest, root: Path | None = None, *, user: str =
 
 
 def sha256_file(path: Path) -> str:
+    """Lowercase sha256 of a file, read in chunks."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while True:

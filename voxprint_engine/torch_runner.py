@@ -24,6 +24,7 @@ class TorchFallbackError(RuntimeError):
 
 
 def torch_available() -> bool:
+    """True when PyTorch imports in this process."""
     return torch is not None and ModelLoader is not None
 
 
@@ -31,6 +32,7 @@ class TorchUpscaler:
     """One loaded .pth. fp16 on CUDA, fp32 otherwise."""
 
     def __init__(self, weight: Path, device: str) -> None:
+        """Load a spandrel weight onto this device."""
         if torch is None or ModelLoader is None:
             raise TorchFallbackError("PyTorch fallback needs torch and spandrel (the MIT package, not spandrel_extra_arches)")
         if "spandrel_extra_arches" in sys.modules:
@@ -50,6 +52,7 @@ class TorchUpscaler:
         self.scale = int(getattr(descriptor, "scale", 0) or 0)
 
     def __call__(self, tile: np.ndarray) -> np.ndarray:
+        """Run the network on one NCHW tensor and return the image."""
         if torch is None:
             raise TorchFallbackError("torch is not installed")
         array = np.transpose(tile, (2, 0, 1))[None, ...]

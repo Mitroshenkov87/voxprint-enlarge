@@ -23,6 +23,7 @@ TILES = (128, 256, 512, 768)
 
 @dataclass(frozen=True)
 class VramSnapshot:
+    """One VRAM reading: total, free, the budget, and where it was measured."""
     device: str
     total_gb: float
     free_gb: float

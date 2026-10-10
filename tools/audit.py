@@ -1,6 +1,6 @@
 """Suite audit gate for Voxprint AI Enlarge.
 
-Runs ruff (F and E9), mypy, bandit (high severity), pip-audit, and gitleaks.
+Runs ruff (F, E9, and D1 pydocstyle on the app and the engine), mypy, bandit (high severity), pip-audit, and gitleaks.
 Vulture and radon are report-only. Exit code 1 when a blocking check fails.
 A blocking tool that is not installed also fails the run.
 
@@ -77,7 +77,7 @@ def _allowed(ident: str, aliases: list[str], package: str, allow: list[tuple[str
 def check_ruff() -> Check:
     if _tool("ruff") is None:
         return Check("ruff", "ruff is not installed", "", True)
-    code, out, err = _run([sys.executable, "-m", "ruff", "check", "--select", "F,E9", *PY_TARGETS])
+    code, out, err = _run([sys.executable, "-m", "ruff", "check", *PY_TARGETS])
     text = (out + err).strip()
     return Check("ruff", "clean" if code == 0 else "findings", text, code != 0)
 

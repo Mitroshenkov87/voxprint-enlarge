@@ -24,10 +24,12 @@ _GPU_RE = re.compile(r"^cuda:(\d{1,2})$")
 
 
 def path() -> Path:
+    """Path of the shared suite.json."""
     return voxprint_home() / "state" / FILENAME
 
 
 def read_raw() -> dict[str, Any]:
+    """The suite file as a dict, or empty when it is missing or unreadable."""
     try:
         data = json.loads(path().read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
@@ -36,6 +38,7 @@ def read_raw() -> dict[str, Any]:
 
 
 def normalize_gpu(value: object) -> str | None:
+    """Auto or cuda:N. Any other value, including cpu, is dropped."""
     if not isinstance(value, str):
         return None
     text = value.strip().lower()
@@ -52,6 +55,7 @@ def normalize_gpu(value: object) -> str | None:
 
 
 def gpu() -> str:
+    """The saved GPU choice, or auto when the file has none."""
     value = read_raw().get("gpu")
     if isinstance(value, dict):
         value = value.get("device", value.get("gpu"))
@@ -91,6 +95,7 @@ def _write(data: dict[str, Any]) -> None:
 
 
 def set_gpu(value: str) -> str:
+    """Store a GPU choice and leave every other suite key alone."""
     stored = normalize_gpu(value)
     if stored is None:
         raise ValueError(f"gpu must be auto or cuda:N, got {value!r}")

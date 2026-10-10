@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from enlarge.appinfo import APP_DISPLAY_NAME, STATUS, version_label
+from enlarge.appinfo import APP_DISPLAY_NAME, status_label, version_label
 from enlarge.credits import credit_sections
 from enlarge.suite import gpu, resolved_models_dir, set_gpu, set_models_dir
 from enlarge.ui.icons import apply_suite_icon
@@ -47,6 +47,7 @@ class SettingsDialog(QDialog):
     """GPU and folders. GPU and the shared models folder are written to suite.json."""
 
     def __init__(self, parent: QWidget, settings: dict[str, object]) -> None:
+        """Build the settings form from the current settings."""
         super().__init__(parent)
         self.setObjectName("root")
         self.setWindowTitle("Settings")
@@ -273,6 +274,7 @@ class CreditsDialog(QDialog):
     """About this build, plus every CC-BY model in the registry."""
 
     def __init__(self, parent: QWidget, credits: list[ModelManifest], warnings: list[str]) -> None:
+        """List model credits and any licence warnings."""
         super().__init__(parent)
         self.setObjectName("root")
         self.setWindowTitle("Credits")
@@ -283,7 +285,7 @@ class CreditsDialog(QDialog):
         title = QLabel(APP_DISPLAY_NAME)
         title.setObjectName("title")
         root.addWidget(title)
-        sub = QLabel(f"{STATUS}  ·  {version_label()}  ·  images only")
+        sub = QLabel(f"{status_label()}  ·  {version_label()}  ·  images only")
         sub.setObjectName("subtitle")
         root.addWidget(sub)
 

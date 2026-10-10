@@ -15,6 +15,8 @@ voxprint-enlarge upscale ...
 
 `upscale` is a subcommand alias with the same flags. `--json-progress` is required. Without it the process prints usage on stderr and exits 2.
 
+The flag list and the defaults below are generated from `enlarge/cli_parser.py` when the docs site is built. That page is the [CLI reference](https://mitroshenkov87.github.io/voxprint-enlarge/generated/cli-reference/). This file stays the contract.
+
 | Flag | Meaning |
 |---|---|
 | `--input` | Source image. Required |
@@ -25,7 +27,7 @@ voxprint-enlarge upscale ...
 | `--lossless` | JPEG XL only |
 | `--quality` | Encode quality `1`–`100`. Default 60. The words `fast` and `max` still select the model tier, which is the flag this command already had |
 | `--quality-tier` | Model tier `fast` (default) or `max`. This wins over `--quality fast` or `--quality max` |
-| `--preset` | `photo` or `art`. Required unless `--model` is set |
+| `--preset` | `photo` (default) or `art`. An explicit `--model` overrides it |
 | `--model` | Registry id. It overrides preset and tier |
 | `--lock-timeout` | Seconds to wait for the suite GPU lock. Default 600 |
 | `--parent-lock-pid` | Pid that already holds the suite GPU lock. The environment variable `VOXPRINT_GPU_PARENT_PID` is the same value. The flag wins when both are set |
@@ -74,7 +76,7 @@ Exit 0 is `done`. Exit 2 is also bad arguments, before a job id exists. `model_m
 
 ## GPU lock
 
-With no parent pid, Enlarge takes the suite lock for the job and releases it when the job ends. The wait is `--lock-timeout` seconds (default 600). On timeout the code is `gpu_busy`, exit 5.
+With no parent pid, Enlarge takes the suite lock for the job and releases it when the job ends. The wait is `--lock-timeout` seconds (default 600). On timeout the code is `gpu_busy`, exit 5, and the JSON field `retryable` is true.
 
 When the caller already holds the lock, it passes `--parent-lock-pid` or `VOXPRINT_GPU_PARENT_PID`. Enlarge reads the lock file and continues only when that file's `pid` is the one given. The owner name is not checked. The job then runs inside the lock: it does not wait, and it does not delete the file. A missing file or a different pid is `bad_input`, exit 2.
 
@@ -90,7 +92,7 @@ Prints one JSON object and exits 0. It does not need a GPU, a network, or a wind
 {
   "protocol": 1,
   "app": "enlarge",
-  "version": "0.1.0-pre",
+  "version": "0.2.0-rc.1",
   "gpu": {"name": null, "cc": null, "status": "none", "reason": "no_nvidia"},
   "models": [
     {"id": "4x-nomos2-realplksr-dysample", "preset": "photo", "quality": "fast", "scales": [2, 4], "installed": false}

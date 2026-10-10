@@ -33,7 +33,9 @@ def _load(path: Path | None) -> QPixmap:
 
 
 class CompareView(QWidget):
+    """Before/after slider. Zoom and pan apply to both pictures together."""
     def __init__(self) -> None:
+        """Start fitted, with the divider in the middle."""
         super().__init__()
         self.setMinimumHeight(260)
         self.setMouseTracking(True)
@@ -47,6 +49,7 @@ class CompareView(QWidget):
         self._pan_origin = QPointF()
 
     def set_pair(self, before: Path | None, after: Path | None) -> None:
+        """Show this original and this result."""
         self.before = _load(before)
         self.after = _load(after)
         self.zoom = 1.0
@@ -55,6 +58,7 @@ class CompareView(QWidget):
         self.update()
 
     def zoom_by(self, factor: float) -> None:
+        """Multiply the zoom and keep the view on the picture."""
         self.zoom = min(8.0, max(1.0, self.zoom * factor))
         if self.zoom <= 1.0:
             self.zoom = 1.0
@@ -62,11 +66,13 @@ class CompareView(QWidget):
         self.update()
 
     def zoom_fit(self) -> None:
+        """Fit both pictures inside the widget."""
         self.zoom = 1.0
         self.pan = QPointF(0, 0)
         self.update()
 
     def zoom_text(self) -> str:
+        """Short zoom label for the status line."""
         return f"{int(round(self.zoom * 100))}%"
 
     def _source(self) -> QPixmap:
@@ -88,6 +94,7 @@ class CompareView(QWidget):
         return dest.left() + dest.width() * self.split
 
     def paintEvent(self, _event: object) -> None:  # noqa: N802 - Qt name
+        """Draw the two pictures, the divider, and the labels."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         painter.fillRect(self.rect(), QColor("#14141c"))
@@ -130,10 +137,12 @@ class CompareView(QWidget):
         painter.end()
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802 - Qt name
+        """Zoom both pictures from the wheel."""
         self.zoom_by(1.12 if event.angleDelta().y() > 0 else 1 / 1.12)
         event.accept()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt name
+        """Start a drag on the divider or on the picture."""
         dest = self._dest()
         if dest.isNull() or event.button() != Qt.MouseButton.LeftButton:
             return
@@ -144,6 +153,7 @@ class CompareView(QWidget):
         event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt name
+        """Move the divider or pan both pictures."""
         dest = self._dest()
         if self._mode == "split" and not dest.isNull() and dest.width() > 1:
             rel = (event.position().x() - dest.left()) / dest.width()
@@ -159,5 +169,6 @@ class CompareView(QWidget):
         event.accept()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt name
+        """End the drag."""
         self._mode = ""
         event.accept()

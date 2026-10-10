@@ -32,6 +32,7 @@ class GpuLockTimeout(TimeoutError):
 
 
 def lock_path() -> Path:
+    """Path of the suite GPU lock file."""
     override = os.environ.get("VOXPRINT_GPU_LOCK")
     if override:
         return Path(override)

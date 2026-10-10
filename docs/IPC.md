@@ -42,7 +42,7 @@ Prints one JSON object on stdout and exits 0, including on a machine with no usa
 |---|---|
 | `protocol` | `1` |
 | `app` | `enlarge` |
-| `version` | Enlarge version string, currently `0.1.0-pre` |
+| `version` | The same version `--version` prints. A stamped `build_info.json` wins, then `BUILD.json`, then the source constant. This tree's `BUILD.json` version is `0.2.0-rc.1` |
 | `gpu` | `name`, `cc` (`8.9`), `status` (`ok`, `warn`, or `none`), `reason` (`null` unless `status` is `none`: `no_nvidia` or `driver_too_old`) |
 | `models` | List of `{id, preset, quality, scales, installed}` |
 | `presets` | `photo`, `art` |
@@ -106,7 +106,7 @@ Jobs run one at a time. Each job holds the suite GPU lock (`owner` `enlarge`) un
 | Code | Retryable | When |
 |---|---|---|
 | `gpu_unsupported` | no | No NVIDIA GPU, or the driver is older than the 600 series |
-| `gpu_busy` | yes | The suite GPU lock was not acquired before the job's lock timeout. A socket client that omits `lock_timeout` still waits 2 seconds. The CLI default is 600 |
+| `gpu_busy` | yes | The suite GPU lock was not acquired before the job's lock timeout. The error object's `retryable` field is true. A socket client that omits `lock_timeout` still waits 2 seconds. The CLI default is 600 |
 | `oom` | no | The worker ran out of memory |
 | `bad_input` | no | Missing file, scale not 2 or 4, quality not `fast` or `max`, unknown preset with no model, or a parent-lock pid that is not the lock file's pid |
 | `unsupported_format` | no | The source type or the output format is not supported. PNG is not an output |

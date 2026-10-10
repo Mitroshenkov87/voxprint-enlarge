@@ -55,6 +55,7 @@ Progress = Callable[[float, str], None]
 
 @dataclass(frozen=True)
 class JobOutcome:
+    """What one image run produced: paths, tile choice, and whether it spilled."""
     width: int
     height: int
     engine: str

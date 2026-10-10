@@ -6,3 +6,6 @@ bandit>=1.8
 pip-audit>=2.7
 vulture>=2.14
 radon>=6.0
+mkdocs>=1.6
+mkdocs-material>=9.5
+mkdocstrings[python]>=0.27

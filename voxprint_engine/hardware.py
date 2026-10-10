@@ -74,6 +74,7 @@ def driver_major(version: str) -> int | None:
 
 @dataclass(frozen=True)
 class GpuInfo:
+    """One NVIDIA GPU as nvidia-smi reported it."""
     name: str
     driver: str
     compute: tuple[int, int] | None
@@ -81,6 +82,7 @@ class GpuInfo:
 
 @dataclass(frozen=True)
 class LaunchGate:
+    """Whether the window and --upscale may start, plus the sentence to show."""
     ok: bool
     message: str
     warning: str

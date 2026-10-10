@@ -12,16 +12,19 @@ class BatchControl:
     """Cancel flag the queue and a background click can share."""
 
     def __init__(self) -> None:
+        """Start with nothing cancelled and no worker yet."""
         self.cancelled = False
         self.client: WorkerClient | None = None
 
     def cancel(self) -> None:
+        """Stop the queue and interrupt the worker if one is running."""
         self.cancelled = True
         client = self.client
         if client is not None:
             client.interrupt()
 
     def is_cancelled(self) -> bool:
+        """True after cancel."""
         return self.cancelled
 
 

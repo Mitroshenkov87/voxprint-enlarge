@@ -15,7 +15,7 @@ if sys.platform == "win32":
 else:
     winreg = None
 
-from enlarge.appinfo import APP_DISPLAY_NAME, APP_VERSION
+from enlarge.appinfo import APP_DISPLAY_NAME, product_version
 from enlarge.ipc.discovery import IPC_BASE
 from enlarge.ipc.naming import listen_name
 from enlarge.ipc.protocol import PROTOCOL
@@ -26,7 +26,10 @@ REGISTRY_KEY = r"Software\Voxprint\Enlarge"
 APP_PATHS_KEY = r"Software\Microsoft\Windows\CurrentVersion\App Paths\voxprint-enlarge.exe"
 
 
-def discovery_values(exe: Path, ipc_name: str | None = None, version: str = APP_VERSION) -> dict[str, str]:
+def discovery_values(exe: Path, ipc_name: str | None = None, version: str | None = None) -> dict[str, str]:
+    """Registry and desktop fields. ``version`` defaults to ``product_version()``."""
+    if version is None:
+        version = product_version()
     return {
         "InstallPath": str(exe.parent),
         "Exe": str(exe),
@@ -38,6 +41,7 @@ def discovery_values(exe: Path, ipc_name: str | None = None, version: str = APP_
 
 
 def desktop_text(values: dict[str, str]) -> str:
+    """The hidden Linux desktop file other apps read to find Enlarge."""
     exe = values["Exe"]
     command = f'"{exe}"' if exe.endswith(".py") else exe
     return (
@@ -56,6 +60,7 @@ def desktop_text(values: dict[str, str]) -> str:
 
 
 def launcher_text(exe: Path) -> str:
+    """A small PATH wrapper that execs the installed interpreter and main.py."""
     quoted = str(exe).replace("'", "'\\''")
     if exe.suffix == ".py":
         python = sys.executable.replace("'", "'\\''")

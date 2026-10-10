@@ -52,16 +52,19 @@ class JobControl:
     """Shared cancel flag and the worker process a cancel request can stop."""
 
     def __init__(self) -> None:
+        """Start idle, with no worker to interrupt."""
         self.cancelled = False
         self.client: WorkerClient | None = None
 
     def cancel(self) -> None:
+        """Mark the job cancelled and interrupt its worker."""
         self.cancelled = True
         client = self.client
         if client is not None:
             client.interrupt()
 
     def is_cancelled(self) -> bool:
+        """True after cancel, including a signal handler."""
         return self.cancelled
 
 

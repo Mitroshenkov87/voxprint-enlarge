@@ -59,6 +59,7 @@ class ManifestError(ValueError):
     """One or more manifest fields failed the gate. ``errors`` is the full list."""
 
     def __init__(self, errors: list[str]) -> None:
+        """Store the list of reasons the manifest was rejected."""
         self.errors = errors
         super().__init__("; ".join(errors))
 
@@ -74,6 +75,7 @@ def normalize_licence(value: object) -> str:
 
 
 def is_unlicensed(licence: str) -> bool:
+    """True when the licence string is empty or non-commercial."""
     return normalize_licence(licence) in _UNLICENSED
 
 

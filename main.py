@@ -20,18 +20,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox
-
 from enlarge.appinfo import APP_DISPLAY_NAME, version_line
 from enlarge.batch import run_batch
 from enlarge.cli import run_capabilities, run_contract
+from enlarge.cli_parser import parse_cli
 from enlarge.ipc.register import register_install, unregister_install
-from enlarge.ipc.server import IpcServer
 from enlarge.paths import logs_dir
 from enlarge.suite import gpu
-from enlarge.ui import splash as splash_mod
-from enlarge.ui.window import MainWindow
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
 from voxprint_engine.hardware import assess_gpu
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
@@ -132,6 +127,13 @@ def _upscale(argv: list[str]) -> int:
 
 
 def _gui(argv: list[str]) -> int:
+    # Qt is imported on the window path only. Headless commands must not load libEGL.
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication, QMessageBox
+
+    from enlarge.ui import splash as splash_mod
+    from enlarge.ui.window import MainWindow
+
     running = QApplication.instance()
     app = running if isinstance(running, QApplication) else QApplication(sys.argv)
     app.setApplicationName(APP_DISPLAY_NAME)
@@ -153,9 +155,8 @@ def _gui(argv: list[str]) -> int:
     return app.exec()
 
 
-def _register(argv: list[str]) -> int:
-    exe = Path(_arg(argv, "--exe") or str(ROOT / "main.py"))
-    register_install(exe)
+def _register(exe: str | None) -> int:
+    register_install(Path(exe or str(ROOT / "main.py")))
     return 0
 
 
@@ -179,6 +180,11 @@ def _install_gpu() -> int:
 
 
 def _serve() -> int:
+    # Qt is imported here so --capabilities and --dry-run never load libEGL.
+    from PySide6.QtWidgets import QApplication
+
+    from enlarge.ipc.server import IpcServer
+
     running = QApplication.instance()
     app = running if isinstance(running, QApplication) else QApplication(sys.argv)
     app.setApplicationName(APP_DISPLAY_NAME)
@@ -191,33 +197,37 @@ def _serve() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Dispatch one invocation. The parser in ``enlarge.cli_parser`` is the flag list."""
     args = list(sys.argv[1:] if argv is None else argv)
     _guard_stdio()
-    if args and args[0] == "upscale":
+    parsed = parse_cli(args)
+    if isinstance(parsed, int):
+        return parsed
+    if parsed.command == "upscale":
         _setup_logging()
-        return run_contract(args[1:])
-    if "--version" in args:
+        return run_contract(args)
+    if parsed.version:
         print(version_line())
         return 0
-    if "--worker" in args:
+    if parsed.worker:
         return serve()
-    if "--capabilities" in args:
-        if "--json" not in args:
-            print("usage: main.py --capabilities --json", file=sys.stderr)
+    if parsed.capabilities:
+        if not parsed.json:
+            print("usage: voxprint-enlarge --capabilities --json", file=sys.stderr)
             return 2
         return run_capabilities()
-    if "--register" in args:
-        return _register(args)
-    if "--unregister" in args:
+    if parsed.register:
+        return _register(parsed.exe)
+    if parsed.unregister:
         return _unregister()
-    if "--install-gpu" in args:
+    if parsed.install_gpu:
         return _install_gpu()
     _setup_logging()
-    if "--serve" in args:
+    if parsed.serve:
         return _serve()
-    if "--input" in args or "--dry-run" in args:
+    if parsed.input or parsed.dry_run:
         return run_contract(args)
-    if "--upscale" in args:
+    if parsed.upscale:
         blocked = _gpu_block()
         if blocked:
             print(blocked, file=sys.stderr)
