@@ -1,5 +1,5 @@
 {
   "offset": 0,
-  "codename": "Gadol",
-  "offset_note": "The release workflow's GITHUB_RUN_NUMBER plus offset. Gadol is the first installable alpha."
+  "codename": "Hagdil",
+  "offset_note": "The release workflow's GITHUB_RUN_NUMBER plus offset. Hagdil names the v0.1.0-rc.1 installer."
 }

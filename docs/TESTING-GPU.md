@@ -2,7 +2,7 @@
 
 Use this on a rented Windows 11 or Linux machine with an RTX 4090 (or another NVIDIA GPU) and a driver from the 600 series or newer. The GitHub build does not run these steps. CI has no GPU, and the installer does not contain model weights.
 
-Install the pre-release first.
+Install the `v0.1.0-rc.1` pre-release first. The steps below match the README.
 
 * Windows: run `VoxprintEnlarge-Setup.exe`. It installs for the current user under `%LOCALAPPDATA%\Voxprint\Enlarge`, adds **Voxprint AI Enlarge** to the Start menu folder **Voxprint**, and writes the Lucent discovery key. Uninstall runs `--unregister` before it deletes the files.
 * Linux: unpack `voxprint-enlarge-linux-x64.tar.gz` and run `./install.sh`. That copies the tree to `~/.local/share/voxprint/enlarge`, puts `voxprint-enlarge` on `PATH`, and writes the discovery desktop file.
