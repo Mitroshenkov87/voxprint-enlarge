@@ -32,7 +32,10 @@ def windows_build() -> Optional[int]:
     if not IS_WINDOWS:
         return None
     try:
-        return int(sys.getwindowsversion().build)          # type: ignore[attr-defined]
+        getter = getattr(sys, "getwindowsversion", None)
+        if getter is None:
+            return None
+        return int(getter().build)
     except Exception:  # noqa: BLE001
         return None
 
@@ -55,7 +58,10 @@ def apply_backdrop(hwnd: int, dark: bool = True) -> str:
     if not IS_WINDOWS or (windows_build() or 0) < BACKDROP_MIN_BUILD:
         return "plain"
     try:
-        dwm = ctypes.windll.dwmapi                              # type: ignore[attr-defined]
+        windll = getattr(ctypes, "windll", None)
+        if windll is None:
+            return "plain"
+        dwm = windll.dwmapi
         h = wintypes.HWND(hwnd)
 
         def _set(attr: int, value: int) -> int:
