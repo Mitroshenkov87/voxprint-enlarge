@@ -17,7 +17,8 @@ from voxprint_engine.hardware import NO_GPU_MESSAGE, OLD_DRIVER_MESSAGE, GpuInfo
 from enlarge.appinfo import version_line
 from enlarge.images import collect, plan_outputs
 from enlarge.platform_win import MIN_BUILD, START_MENU_FOLDER, check_os
-from enlarge.ui.theme import CONTRAST_PAIRS, build_style
+from enlarge.ui.splash import BAR
+from enlarge.ui.theme import CARD_GLASS, CONTRAST_PAIRS, MENU_BG, PRIMARY, ROOT_GLASS, TEXT, TEXT_FAINT, TEXT_MUTED, build_style
 from enlarge.ui.window import STEPS, MainWindow
 
 
@@ -43,6 +44,28 @@ def _app() -> QApplication:
 @pytest.mark.parametrize("foreground,background", CONTRAST_PAIRS)
 def test_theme_contrast(foreground: str, background: str) -> None:
     assert _ratio(foreground, background) >= 4.5
+
+
+def _over_white(rgba: str) -> str:
+    """Composite ``rgba(r,g,b,a)`` over white, the lightest desktop behind Acrylic."""
+    red, green, blue, alpha = [int(part) for part in rgba[len("rgba("):-1].split(",")]
+    channels = tuple(round(channel * alpha / 255 + 255 * (1 - alpha / 255)) for channel in (red, green, blue))
+    return "#%02x%02x%02x" % channels
+
+
+def test_theme_contrast_over_a_white_desktop() -> None:
+    for glass in (ROOT_GLASS, CARD_GLASS):
+        worst = _over_white(glass)
+        for foreground in (TEXT, TEXT_MUTED, TEXT_FAINT):
+            assert _ratio(foreground, worst) >= 4.5
+
+
+def test_primary_actions_are_yellow_and_the_splash_stays_pink() -> None:
+    css = build_style(False)
+    assert PRIMARY == "#f5d76e"
+    assert f"background: {PRIMARY}" in css
+    assert MENU_BG in css
+    assert BAR == "#ff6b8a"
 
 
 def test_stylesheet_has_no_leftover_braces() -> None:
