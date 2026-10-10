@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from voxprint_engine import API
-from voxprint_engine.gpu_lock import gpu_job, lock_path, read_lock, release, try_acquire
+from voxprint_engine.gpu_lock import GpuLockTimeout, gpu_job, lock_path, read_lock, release, try_acquire
 from voxprint_engine.hardware import OLD_DRIVER_MESSAGE, assess_gpu
 from voxprint_engine.providers import CPU, CUDA, TRT
 from voxprint_engine.session import EngineBuildError, run_batch as session_run_batch
@@ -527,3 +527,37 @@ def test_restore_batch_reports_errors_and_leaves_upscale_dispatch(tmp_path: Path
     ping = handle({"op": "ping", "id": "p"})
     assert ping is not None
     assert ping["message"] == "pong"
+
+
+def test_restore_batch_returns_an_error_when_the_gpu_lock_is_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    frames = np.zeros((1, 4, 4, 3), dtype=np.float32)
+    src = tmp_path / "frames.npy"
+    dst = tmp_path / "out.npy"
+    np.save(src, frames)
+    onnx = tmp_path / "model.onnx"
+    onnx.write_bytes(b"onnx")
+
+    class _Busy:
+        def __enter__(self) -> None:
+            raise GpuLockTimeout("the GPU is busy: enlarge / photo")
+
+        def __exit__(self, *_args: object) -> bool:
+            return False
+
+    monkeypatch.setattr("voxprint_engine.worker.restore.gpu_job", lambda *_args, **_kwargs: _Busy())
+    reply = handle(
+        {
+            "op": "restore_batch",
+            "id": "busy",
+            "frames_npy": str(src),
+            "out_npy": str(dst),
+            "onnx": str(onnx),
+        }
+    )
+    assert reply is not None
+    assert reply["op"] == "error"
+    assert reply["ok"] is False
+    assert reply["id"] == "busy"
+    assert "GPU is busy" in reply["message"]

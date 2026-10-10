@@ -126,7 +126,7 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
     if op == "restore_batch":
         try:
             return handle_restore(message)
-        except (OSError, RuntimeError, ValueError) as exc:
+        except (OSError, RuntimeError, ValueError, GpuLockTimeout) as exc:
             return {"op": "error", "id": str(message.get("id") or ""), "ok": False, "message": str(exc)}
     if op != "upscale":
         return {"op": "error", "id": str(message.get("id") or ""), "ok": False, "message": f"unknown op {op!r}"}
