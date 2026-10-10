@@ -10,13 +10,15 @@ pytest.importorskip("PySide6")
 from PIL import Image
 from PySide6.QtWidgets import QApplication, QLabel
 
-from enlarge.ui.dialogs import CreditsDialog
+from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
 from main import main
+from voxprint_engine.hardware import NO_GPU_MESSAGE, OLD_DRIVER_MESSAGE, GpuInfo
 
 from enlarge.appinfo import version_line
 from enlarge.images import collect, plan_outputs
 from enlarge.platform_win import MIN_BUILD, START_MENU_FOLDER, check_os
-from enlarge.ui.theme import CONTRAST_PAIRS, build_style
+from enlarge.ui.splash import BAR
+from enlarge.ui.theme import CARD_GLASS, CONTRAST_PAIRS, MENU_BG, PRIMARY, ROOT_GLASS, TEXT, TEXT_FAINT, TEXT_MUTED, build_style
 from enlarge.ui.window import STEPS, MainWindow
 
 
@@ -44,6 +46,28 @@ def test_theme_contrast(foreground: str, background: str) -> None:
     assert _ratio(foreground, background) >= 4.5
 
 
+def _over_white(rgba: str) -> str:
+    """Composite ``rgba(r,g,b,a)`` over white, the lightest desktop behind Acrylic."""
+    red, green, blue, alpha = [int(part) for part in rgba[len("rgba("):-1].split(",")]
+    channels = tuple(round(channel * alpha / 255 + 255 * (1 - alpha / 255)) for channel in (red, green, blue))
+    return "#%02x%02x%02x" % channels
+
+
+def test_theme_contrast_over_a_white_desktop() -> None:
+    for glass in (ROOT_GLASS, CARD_GLASS):
+        worst = _over_white(glass)
+        for foreground in (TEXT, TEXT_MUTED, TEXT_FAINT):
+            assert _ratio(foreground, worst) >= 4.5
+
+
+def test_primary_actions_are_yellow_and_the_splash_stays_pink() -> None:
+    css = build_style(False)
+    assert PRIMARY == "#f5d76e"
+    assert f"background: {PRIMARY}" in css
+    assert MENU_BG in css
+    assert BAR == "#ff6b8a"
+
+
 def test_stylesheet_has_no_leftover_braces() -> None:
     css = build_style(True)
     assert "{{" not in css and "QPushButton" in css
@@ -55,6 +79,9 @@ def test_platform_names() -> None:
     assert check_os(build=26100, is_windows=True).ok
     assert not check_os(build=22000, is_windows=True).ok
     assert "pre-alpha" in version_line()
+    source = Path("enlarge/platform_win.py").read_text(encoding="utf-8")
+    assert "22621" not in source
+    assert "22H2" not in source
 
 
 def test_collect_skips_video(tmp_path: Path) -> None:
@@ -66,8 +93,10 @@ def test_collect_skips_video(tmp_path: Path) -> None:
     # The png is not a decodable image but the suffix is allowed at the picker.
     assert image in found
     assert any("Clarity" in warning for warning in warnings)
-    planned = plan_outputs([image], None, 4, "png", False)
-    assert planned[0].name == "a_x4.png"
+    planned = plan_outputs([image], None, 4, "avif", False)
+    assert planned[0].name == "a_x4.avif"
+    with pytest.raises(ValueError, match="PNG"):
+        plan_outputs([image], None, 4, "png", False)
 
 
 def test_window_starts_and_runs_a_sample(tmp_path: Path) -> None:
@@ -98,6 +127,12 @@ def test_window_starts_and_runs_a_sample(tmp_path: Path) -> None:
         raise AssertionError(f"upscale did not finish: {status} {message} {window.run_page.status.text()}")
     output = Path(str(window.rows[0]["dst"]))
     assert output.is_file()
+    assert output.suffix == ".avif"
+    assert window.output_page.image_format() == "avif"
+    labels = [window.output_page.format_box.itemText(i) for i in range(window.output_page.format_box.count())]
+    assert labels[0] == "AVIF"
+    assert "PNG" not in labels
+    assert any(label == "JPEG (legacy)" for label in labels)
     assert Image.open(output).size == (32, 20)
     window.run_page.compare.set_pair(sample, output)
     assert not window.run_page.compare.before.isNull()
@@ -108,6 +143,21 @@ def test_window_starts_and_runs_a_sample(tmp_path: Path) -> None:
     assert "Philip Hofmann" in body.text()
     assert "CC-BY-4.0" in body.text()
     dialog.close()
+    settings_dialog = SettingsDialog(window, window.settings)
+    setting_labels = [settings_dialog.format_box.itemText(i) for i in range(settings_dialog.format_box.count())]
+    assert setting_labels[0] == "AVIF"
+    assert settings_dialog.format_box.currentData() == "avif"
+    gpu_labels = [settings_dialog.gpu_box.itemText(i) for i in range(settings_dialog.gpu_box.count())]
+    assert gpu_labels == ["Auto", "CUDA:0", "CUDA:1"]
+    assert "PNG" not in setting_labels
+    assert any(label == "JPEG (legacy)" for label in setting_labels)
+    jxl = settings_dialog.format_box.findData("jxl")
+    settings_dialog.format_box.setCurrentIndex(jxl)
+    settings_dialog.lossless.setChecked(True)
+    settings_dialog._save()
+    assert settings_dialog.result_settings["format"] == "jxl"
+    assert settings_dialog.result_settings["lossless"] is True
+    settings_dialog.close()
     window.close()
 
 
@@ -126,3 +176,53 @@ def test_cli_upscale(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
     assert code == 0, captured.err
     assert dest.is_file()
     assert Image.open(dest).size == (32, 32)
+
+
+def test_cli_refuses_without_a_cuda_gpu(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    monkeypatch.setattr("voxprint_engine.hardware.query_gpus", lambda runner=None: [])
+    source = tmp_path / "in.png"
+    dest = tmp_path / "out.avif"
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(source)
+    code = main(["--upscale", str(source), "--out", str(dest), "--scale", "2"])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert NO_GPU_MESSAGE in captured.err
+    assert not dest.exists()
+
+
+def test_cli_refuses_a_driver_below_600(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    monkeypatch.setattr(
+        "voxprint_engine.hardware.query_gpus",
+        lambda runner=None: [GpuInfo("NVIDIA GeForce RTX 4090", "560.35.03", (8, 9))],
+    )
+    source = tmp_path / "in.png"
+    dest = tmp_path / "out.avif"
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(source)
+    code = main(["--upscale", str(source), "--out", str(dest), "--scale", "2"])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.err.strip() == OLD_DRIVER_MESSAGE.format(driver="560.35.03")
+    assert not dest.exists()
+
+
+def test_gui_refuses_without_a_cuda_gpu(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    monkeypatch.setattr("voxprint_engine.hardware.query_gpus", lambda runner=None: [])
+    shown: list[str] = []
+
+    def critical(_parent: object, title: str, text: str) -> None:
+        shown.append(f"{title}: {text}")
+
+    monkeypatch.setattr("main.QMessageBox.critical", critical)
+    _app()
+    code = main([])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert NO_GPU_MESSAGE in captured.err
+    assert shown == [f"Voxprint AI Enlarge: {NO_GPU_MESSAGE}"]

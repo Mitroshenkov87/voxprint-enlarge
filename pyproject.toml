@@ -2,7 +2,7 @@
 name = "voxprint-enlarge"
 version = "0.1.0-pre"
 description = "Voxprint AI Enlarge: offline image upscaling for the Voxprint AI Media Suite."
-requires-python = ">=3.11"
+requires-python = ">=3.14,<3.15"
 readme = "README.md"
 
 [tool.pytest.ini_options]
@@ -11,7 +11,7 @@ pythonpath = ["."]
 addopts = "-q --tb=short"
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py314"
 line-length = 120
 src = ["enlarge", "voxprint_engine", "main.py", "tools", "tests"]
 
@@ -19,8 +19,8 @@ src = ["enlarge", "voxprint_engine", "main.py", "tools", "tests"]
 select = ["F", "E9"]
 
 [tool.mypy]
-python_version = "3.11"
-files = ["enlarge", "voxprint_engine", "main.py", "tools/audit.py", "tools/make_icon.py", "tools/render_mark.py"]
+python_version = "3.14"
+files = ["enlarge", "voxprint_engine", "main.py", "tools/audit.py", "tools/make_icon.py", "tools/render_mark.py", "tools/export_onnx.py", "tools/benchmark_gpu.py"]
 ignore_missing_imports = true
 follow_imports = "silent"
 namespace_packages = true

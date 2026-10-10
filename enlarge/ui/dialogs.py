@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -23,7 +25,10 @@ from PySide6.QtWidgets import (
 from enlarge.appinfo import APP_DISPLAY_NAME, STATUS, version_label
 from enlarge.suite import gpu, resolved_models_dir, set_gpu, set_models_dir
 from enlarge.ui.theme import build_style
+from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY, choices, normalize_format
+from voxprint_engine.hardware import assess_gpu
 from voxprint_engine.registry.schema import ModelManifest
+from voxprint_engine.vram import device_index
 
 
 def _esc(text: str) -> str:
@@ -56,7 +61,9 @@ class SettingsDialog(QDialog):
         title = QLabel("Settings")
         title.setObjectName("title")
         root.addWidget(title)
-        hint = QLabel("GPU and the models folder are shared with the other Voxprint apps (suite.json).")
+        hint = QLabel(
+            "GPU and the models folder are shared with the other Voxprint apps (suite.json)."
+        )
         hint.setObjectName("hint")
         hint.setWordWrap(True)
         root.addWidget(hint)
@@ -69,11 +76,16 @@ class SettingsDialog(QDialog):
 
         form.addWidget(self._label("GPU"))
         self.gpu_box = QComboBox()
-        for label, value in (("Auto", "auto"), ("CPU", "cpu"), ("CUDA:0", "cuda:0"), ("CUDA:1", "cuda:1")):
+        for label, value in (("Auto", "auto"), ("CUDA:0", "cuda:0"), ("CUDA:1", "cuda:1")):
             self.gpu_box.addItem(label, value)
         current = self.gpu_box.findData(self._gpu)
         self.gpu_box.setCurrentIndex(current if current >= 0 else 0)
         form.addWidget(self.gpu_box)
+        self.gpu_warning = QLabel(self._capability_warning(self._gpu))
+        self.gpu_warning.setObjectName("warn")
+        self.gpu_warning.setWordWrap(True)
+        form.addWidget(self.gpu_warning)
+        self.gpu_box.currentIndexChanged.connect(self._on_gpu_choice)
 
         form.addWidget(self._label("Tile size"))
         self.tile_box = QComboBox()
@@ -88,6 +100,36 @@ class SettingsDialog(QDialog):
         tile_hint.setObjectName("hint")
         tile_hint.setWordWrap(True)
         form.addWidget(tile_hint)
+
+        form.addWidget(self._label("File format"))
+        self.format_box = QComboBox()
+        for label, key in choices():
+            self.format_box.addItem(label, key)
+        current_format = normalize_format(settings.get("format"))
+        format_index = self.format_box.findData(current_format)
+        self.format_box.setCurrentIndex(format_index if format_index >= 0 else 0)
+        form.addWidget(self.format_box)
+        self.lossless = QCheckBox("Lossless (JPEG XL)")
+        self.lossless.setChecked(bool(settings.get("lossless")) and current_format == "jxl")
+        form.addWidget(self.lossless)
+        self.quality_label = QLabel("")
+        form.addWidget(self.quality_label)
+        self.quality = QSlider(Qt.Orientation.Horizontal)
+        self.quality.setRange(50, 100)
+        stored_quality = settings.get("quality")
+        self.quality.setValue(stored_quality if isinstance(stored_quality, int) else DEFAULT_QUALITY)
+        form.addWidget(self.quality)
+        format_hint = QLabel(
+            "AVIF is the default. JPEG XL can be lossless. WebP is the other main option. "
+            "JPEG is legacy. HEIC is listed only when this computer already has a codec."
+        )
+        format_hint.setObjectName("hint")
+        format_hint.setWordWrap(True)
+        form.addWidget(format_hint)
+        self.format_box.currentIndexChanged.connect(self._sync_quality)
+        self.lossless.toggled.connect(self._sync_quality)
+        self.quality.valueChanged.connect(self._sync_quality)
+        self._sync_quality()
 
         form.addWidget(self._label("Output folder"))
         self.output_edit = QLineEdit(str(settings.get("output_dir") or ""))
@@ -123,6 +165,13 @@ class SettingsDialog(QDialog):
         buttons.addWidget(cancel)
         buttons.addWidget(save)
         root.addLayout(buttons)
+
+    def _capability_warning(self, device: str) -> str:
+        return assess_gpu(device_index(device)).warning
+
+    def _on_gpu_choice(self) -> None:
+        choice = str(self.gpu_box.currentData() or "auto")
+        self.gpu_warning.setText(self._capability_warning(choice))
 
     def _label(self, text: str) -> QLabel:
         label = QLabel(text)
@@ -169,6 +218,20 @@ class SettingsDialog(QDialog):
             return None
         return folder
 
+    def _sync_quality(self, *_args: object) -> None:
+        image_format = str(self.format_box.currentData() or DEFAULT_FORMAT)
+        self.lossless.setEnabled(image_format == "jxl")
+        if image_format != "jxl" and self.lossless.isChecked():
+            self.lossless.blockSignals(True)
+            self.lossless.setChecked(False)
+            self.lossless.blockSignals(False)
+        lossless = image_format == "jxl" and self.lossless.isChecked()
+        self.quality.setEnabled(not lossless)
+        if lossless:
+            self.quality_label.setText("Lossless JPEG XL ignores the quality slider")
+        else:
+            self.quality_label.setText(f"Quality {self.quality.value()}")
+
     def _save(self) -> None:
         self.error.setText("")
         output = self._absolute(self.output_edit.text(), "Output folder")
@@ -193,6 +256,10 @@ class SettingsDialog(QDialog):
         except (OSError, ValueError) as exc:
             self.error.setText(str(exc))
             return
+        image_format = str(self.format_box.currentData() or DEFAULT_FORMAT)
+        self.result_settings["format"] = image_format
+        self.result_settings["quality"] = int(self.quality.value())
+        self.result_settings["lossless"] = bool(self.lossless.isChecked()) and image_format == "jxl"
         self.result_settings["tile"] = str(self.tile_box.currentData())
         self.result_settings["output_dir"] = "" if output is None else str(output)
         self.result_settings["custom_models_dir"] = "" if custom is None else str(custom)
@@ -250,9 +317,8 @@ class CreditsDialog(QDialog):
     def _html(self, credits: list[ModelManifest], warnings: list[str]) -> str:
         parts = [
             "<p>Voxprint AI Enlarge is free software under the Apache License 2.0. "
-            "Copyright 2026 Aleksandr Mitroshenkov. This build does not download or run "
-            "neural weights. The Run button resizes with Lanczos so the rest of the flow "
-            "can be tried. Model names below are the ones the registry will load later.</p>",
+            "Copyright 2026 Aleksandr Mitroshenkov. Pinned models download into the shared "
+            "Voxprint models folder when you run them.</p>",
             "<p><b>CC-BY models</b> — credit is required when these weights are used.</p>",
         ]
         if not credits:

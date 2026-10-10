@@ -175,6 +175,19 @@ def validate_manifest(data: Mapping[str, Any], *, release: bool) -> ModelManifes
         errors.append("tile must be >= 0")
     filename = _str(data, "filename", errors, max_len=160)
     summary = _str(data, "summary", errors, max_len=400)
+    download = data.get("download_url", "")
+    if download is None:
+        download = ""
+    if not isinstance(download, str):
+        errors.append("download_url must be a string")
+        download = ""
+    download = download.strip()
+    if download and not download.startswith("https://"):
+        errors.append("download_url must be an https URL")
+    if len(download) > 300:
+        errors.append("download_url is longer than 300 characters")
+    if download and not sha:
+        errors.append("sha256 is required when download_url is set")
     selectable = data.get("selectable", True)
     if not isinstance(selectable, bool):
         errors.append("selectable must be true or false")
@@ -197,4 +210,5 @@ def validate_manifest(data: Mapping[str, Any], *, release: bool) -> ModelManifes
         filename=filename,
         summary=summary,
         selectable=selectable,
+        download_url=download,
     )

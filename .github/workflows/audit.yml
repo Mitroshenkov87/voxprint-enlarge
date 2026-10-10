@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.14"
       - name: Qt libraries
         if: runner.os == 'Linux'
         run: |
@@ -59,6 +59,7 @@ jobs:
       - name: Tests
         env:
           QT_QPA_PLATFORM: offscreen
+          VOXPRINT_CI_LANCZOS: "1"
         run: python -m pytest
       - name: Choose the gitleaks scan
         id: leaks

@@ -24,6 +24,9 @@ class UpscaleRequest:
     double: bool = False
     batch: int = 1
     device: str = "auto"
+    engine: str = "auto"
+    custom_models_dir: str = ""
+    lossless: bool = False
 
     def to_message(self) -> dict[str, Any]:
         return {
@@ -34,12 +37,15 @@ class UpscaleRequest:
             "scale": self.scale,
             "format": self.format,
             "quality": self.quality,
+            "lossless": self.lossless,
             "model_id": self.model_id,
             "tile": self.tile,
             "model_tile": self.model_tile,
             "double": self.double,
             "batch": self.batch,
             "device": self.device,
+            "engine": self.engine,
+            "custom_models_dir": self.custom_models_dir,
         }
 
 

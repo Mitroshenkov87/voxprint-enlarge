@@ -1,8 +1,9 @@
 """Inference worker: a separate process, JSON lines on stdin/stdout.
 
-Phase 1 answers ``upscale`` with a Lanczos resize so the app flow can be tried
-without weights. The process still takes the suite GPU lock and reports the
-tile the real engine would use.
+An upscale runs ONNX on TensorRT. CUDA runs when that engine does not build.
+``VOXPRINT_CI_LANCZOS=1`` resamples with Lanczos for tests and CI. The process
+holds the suite GPU lock for the inference itself. Downloads happen before that
+lock.
 """
 from __future__ import annotations
 

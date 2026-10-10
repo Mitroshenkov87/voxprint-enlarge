@@ -8,10 +8,17 @@ main.py                  window, splash, CLI
 enlarge/                 Qt UI, suite.json, app settings
 voxprint_engine/         importable by Clarity (no Qt)
   registry/              manifest schema, licence gate, catalog.json
-  worker/                JSON-line process, Lanczos stand-in
+  worker/                JSON-line process
+  infer.py               ONNX, then PyTorch; Lanczos only for CI
+  session.py             one ONNX provider at a time
+  tile.py                overlapping feathered tiles
+  providers.py           TensorRT, CUDA after a failed engine build
+  hardware.py            startup gate; compute-capability warning
+  store.py               shared models folder and .users.json
+  paths.py               models dir and TensorRT cache
   gpu_lock.py            %TEMP%/voxprint-gpu.lock
   vram.py                budget = free_now - max(2 GB, 8% total)
-  thermal.py             suite pause rule (not wired to the Lanczos path)
+  thermal.py             suite pause rule
 ```
 
 Import from Clarity:
@@ -26,6 +33,8 @@ from voxprint_engine.thermal import decide
 ```
 
 `API` is 1. A breaking change to the manifest or the worker messages bumps it.
+How a job actually runs (providers, tiles, downloads, the GPU benchmark) is
+`docs/ENGINE.md`.
 
 ## Registry
 
@@ -33,23 +42,28 @@ One object per model: `id`, `name`, `arch`, `scale` (1, 2, or 4), `role`
 (`upscale`, `restore`, `face`, `generative`), `licence`, `author`,
 `attribution`, `source_url`, `sha256` (empty until the weight file is pinned),
 `vram_mb`, `tile` (0 lets the worker choose), `filename`, `summary`,
-`selectable`.
+`selectable`, and optional `download_url` (https, and only together with a sha256).
 
 `validate_manifest(..., release=True)` accepts CC-BY, Apache-2.0, MIT,
 BSD-2/3, CC0, and ISC. Non-commercial and missing licences are rejected in
 every build. The Credits screen lists models whose licence is CC-BY.
 
-Face and generative entries are in the catalogue so the credits and the gate
-exist, and they are not selectable in this build.
+The three pinned upscalers are selectable. Lanczos stays in the catalogue for
+the CI stand-in and is not selectable. Face, generative, and the other photo
+entries stay for credits and the licence gate. They are not selectable. Pinned
+hashes, folders, and the licence notes are in `docs/ENGINE.md`.
 
 ## Worker
 
 The app starts `python -m voxprint_engine.worker`. Messages are one JSON object
 per line on stdin and stdout. Logs go to stderr.
 
-* `{"op":"ready","engine":"lanczos","pid":N}` when the process is up
-* `{"op":"upscale", ...}` with `id`, `src`, `dst`, `scale` (2 or 4), `format`,
-  `quality`, `model_id`, `tile`, `model_tile`, `double`, `batch`, `device`
+* `{"op":"ready","engine":"voxprint","pid":N}` when the process is up
+* `{"op":"upscale", ...}` with `id`, `src`, `dst`, `scale` (2 or 4), `format`
+  (`avif`, `jxl`, `webp`, `jpeg`, or `heic` when a system codec is present),
+  `quality`, `lossless` (JPEG XL only), `model_id`, `tile`, `model_tile`,
+  `double`, `batch`, `device`, `engine` (`auto` or `onnx`),
+  `custom_models_dir`
 * `{"op":"progress","id","fraction","message"}`
 * `{"op":"result", ...}` including `engine`, `tile`, `overlap`,
   `vram_budget_gb`, `spilled`, `next_batch`
@@ -57,20 +71,21 @@ per line on stdin and stdout. Logs go to stderr.
 * `{"op":"shutdown"}` stops the process
 * `{"op":"ping"}` answers `pong`
 
-The child holds `%TEMP%/voxprint-gpu.lock` for each job (`owner` is
-`enlarge`). The lock is stale when the pid is gone or `eta` is more than two
-hours old. Timestamps are ISO-8601 UTC.
+The child holds `%TEMP%/voxprint-gpu.lock` for the inference (`owner` is
+`enlarge`). A download finishes before the lock is taken. The lock is stale
+when the pid is gone or `eta` is more than two hours old. Timestamps are
+ISO-8601 UTC.
 
 `next_batch` applies the suite spill rule: halve the batch when `spilled` is
-true, and never go below 1. Phase 1 sends one image at a time and does not
-spill. Clarity can send `batch` for a frame group and read `next_batch` back.
+true, and never go below 1. Enlarge still sends one image at a time. Clarity
+can send `batch` for a frame group and read `next_batch` back. A tile that
+does not fit is halved as well (see `docs/ENGINE.md`).
 
 Video paths are rejected. Video frames, scene cuts, and NVDEC belong in a
 later revision of this package, co-maintained with Clarity.
 
 ## What this build does not do
 
-Neural inference, ONNX, TensorRT, face restore, and downloading weights.
-The Run button and `--upscale` resize with Lanczos so the flow can be tried.
-The chosen `model_id` is still sent and returned, so the UI and the worker
-already agree on the job.
+Face restore and generative upscale are registered and not run. Video frames,
+scene cuts, and NVDEC stay out of this package until Clarity co-maintains that
+path. The thermal rule is implemented and is not yet applied between batches.

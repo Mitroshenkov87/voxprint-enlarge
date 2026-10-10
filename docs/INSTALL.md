@@ -5,8 +5,8 @@ Phase 1 has no installer. Run it from a checkout.
 ## Requirements
 
 * Windows 11 24H2 or newer, or a Linux distribution released in 2025 or later
-* An NVIDIA GPU for the neural engine in a later phase. This build's preview resize runs on the CPU.
-* Python 3.11 or newer
+* An NVIDIA GPU that CUDA can use, with a driver from the 600 series or newer. Without that GPU, or with an older driver, Enlarge does not start. An NVIDIA GPU below compute capability 8.9 (RTX 40 / Ada) still starts and shows a diagnostics warning. TensorRT is the session. CUDA is the path when that engine does not build. GPU packages and a local benchmark are in `docs/ENGINE.md`.
+* Python 3.14
 
 ## From source
 
@@ -24,7 +24,7 @@ python main.py --selftest
 One image, without the window:
 
 ```bash
-python main.py --upscale samples/sample.png --out out.png --scale 2 --format png
+python main.py --upscale samples/sample.png --out out.avif --scale 2 --format avif
 ```
 
 ## Where settings live
@@ -33,10 +33,11 @@ python main.py --upscale samples/sample.png --out out.png --scale 2 --format png
 |---|---|
 | Shared suite settings (GPU, models folder, language, theme) | `%LOCALAPPDATA%\Voxprint\state\suite.json` on Windows, `~/.local/share/voxprint/state/suite.json` on Linux |
 | Enlarge-only settings (scale, format, tile, output folder, custom models folder) | `%LOCALAPPDATA%\VoxprintEnlarge\settings.json` or `~/.local/share/voxprint-enlarge/settings.json` |
-| Shared model weights (later phases) | `%LOCALAPPDATA%\Voxprint\models` or `~/.local/share/voxprint/models` |
+| Shared model weights | `%LOCALAPPDATA%\Voxprint\models` or `~/.local/share/voxprint/models`, with `.users.json` |
+| TensorRT engine cache (rebuildable, not refcounted) | `%LOCALAPPDATA%\Voxprint\trt-cache\<gpu>-<driver>-<trt>` or `~/.cache/voxprint/trt-cache/...` |
 | Logs | `<Enlarge home>/logs/enlarge.log` |
 
-`VOXPRINT_HOME`, `VOXPRINT_ENLARGE_HOME`, `VOXPRINT_MODELS_DIR`, and `VOXPRINT_GPU_LOCK` override those locations. Enlarge does not change `ui_language` or `theme` in `suite.json`.
+`VOXPRINT_HOME`, `VOXPRINT_ENLARGE_HOME`, `VOXPRINT_MODELS_DIR`, `VOXPRINT_TRT_CACHE`, and `VOXPRINT_GPU_LOCK` override those locations. Enlarge does not change `ui_language` or `theme` in `suite.json`.
 
 ## Start menu
 
@@ -50,6 +51,6 @@ On Linux, `installer/linux/voxprint-enlarge.desktop` is the desktop entry. The i
 python main.py                         open the window
 python main.py --selftest              open the window, then quit
 python main.py --version
-python main.py --upscale FILE --out FILE [--scale 2|4] [--format png|jpeg|webp] [--quality N] [--model ID] [--double]
+python main.py --upscale FILE --out FILE [--scale 2|4] [--format avif|jxl|webp|jpeg|heic] [--quality N] [--lossless] [--model ID] [--double]
 python main.py --worker                internal worker process
 ```

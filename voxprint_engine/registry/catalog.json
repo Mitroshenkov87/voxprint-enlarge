@@ -10,8 +10,9 @@
       "licence": "CC-BY-4.0",
       "author": "Philip Hofmann",
       "attribution": "4xNomos2_realplksr_dysample by Philip Hofmann, licensed under CC-BY-4.0.",
-      "source_url": "https://openmodeldb.info/models/4x-Nomos2-realplksr-dysample",
-      "sha256": "",
+      "source_url": "https://github.com/Phhofm/models/releases/tag/4xNomos2_realplksr_dysample",
+      "download_url": "https://github.com/Phhofm/models/releases/download/4xNomos2_realplksr_dysample/4xNomos2_realplksr_dysample.pth",
+      "sha256": "96c8476ed2c42107628d10562b32ae89e7be3c2f7a53d29504823e9bafe8121d",
       "vram_mb": 1800,
       "tile": 256,
       "filename": "4xNomos2_realplksr_dysample.pth",
@@ -27,8 +28,9 @@
       "licence": "CC-BY-4.0",
       "author": "Philip Hofmann",
       "attribution": "4xNomos2_hq_dat2 by Philip Hofmann, licensed under CC-BY-4.0.",
-      "source_url": "https://openmodeldb.info/models/4x-Nomos2-hq-dat2",
-      "sha256": "",
+      "source_url": "https://github.com/Phhofm/models/releases/tag/4xNomos2_hq_dat2",
+      "download_url": "https://github.com/Phhofm/models/releases/download/4xNomos2_hq_dat2/4xNomos2_hq_dat2.pth",
+      "sha256": "1f2be2b4786b5031776aed90e1818564f5576ab1e44da9355c7f3788ea25bdea",
       "vram_mb": 5000,
       "tile": 128,
       "filename": "4xNomos2_hq_dat2.pth",
@@ -49,8 +51,8 @@
       "vram_mb": 900,
       "tile": 512,
       "filename": "4xNomosUni_span_multijpg.pth",
-      "summary": "Small 4x preview model. Fast universal upscaler trained with JPEG and several downscale filters.",
-      "selectable": true
+      "summary": "Small 4x preview model. Registered for a later phase; this build does not run it.",
+      "selectable": false
     },
     {
       "id": "1x-dejpg-realplksr-otf",
@@ -66,8 +68,8 @@
       "vram_mb": 1800,
       "tile": 256,
       "filename": "1xDeJPG_realplksr_otf.pth",
-      "summary": "1x JPEG cleanup. The scale control still decides the preview size; the model itself does not enlarge.",
-      "selectable": true
+      "summary": "1x JPEG cleanup. Registered for a later phase; this build does not run it.",
+      "selectable": false
     },
     {
       "id": "1x-denoise-realplksr-otf",
@@ -83,8 +85,8 @@
       "vram_mb": 1800,
       "tile": 256,
       "filename": "1xDeNoise_realplksr_otf.pth",
-      "summary": "1x denoise, with a little JPEG cleanup. The scale control still decides the preview size.",
-      "selectable": true
+      "summary": "1x denoise, with a little JPEG cleanup. Registered for a later phase; this build does not run it.",
+      "selectable": false
     },
     {
       "id": "realesrgan-x4plus",
@@ -100,8 +102,8 @@
       "vram_mb": 2500,
       "tile": 256,
       "filename": "RealESRGAN_x4plus.pth",
-      "summary": "General 4x photo model from the Real-ESRGAN project.",
-      "selectable": true
+      "summary": "General 4x photo model from the Real-ESRGAN project. Registered for a later phase; this build does not run it.",
+      "selectable": false
     },
     {
       "id": "realesrgan-x4plus-anime6b",
@@ -112,13 +114,31 @@
       "licence": "BSD-3-Clause",
       "author": "Xintao Wang",
       "attribution": "Real-ESRGAN x4plus anime 6B by Xintao Wang and contributors, BSD-3-Clause.",
-      "source_url": "https://github.com/xinntao/Real-ESRGAN",
-      "sha256": "",
+      "source_url": "https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.2.4",
+      "download_url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
+      "sha256": "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da",
       "vram_mb": 1800,
       "tile": 256,
       "filename": "RealESRGAN_x4plus_anime_6B.pth",
       "summary": "4x model aimed at illustrated and anime pictures. Same project and licence as x4plus.",
       "selectable": true
+    },
+    {
+      "id": "lanczos",
+      "name": "Lanczos (CI only)",
+      "arch": "lanczos",
+      "scale": 1,
+      "role": "upscale",
+      "licence": "Apache-2.0",
+      "author": "Voxprint",
+      "attribution": "Lanczos resampling is built in. It does not use a third-party weight file.",
+      "source_url": "https://github.com/Mitroshenkov87/voxprint-enlarge",
+      "sha256": "",
+      "vram_mb": 0,
+      "tile": 0,
+      "filename": "lanczos",
+      "summary": "Internal stand-in for tests. The app does not offer it.",
+      "selectable": false
     },
     {
       "id": "gfpgan-v1-4",

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from enlarge.paths import voxprint_home
+from voxprint_engine.paths import models_dir as engine_models_dir
 
 SCHEMA = 1
 FILENAME = "suite.json"
@@ -38,8 +39,10 @@ def normalize_gpu(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     text = value.strip().lower()
-    if text in ("auto", "cpu"):
+    if text == "auto":
         return text
+    if text == "cpu":
+        return None
     if text in ("cuda", "gpu"):
         return "cuda:0"
     match = _GPU_RE.match(text)
@@ -66,12 +69,7 @@ def models_dir() -> Path | None:
 
 def resolved_models_dir() -> Path:
     """``VOXPRINT_MODELS_DIR``, else the suite value, else the default shared folder."""
-    env = os.environ.get("VOXPRINT_MODELS_DIR", "").strip().strip('"')
-    if env:
-        folder = Path(os.path.expandvars(os.path.expanduser(env)))
-        if folder.is_absolute():
-            return folder
-    return models_dir() or (voxprint_home() / "models")
+    return engine_models_dir()
 
 
 def _write(data: dict[str, Any]) -> None:
@@ -95,7 +93,7 @@ def _write(data: dict[str, Any]) -> None:
 def set_gpu(value: str) -> str:
     stored = normalize_gpu(value)
     if stored is None:
-        raise ValueError(f"gpu must be auto, cpu, or cuda:N, got {value!r}")
+        raise ValueError(f"gpu must be auto or cuda:N, got {value!r}")
     data = read_raw()
     data["schema"] = SCHEMA
     data["gpu"] = stored

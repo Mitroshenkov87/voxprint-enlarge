@@ -16,8 +16,8 @@ def run_batch(
 ) -> list[UpscaleResult]:
     """Upscale each request. A failed item is reported and the queue continues.
 
-    ``next_batch`` from the worker is the suite spill rule. Phase 1 sends one
-    image at a time, so the number stays 1 unless a later engine reports a spill.
+    ``next_batch`` from the worker is the suite spill rule. Enlarge sends one
+    image at a time, so the number stays 1 unless the worker reports a spill.
     """
     done: list[UpscaleResult] = []
     if not requests:

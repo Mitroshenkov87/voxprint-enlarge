@@ -27,14 +27,16 @@ from enlarge.ui import pages
 from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
 from enlarge.ui.jobs import BatchThread
 from enlarge.ui.theme import build_style
+from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
+from voxprint_engine.hardware import assess_gpu
 from voxprint_engine.registry import DEFAULT_MODEL_ID, combined_catalog
 from voxprint_engine.registry.catalog import Catalog
-from voxprint_engine.vram import choose_tile, measure, overlap_for
+from voxprint_engine.vram import choose_tile, device_index, measure, overlap_for
 from voxprint_engine.worker import UpscaleRequest
 
 MIN_W, MIN_H = 880, 620
 STEPS = ("Images", "Model", "Output", "Run")
-_IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff)"
+_IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.webp *.avif *.jxl *.bmp *.tif *.tiff)"
 
 
 class MainWindow(QWidget):
@@ -111,7 +113,9 @@ class MainWindow(QWidget):
         for page in (self.images_page, self.model_page, self.output_page, self.run_page):
             self.stack.addWidget(page)
         body.addWidget(self.stack, 1)
-        self.lbl_footer = QLabel(f"Images only  ·  {STATUS}  ·  preview engine: Lanczos  ·  {version_label()}")
+        self.lbl_footer = QLabel(
+            f"Images only  ·  {STATUS}  ·  TensorRT, CUDA if that engine does not build  ·  {version_label()}"
+        )
         self.lbl_footer.setObjectName("footer")
         body.addWidget(self.lbl_footer)
 
@@ -124,6 +128,7 @@ class MainWindow(QWidget):
         self.output_page.scale_x4.clicked.connect(lambda: self._set_scale(4))
         self.output_page.double.toggled.connect(lambda _on: self._on_output_changed())
         self.output_page.format_box.currentIndexChanged.connect(lambda _i: self._on_output_changed())
+        self.output_page.lossless.toggled.connect(lambda _on: self._on_output_changed())
         self.output_page.quality.valueChanged.connect(self._on_quality)
         self.output_page.btn_output.clicked.connect(self.choose_output_folder)
         self.output_page.btn_output_clear.clicked.connect(self.clear_output_folder)
@@ -166,9 +171,12 @@ class MainWindow(QWidget):
         try:
             self.output_page.set_scale(int(self.settings["scale"]))
             self.output_page.double.setChecked(bool(self.settings["double_upscale"]))
-            index = self.output_page.format_box.findData(self.settings["format"])
-            self.output_page.format_box.setCurrentIndex(index if index >= 0 else 0)
-            self.output_page.quality.setValue(int(self.settings["quality"]))
+            self.output_page.fill_formats()
+            self.output_page.apply_output(
+                str(self.settings["format"]),
+                int(self.settings["quality"]),
+                bool(self.settings.get("lossless")),
+            )
             self.output_page.output_edit.setText(str(self.settings.get("output_dir") or ""))
             self.images_page.subfolders.setChecked(bool(self.settings["include_subfolders"]))
             self.model_page.fill(self.catalog.selectable(), str(self.settings.get("model_id") or DEFAULT_MODEL_ID))
@@ -176,6 +184,7 @@ class MainWindow(QWidget):
             self._loading = False
         self._on_quality(self.output_page.quality.value())
         self._update_tile_label()
+        self._refresh_gpu_warning()
         self.go(0)
 
     def _persist(self) -> None:
@@ -186,6 +195,7 @@ class MainWindow(QWidget):
             "scale": self.output_page.scale(),
             "format": self.output_page.image_format(),
             "quality": self.output_page.quality.value(),
+            "lossless": self.output_page.lossless.isChecked() and self.output_page.image_format() == "jxl",
             "double_upscale": self.output_page.double.isChecked(),
             "tile": self.settings.get("tile") or "auto",
             "output_dir": self.output_page.output_edit.text().strip(),
@@ -210,6 +220,9 @@ class MainWindow(QWidget):
             return int(tile)
         except ValueError:
             return 0
+
+    def _refresh_gpu_warning(self) -> None:
+        self.output_page.gpu_warning.setText(assess_gpu(device_index(suite.gpu())).warning)
 
     def _update_tile_label(self) -> None:
         model = self.catalog.get(self.model_page.current_id())
@@ -329,9 +342,19 @@ class MainWindow(QWidget):
         self._on_output_changed()
 
     def _on_quality(self, value: int) -> None:
-        png = self.output_page.image_format() == "png"
-        self.output_page.quality_label.setText("Quality is unused for PNG" if png else f"Quality {value}")
-        self.output_page.quality.setEnabled(not png)
+        image_format = self.output_page.image_format()
+        box = self.output_page.lossless
+        box.setEnabled(image_format == "jxl")
+        if image_format != "jxl" and box.isChecked():
+            box.blockSignals(True)
+            box.setChecked(False)
+            box.blockSignals(False)
+        lossless = image_format == "jxl" and box.isChecked()
+        self.output_page.quality.setEnabled(not lossless)
+        if lossless:
+            self.output_page.quality_label.setText("Lossless JPEG XL ignores the quality slider")
+        else:
+            self.output_page.quality_label.setText(f"Quality {value}")
         if not self._loading:
             self._persist()
 
@@ -379,11 +402,14 @@ class MainWindow(QWidget):
                 scale=self.output_page.scale(),
                 format=self.output_page.image_format(),
                 quality=int(self.output_page.quality.value()),
+                lossless=self.output_page.lossless.isChecked() and self.output_page.image_format() == "jxl",
                 model_id=model.id,
                 tile=self._user_tile(),
                 model_tile=model.tile,
                 double=self.output_page.double.isChecked(),
                 device=suite.gpu(),
+                engine="auto",
+                custom_models_dir=str(self.settings.get("custom_models_dir") or ""),
             ))
         self._fill_table()
         self._cancel = False
@@ -392,7 +418,7 @@ class MainWindow(QWidget):
         self.job.item_finished.connect(self._on_item)
         self.job.finished.connect(self._on_thread_done)
         self._set_busy(True)
-        self.run_page.status.setText("Running the Lanczos preview…")
+        self.run_page.status.setText("Running…")
         self.go(3)
         self.job.start()
 
@@ -458,10 +484,18 @@ class MainWindow(QWidget):
         self._loading = True
         try:
             self.output_page.output_edit.setText(str(self.settings.get("output_dir") or ""))
+            self.output_page.fill_formats()
+            self.output_page.apply_output(
+                str(self.settings.get("format") or DEFAULT_FORMAT),
+                int(self.settings.get("quality") or DEFAULT_QUALITY),
+                bool(self.settings.get("lossless")),
+            )
             self.model_page.fill(self.catalog.selectable(), str(self.settings.get("model_id") or DEFAULT_MODEL_ID))
         finally:
             self._loading = False
+        self._on_quality(self.output_page.quality.value())
         self._update_tile_label()
+        self._refresh_gpu_warning()
         self._rebuild_rows()
 
     def open_credits(self) -> None:

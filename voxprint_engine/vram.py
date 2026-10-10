@@ -14,8 +14,8 @@ from typing import Callable
 GB = 1024 ** 3
 HEADROOM_GB = 2.0
 HEADROOM_FRAC = 0.08
-# Tiles the ONNX tiler will use. The Lanczos preview reports the same choice
-# and does not actually cut the picture up.
+# Tiles the ONNX tiler will use. The CI stand-in reports the same choice
+# and does not cut the picture up.
 TILES = (128, 256, 512, 768)
 
 
@@ -44,6 +44,21 @@ def note_spill(batch: int, spilled: bool) -> int:
     if spilled:
         return max(1, size // 2)
     return size
+
+
+def halve_tile(tile: int, minimum: int = 32) -> int | None:
+    """Next tile after an out-of-memory or system-memory spill. None means stop shrinking."""
+    nxt = int(tile) // 2
+    if nxt < minimum or nxt >= int(tile):
+        return None
+    return nxt
+
+
+def is_memory_error(exc: BaseException) -> bool:
+    """True when a runtime error is an allocator failure rather than a bad image."""
+    text = f"{type(exc).__name__} {exc}".lower()
+    needles = ("out of memory", "outofmemory", "oom", "failed to allocate", "cuda error", "cublas")
+    return any(needle in text for needle in needles)
 
 
 def auto_tile(budget_gb: float) -> int:

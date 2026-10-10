@@ -7,9 +7,13 @@ import sys
 from pathlib import Path
 from typing import Any, TextIO
 
+from voxprint_engine.formats import DEFAULT_FORMAT
 from voxprint_engine.gpu_lock import GpuLockTimeout, gpu_job
-from voxprint_engine.vram import choose_tile, measure, note_spill, overlap_for
-from voxprint_engine.worker.lanczos import ImageJobError, lanczos_resize
+from voxprint_engine.infer import JobOutcome, preflight, upscale_file, uses_lanczos
+from voxprint_engine.registry import combined_catalog
+from voxprint_engine.registry.schema import ModelManifest
+from voxprint_engine.store import StoreError, ensure_weight, register_quietly
+from voxprint_engine.worker.lanczos import ImageJobError
 
 
 _stdout: TextIO = sys.stdout
@@ -32,6 +36,37 @@ def _as_int(value: object, label: str, default: int | None = None) -> int:
         raise ImageJobError(f"{label} must be an integer") from exc
 
 
+def _model(message: dict[str, Any]) -> ModelManifest:
+    model_id = str(message.get("model_id") or "")
+    custom = str(message.get("custom_models_dir") or "").strip()
+    folder = Path(custom) if custom else None
+    catalog = combined_catalog(folder, release=True)
+    model = catalog.get(model_id)
+    if model is None or not model.selectable:
+        raise ImageJobError(f"unknown or unavailable model {model_id or '(none)'}")
+    return model
+
+
+def _result(job_id: str, model_id: str, dst: Path, outcome: JobOutcome) -> dict[str, Any]:
+    return {
+        "op": "result",
+        "id": job_id,
+        "ok": True,
+        "message": outcome.message,
+        "dst": str(dst),
+        "width": outcome.width,
+        "height": outcome.height,
+        "scale": outcome.scale,
+        "engine": outcome.engine,
+        "model_id": model_id,
+        "tile": outcome.tile,
+        "overlap": outcome.overlap,
+        "vram_budget_gb": outcome.vram_budget_gb,
+        "spilled": outcome.spilled,
+        "next_batch": outcome.next_batch,
+    }
+
+
 def _job(message: dict[str, Any]) -> dict[str, Any]:
     job_id = str(message.get("id") or "")
     src = Path(str(message.get("src") or ""))
@@ -39,44 +74,45 @@ def _job(message: dict[str, Any]) -> dict[str, Any]:
     scale = _as_int(message.get("scale"), "scale")
     quality = _as_int(message.get("quality"), "quality")
     user_tile = _as_int(message.get("tile"), "tile", 0)
-    model_tile = _as_int(message.get("model_tile"), "model_tile", 0)
     batch = _as_int(message.get("batch"), "batch", 1)
     device = str(message.get("device") or "auto")
-    model_id = str(message.get("model_id") or "")
+    engine = str(message.get("engine") or "auto")
     double = bool(message.get("double"))
-    image_format = str(message.get("format") or "png")
-    snapshot = measure(device)
-    tile = choose_tile(snapshot.budget_gb, model_tile, user_tile)
-    overlap = overlap_for(tile)
-    emit({
-        "op": "progress",
-        "id": job_id,
-        "fraction": 0.05,
-        "message": f"tile {tile}, overlap {overlap}, VRAM budget {snapshot.budget_gb:.1f} GB",
-    })
-    # The resize does not use the GPU yet. The lock is still taken so the suite
-    # sees this job, and so the real engine can replace the body without a new protocol.
-    with gpu_job(f"enlarge:{model_id or 'preview'}", eta_s=120.0, timeout=30.0):
-        emit({"op": "progress", "id": job_id, "fraction": 0.4, "message": "resizing"})
-        width, height = lanczos_resize(src, dst, scale, image_format, quality, double)
-    spilled = False
-    return {
-        "op": "result",
-        "id": job_id,
-        "ok": True,
-        "message": "lanczos preview",
-        "dst": str(dst),
-        "width": width,
-        "height": height,
-        "scale": scale * scale if double else scale,
-        "engine": "lanczos",
-        "model_id": model_id,
-        "tile": tile,
-        "overlap": overlap,
-        "vram_budget_gb": round(snapshot.budget_gb, 3),
-        "spilled": spilled,
-        "next_batch": note_spill(batch, spilled),
-    }
+    image_format = str(message.get("format") or DEFAULT_FORMAT)
+    lossless = bool(message.get("lossless"))
+    model = _model(message)
+
+    def progress(fraction: float, text: str) -> None:
+        emit({"op": "progress", "id": job_id, "fraction": fraction, "message": text})
+
+    # Reject a bad image before a download, and download before the GPU lock.
+    preflight(src, dst, scale, image_format, quality, double, lossless)
+    weight: Path | None = None
+    if not uses_lanczos(model, device, engine):
+        register_quietly()
+        progress(0.05, "checking the model file")
+        try:
+            weight = ensure_weight(model, on_progress=progress)
+        except StoreError as exc:
+            raise ImageJobError(str(exc)) from exc
+    with gpu_job(f"enlarge:{model.id}", eta_s=600.0, timeout=30.0):
+        outcome = upscale_file(
+            src,
+            dst,
+            model,
+            scale=scale,
+            image_format=image_format,
+            quality=quality,
+            double=double,
+            device=device,
+            user_tile=user_tile,
+            batch=batch,
+            engine=engine,
+            on_progress=progress,
+            weight=weight,
+            lossless=lossless,
+        )
+    return _result(job_id, model.id, dst, outcome)
 
 
 def handle(message: dict[str, Any]) -> dict[str, Any] | None:
@@ -85,7 +121,7 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
     if op == "shutdown":
         return None
     if op == "ping":
-        return {"op": "result", "id": str(message.get("id") or ""), "ok": True, "message": "pong", "engine": "lanczos"}
+        return {"op": "result", "id": str(message.get("id") or ""), "ok": True, "message": "pong", "engine": "voxprint"}
     if op != "upscale":
         return {"op": "error", "id": str(message.get("id") or ""), "ok": False, "message": f"unknown op {op!r}"}
     try:
@@ -99,7 +135,8 @@ def serve(stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
     source = stdin or sys.stdin
     if stdout is not None:
         _stdout = stdout
-    emit({"op": "ready", "engine": "lanczos", "pid": os.getpid()})
+    register_quietly()
+    emit({"op": "ready", "engine": "voxprint", "pid": os.getpid()})
     for line in source:
         text = line.strip()
         if not text:
