@@ -10,7 +10,7 @@ Saved files default to AVIF. JPEG XL (including lossless) and WebP are the other
 
 **Images only.** Video restoration belongs to Voxprint AI Clarity. Enlarge does not open video files.
 
-**Requirements:** Windows 11 24H2 or newer, or a Linux distribution released in 2025 or later. Python 3.14. Enlarge needs an NVIDIA GPU that CUDA can use, and an NVIDIA driver from the 600 series or newer. Without that GPU, or with an older driver, Enlarge does not start and shows a clear message. An NVIDIA GPU below compute capability 8.9 (RTX 40 / Ada) still starts, and the diagnostics warning is the only extra signal. The x86-64 CPU baseline is x86-64-v3, with no AVX-512 requirement, and the same code runs on ARM. GPU setup and a local benchmark are in `docs/ENGINE.md`.
+**Requirements:** Windows 11 24H2 or newer, or a Linux distribution released in 2025 or later. Python 3.14. Enlarge needs an NVIDIA GPU that CUDA can use, and an NVIDIA driver from the 600 series or newer. Without that GPU, or with an older driver, the window does not start and shows a clear message. `--capabilities --json` and `--serve --hidden` still start in that case, so another app can see there is nothing to run. An NVIDIA GPU below compute capability 8.9 (RTX 40 / Ada) still starts, and the diagnostics warning is the only extra signal. The x86-64 CPU baseline is x86-64-v3, with no AVX-512 requirement, and the same code runs on ARM. GPU setup and a local benchmark are in `docs/ENGINE.md`. The Lucent hand-off (protocol 1) is `docs/IPC.md`.
 
 **License:** Apache-2.0. See `LICENSE` and `NOTICE`. Model weights keep the licence recorded in the registry. CC-BY models are listed on the Credits screen. A release build refuses non-commercial or unlicensed weights.
 
@@ -26,7 +26,7 @@ python main.py --upscale samples/sample.png --out out.avif --scale 2
 python -m pytest
 ```
 
-Settings shared with the other Voxprint apps live in `suite.json`. Install paths, the Start menu folder name (`Voxprint`), and the CLI are in `docs/INSTALL.md`. The shared engine that Clarity imports is described in `docs/ARCHITECTURE.md` and `docs/ENGINE.md`.
+Settings shared with the other Voxprint apps live in `suite.json`. Install paths, the Start menu folder name (`Voxprint`), and the CLI are in `docs/INSTALL.md`. The shared engine that Clarity imports is described in `docs/ARCHITECTURE.md` and `docs/ENGINE.md`. The protocol another Voxprint app uses to hand an image to Enlarge is `docs/IPC.md`.
 
 ## ☕ Support the Project
 

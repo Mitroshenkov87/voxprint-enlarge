@@ -22,11 +22,12 @@ same function the worker calls, for a benchmark or a one-off frame.
 The worker is `python -m voxprint_engine.worker`. One JSON object per line.
 `engine` on an upscale request is `auto` (the default) or `onnx`.
 
-Enlarge starts only when `nvidia-smi` reports an NVIDIA GPU whose driver major
-version is 600 or newer. A computer without that GPU, or with an older driver,
-does not start. The window shows the reason, and `--upscale` prints it and
-exits. A card below compute capability 8.9 (RTX 40 / Ada) shows a diagnostics
-warning and still starts.
+The window and `--upscale` start only when `nvidia-smi` reports an NVIDIA GPU
+whose driver major version is 600 or newer. A computer without that GPU, or
+with an older driver, does not open the window. `--upscale` prints the reason
+and exits. `--capabilities --json` and `--serve --hidden` still start so a
+client can read the refusal (`docs/IPC.md`). A card below compute capability
+8.9 (RTX 40 / Ada) shows a diagnostics warning and still starts.
 
 `VOXPRINT_CI_LANCZOS=1` skips that gate and resamples the image with Lanczos.
 Tests and CI set the flag so they stay offline and GPU-free. It is not a

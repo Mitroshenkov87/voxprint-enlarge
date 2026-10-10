@@ -4,8 +4,9 @@ Voxprint AI Enlarge is the image app. Voxprint AI Clarity is the video app.
 They share one engine, owned here and co-maintained by Clarity.
 
 ```text
-main.py                  window, splash, CLI
+main.py                  window, splash, CLI, protocol 1 entry points
 enlarge/                 Qt UI, suite.json, app settings
+enlarge/ipc/             Lucent hand-off (docs/IPC.md); the engine stays Qt-free
 voxprint_engine/         importable by Clarity (no Qt)
   registry/              manifest schema, licence gate, catalog.json
   worker/                JSON-line process
@@ -71,10 +72,12 @@ per line on stdin and stdout. Logs go to stderr.
 * `{"op":"shutdown"}` stops the process
 * `{"op":"ping"}` answers `pong`
 
-The child holds `%TEMP%/voxprint-gpu.lock` for the inference (`owner` is
-`enlarge`). A download finishes before the lock is taken. The lock is stale
-when the pid is gone or `eta` is more than two hours old. Timestamps are
-ISO-8601 UTC.
+The worker holds `%TEMP%/voxprint-gpu.lock` for the inference (`owner` is
+`enlarge`). A hand-off job holds that same lock in the server process; the
+worker treats a lock whose pid is its parent as shared and does not take a
+second one or release the parent's. A download finishes before the lock is
+taken. The lock is stale when the pid is gone or `eta` is more than two hours
+old. Timestamps are ISO-8601 UTC.
 
 `next_batch` applies the suite spill rule: halve the batch when `spilled` is
 true, and never go below 1. Enlarge still sends one image at a time. Clarity

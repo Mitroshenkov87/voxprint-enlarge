@@ -5,7 +5,7 @@ Phase 1 has no installer. Run it from a checkout.
 ## Requirements
 
 * Windows 11 24H2 or newer, or a Linux distribution released in 2025 or later
-* An NVIDIA GPU that CUDA can use, with a driver from the 600 series or newer. Without that GPU, or with an older driver, Enlarge does not start. An NVIDIA GPU below compute capability 8.9 (RTX 40 / Ada) still starts and shows a diagnostics warning. TensorRT is the session. CUDA is the path when that engine does not build. GPU packages and a local benchmark are in `docs/ENGINE.md`.
+* An NVIDIA GPU that CUDA can use, with a driver from the 600 series or newer. Without that GPU, or with an older driver, the window does not open. `--capabilities --json` and `--serve --hidden` still start, and a job then reports that the GPU is missing. An NVIDIA GPU below compute capability 8.9 (RTX 40 / Ada) still starts and shows a diagnostics warning. TensorRT is the session. CUDA is the path when that engine does not build. GPU packages and a local benchmark are in `docs/ENGINE.md`. The hand-off protocol is `docs/IPC.md`.
 * Python 3.14
 
 ## From source
@@ -51,6 +51,12 @@ On Linux, `installer/linux/voxprint-enlarge.desktop` is the desktop entry. The i
 python main.py                         open the window
 python main.py --selftest              open the window, then quit
 python main.py --version
+python main.py --capabilities --json   one JSON object, exit 0 with or without a GPU
+python main.py --serve --hidden        protocol 1 listener; the window stays closed until open_ui
+python main.py --register [--exe PATH] discovery records (no installer in this build)
+python main.py --input FILE --scale 2|4 --preset photo|art [--model ID] [--quality fast|max] [--format FMT] [--output PATH] --json-progress
 python main.py --upscale FILE --out FILE [--scale 2|4] [--format avif|jxl|webp|jpeg|heic] [--quality N] [--lossless] [--model ID] [--double]
 python main.py --worker                internal worker process
 ```
+
+`--json-progress` streams the same JSON objects as the socket. Exit 0 after `done`, 1 after `error`. The message list, discovery keys, and output names are in `docs/IPC.md`.
