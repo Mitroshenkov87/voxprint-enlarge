@@ -20,7 +20,7 @@ from voxprint_engine.worker.lanczos import ImageJobError
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Time one upscale on the local GPU (or CPU ONNX).")
+    parser = argparse.ArgumentParser(description="Time one upscale on the local NVIDIA GPU.")
     parser.add_argument("--image", type=Path, required=True)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--model", default="4x-nomos2-realplksr-dysample")

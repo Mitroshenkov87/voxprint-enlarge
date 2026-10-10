@@ -1,8 +1,8 @@
-"""CPU resize used when the job is not a neural model.
+"""Resize used by the CI stand-in and by a 4x network that must land on 2x.
 
-Lanczos is the explicit no-GPU option and the fallback when ONNX Runtime has no
-GPU execution provider. ``VOXPRINT_FAKE_DELAY`` (seconds, capped) exists so tests
-can observe the GPU lock while a job is in flight.
+``VOXPRINT_CI_LANCZOS=1`` is the only way a whole job uses this resize.
+``VOXPRINT_FAKE_DELAY`` (seconds, capped) exists so tests can observe the GPU
+lock while a job is in flight.
 """
 from __future__ import annotations
 

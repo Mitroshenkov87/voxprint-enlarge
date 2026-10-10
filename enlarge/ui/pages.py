@@ -88,10 +88,7 @@ class ModelPage(QWidget):
         title = QLabel("Model")
         title.setObjectName("sectiontitle")
         layout.addWidget(title)
-        hint = QLabel(
-            "The three neural models download into the shared models folder when you run them. "
-            "Lanczos stays on the CPU and does not download anything."
-        )
+        hint = QLabel("The three neural models download into the shared models folder when you run them.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -194,8 +191,7 @@ class OutputPage(QWidget):
         self.tile_label.setWordWrap(True)
         layout.addWidget(self.tile_label)
         note = QLabel(
-            "A neural model runs in the worker on TensorRT. CUDA is used when that engine does not build. "
-            "Lanczos, or the CPU setting, resamples on the CPU and does not download a model."
+            "A neural model runs on TensorRT. CUDA is used when that engine does not build."
         )
         note.setObjectName("hint")
         note.setWordWrap(True)

@@ -1,9 +1,13 @@
-"""Run one image: Lanczos when there is no GPU, otherwise ONNX, then PyTorch.
+"""Run one image through ONNX, then PyTorch.
 
 The worker calls :func:`upscale_file`. It downloads weights before taking the
 GPU lock, then passes ``weight`` so the locked section does not touch the network.
-``onnx_path`` overrides the sibling ``.onnx`` and is how the CPU smoke test runs
+``onnx_path`` overrides the sibling ``.onnx`` and is how the smoke test runs
 without a real weight file.
+
+``VOXPRINT_CI_LANCZOS=1`` resamples with Lanczos and skips the download. That
+flag is for tests and CI. A user job without an NVIDIA provider raises
+:class:`~voxprint_engine.errors.ImageJobError`.
 """
 from __future__ import annotations
 
@@ -17,6 +21,7 @@ import numpy as np
 from PIL import Image
 
 from voxprint_engine.formats import open_rgb, require_output_format, save_image
+from voxprint_engine.hardware import ci_lanczos
 from voxprint_engine.providers import choices_for, cpu_ep_requested, cuda_fallback_choices, gpu_provider_names
 from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.session import (
@@ -88,18 +93,22 @@ def preflight(
     return factor
 
 
+def _onnx_cpu(device: str, engine: str) -> bool:
+    """The CI smoke test. Not a user mode."""
+    return engine == "onnx" or device.strip().lower() == "cpu-onnx" or cpu_ep_requested()
+
+
 def _lanczos_reason(model: ModelManifest, device: str, engine: str) -> str:
-    """Empty when this job should run the network."""
-    if engine == "onnx":
+    """Empty when this job should run the network.
+
+    Lanczos runs only while ``VOXPRINT_CI_LANCZOS`` is set. The model id and a
+    CPU device do not select it.
+    """
+    del model
+    if _onnx_cpu(device, engine):
         return ""
-    if engine == "lanczos" or model.arch == "lanczos" or model.id == "lanczos":
-        return "lanczos"
-    if device.strip().lower() == "cpu" and not cpu_ep_requested():
-        return "CPU setting: Lanczos"
-    if cpu_ep_requested():
-        return ""
-    if not gpu_provider_names(available_providers(), device=device):
-        return "no GPU execution provider; Lanczos"
+    if ci_lanczos():
+        return "ci"
     return ""
 
 
@@ -285,6 +294,10 @@ def upscale_file(
     snapshot = measure(device if device.strip().lower() != "cpu-onnx" else "cpu")
     reason = _lanczos_reason(model, device, engine)
     tile = choose_tile(snapshot.budget_gb, model.tile, user_tile)
+    if not reason and not _onnx_cpu(device, engine) and not gpu_provider_names(available_providers(), device=device):
+        raise ImageJobError(
+            "Enlarge needs an NVIDIA GPU that CUDA can use. This computer does not have one."
+        )
     if reason:
         if on_progress is not None:
             on_progress(0.4, reason)

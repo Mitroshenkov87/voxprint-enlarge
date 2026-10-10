@@ -26,7 +26,7 @@ from enlarge.appinfo import APP_DISPLAY_NAME, STATUS, version_label
 from enlarge.suite import gpu, resolved_models_dir, set_gpu, set_models_dir
 from enlarge.ui.theme import build_style
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY, choices, normalize_format
-from voxprint_engine.hardware import capability_warning, query_compute_capability
+from voxprint_engine.hardware import assess_gpu
 from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.vram import device_index
 
@@ -62,8 +62,7 @@ class SettingsDialog(QDialog):
         title.setObjectName("title")
         root.addWidget(title)
         hint = QLabel(
-            "GPU and the models folder are shared with the other Voxprint apps (suite.json). "
-            "CPU runs Lanczos and does not download a model."
+            "GPU and the models folder are shared with the other Voxprint apps (suite.json)."
         )
         hint.setObjectName("hint")
         hint.setWordWrap(True)
@@ -77,7 +76,7 @@ class SettingsDialog(QDialog):
 
         form.addWidget(self._label("GPU"))
         self.gpu_box = QComboBox()
-        for label, value in (("Auto", "auto"), ("CPU", "cpu"), ("CUDA:0", "cuda:0"), ("CUDA:1", "cuda:1")):
+        for label, value in (("Auto", "auto"), ("CUDA:0", "cuda:0"), ("CUDA:1", "cuda:1")):
             self.gpu_box.addItem(label, value)
         current = self.gpu_box.findData(self._gpu)
         self.gpu_box.setCurrentIndex(current if current >= 0 else 0)
@@ -168,9 +167,7 @@ class SettingsDialog(QDialog):
         root.addLayout(buttons)
 
     def _capability_warning(self, device: str) -> str:
-        if device.strip().lower() == "cpu":
-            return ""
-        return capability_warning(query_compute_capability(device_index(device)))
+        return assess_gpu(device_index(device)).warning
 
     def _on_gpu_choice(self) -> None:
         choice = str(self.gpu_box.currentData() or "auto")
@@ -321,7 +318,7 @@ class CreditsDialog(QDialog):
         parts = [
             "<p>Voxprint AI Enlarge is free software under the Apache License 2.0. "
             "Copyright 2026 Aleksandr Mitroshenkov. Pinned models download into the shared "
-            "Voxprint models folder when you run them. Lanczos does not use a weight file.</p>",
+            "Voxprint models folder when you run them.</p>",
             "<p><b>CC-BY models</b> — credit is required when these weights are used.</p>",
         ]
         if not credits:

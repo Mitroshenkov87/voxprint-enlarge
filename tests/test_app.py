@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication, QLabel
 
 from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
 from main import main
+from voxprint_engine.hardware import NO_GPU_MESSAGE, OLD_DRIVER_MESSAGE, GpuInfo
 
 from enlarge.appinfo import version_line
 from enlarge.images import collect, plan_outputs
@@ -123,6 +124,8 @@ def test_window_starts_and_runs_a_sample(tmp_path: Path) -> None:
     setting_labels = [settings_dialog.format_box.itemText(i) for i in range(settings_dialog.format_box.count())]
     assert setting_labels[0] == "AVIF"
     assert settings_dialog.format_box.currentData() == "avif"
+    gpu_labels = [settings_dialog.gpu_box.itemText(i) for i in range(settings_dialog.gpu_box.count())]
+    assert gpu_labels == ["Auto", "CUDA:0", "CUDA:1"]
     assert "PNG" not in setting_labels
     assert any(label == "JPEG (legacy)" for label in setting_labels)
     jxl = settings_dialog.format_box.findData("jxl")
@@ -150,3 +153,53 @@ def test_cli_upscale(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
     assert code == 0, captured.err
     assert dest.is_file()
     assert Image.open(dest).size == (32, 32)
+
+
+def test_cli_refuses_without_a_cuda_gpu(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    monkeypatch.setattr("voxprint_engine.hardware.query_gpus", lambda runner=None: [])
+    source = tmp_path / "in.png"
+    dest = tmp_path / "out.avif"
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(source)
+    code = main(["--upscale", str(source), "--out", str(dest), "--scale", "2"])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert NO_GPU_MESSAGE in captured.err
+    assert not dest.exists()
+
+
+def test_cli_refuses_a_driver_below_600(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    monkeypatch.setattr(
+        "voxprint_engine.hardware.query_gpus",
+        lambda runner=None: [GpuInfo("NVIDIA GeForce RTX 4090", "560.35.03", (8, 9))],
+    )
+    source = tmp_path / "in.png"
+    dest = tmp_path / "out.avif"
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(source)
+    code = main(["--upscale", str(source), "--out", str(dest), "--scale", "2"])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.err.strip() == OLD_DRIVER_MESSAGE.format(driver="560.35.03")
+    assert not dest.exists()
+
+
+def test_gui_refuses_without_a_cuda_gpu(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    monkeypatch.setattr("voxprint_engine.hardware.query_gpus", lambda runner=None: [])
+    shown: list[str] = []
+
+    def critical(_parent: object, title: str, text: str) -> None:
+        shown.append(f"{title}: {text}")
+
+    monkeypatch.setattr("main.QMessageBox.critical", critical)
+    _app()
+    code = main([])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert NO_GPU_MESSAGE in captured.err
+    assert shown == [f"Voxprint AI Enlarge: {NO_GPU_MESSAGE}"]

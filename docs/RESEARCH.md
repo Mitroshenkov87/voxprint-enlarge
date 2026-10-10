@@ -50,7 +50,7 @@ in the worker process. The implementation notes are `docs/ENGINE.md`.
 VRAM budget, measured again before each batch: `free_now - max(2 GB, 8% of total)`.
 If a batch spills into system memory, the next batch is half the size (at least 1).
 
-Thermal rule, implemented in `voxprint_engine.thermal` and not yet applied to
-the Lanczos preview: full speed for 2.5 hours, then pause between batches while
+Thermal rule, implemented in `voxprint_engine.thermal` and not yet applied
+between batches: full speed for 2.5 hours, then pause between batches while
 the 5-minute GPU median is at least 83 °C or the GPU has been throttling for
 more than 60 seconds. Resume at or below 75 °C.

@@ -4,10 +4,9 @@ Full speed for the first 2.5 hours. After that, pause between batches while the
 GPU's 5-minute median is at least 83 C, or while it has been throttling for
 more than 60 seconds. Resume at or below 75 C.
 
-Phase 1 jobs are a Lanczos resize and do not read hardware temperatures, so the
-worker does not pause. The function is here so Enlarge and Clarity share one
-rule when the real engine lands. Audiobook and Movie Dubber still have their
-own pauses until that shared module replaces them.
+The worker does not pause between batches yet. The function is here so Enlarge
+and Clarity share one rule. Audiobook and Movie Dubber still have their own
+pauses until that shared module replaces them.
 """
 from __future__ import annotations
 

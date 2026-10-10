@@ -2,8 +2,8 @@
 
 A GPU job opens TensorRT. CUDA is a second attempt only when that engine does
 not build, or the session itself when the TensorRT provider is not installed.
-DirectML and Windows ML are not used. CPU is a separate mode for the smoke
-test and ``VOXPRINT_ORT_DEVICE=cpu``.
+DirectML and Windows ML are not used. The CPU execution provider is the smoke
+test (``VOXPRINT_ORT_DEVICE=cpu`` or ``device`` ``cpu-onnx``), not a user mode.
 """
 from __future__ import annotations
 

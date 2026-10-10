@@ -14,8 +14,8 @@ from typing import Callable
 GB = 1024 ** 3
 HEADROOM_GB = 2.0
 HEADROOM_FRAC = 0.08
-# Tiles the ONNX tiler will use. The Lanczos preview reports the same choice
-# and does not actually cut the picture up.
+# Tiles the ONNX tiler will use. The CI stand-in reports the same choice
+# and does not cut the picture up.
 TILES = (128, 256, 512, 768)
 
 

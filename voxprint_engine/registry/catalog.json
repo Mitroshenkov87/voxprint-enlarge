@@ -125,7 +125,7 @@
     },
     {
       "id": "lanczos",
-      "name": "Lanczos (no GPU)",
+      "name": "Lanczos (CI only)",
       "arch": "lanczos",
       "scale": 1,
       "role": "upscale",
@@ -137,8 +137,8 @@
       "vram_mb": 0,
       "tile": 0,
       "filename": "lanczos",
-      "summary": "No GPU and no download. Resamples on the CPU. Use this, or the CPU setting, when the machine has no execution provider.",
-      "selectable": true
+      "summary": "Internal stand-in for tests. The app does not offer it.",
+      "selectable": false
     },
     {
       "id": "gfpgan-v1-4",

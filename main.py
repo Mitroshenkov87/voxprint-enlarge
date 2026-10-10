@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from enlarge.appinfo import APP_DISPLAY_NAME, version_line
 from enlarge.batch import run_batch
@@ -23,6 +23,7 @@ from enlarge.suite import gpu
 from enlarge.ui import splash as splash_mod
 from enlarge.ui.window import MainWindow
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
+from voxprint_engine.hardware import assess_gpu
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
 from voxprint_engine.store import register_quietly
 from voxprint_engine.worker import UpscaleRequest
@@ -66,6 +67,11 @@ def _setup_logging() -> None:
         )
     except OSError:
         return
+
+
+def _gpu_block() -> str:
+    """Empty when the machine may run. Otherwise the sentence to show and exit on."""
+    return assess_gpu().message
 
 
 def _upscale(argv: list[str]) -> int:
@@ -120,6 +126,11 @@ def _gui(argv: list[str]) -> int:
     app = running if isinstance(running, QApplication) else QApplication(sys.argv)
     app.setApplicationName(APP_DISPLAY_NAME)
     app.setOrganizationName("Voxprint")
+    blocked = _gpu_block()
+    if blocked:
+        print(blocked, file=sys.stderr)
+        QMessageBox.critical(None, APP_DISPLAY_NAME, blocked)
+        return 1
     register_quietly()
     splash = splash_mod.show()
     splash.status("Loading", 0.35)
@@ -142,6 +153,10 @@ def main(argv: list[str] | None = None) -> int:
         return serve()
     _setup_logging()
     if "--upscale" in args:
+        blocked = _gpu_block()
+        if blocked:
+            print(blocked, file=sys.stderr)
+            return 1
         return _upscale(args)
     return _gui(args)
 

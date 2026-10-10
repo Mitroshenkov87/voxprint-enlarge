@@ -28,7 +28,7 @@ from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
 from enlarge.ui.jobs import BatchThread
 from enlarge.ui.theme import build_style
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
-from voxprint_engine.hardware import capability_warning, query_compute_capability
+from voxprint_engine.hardware import assess_gpu
 from voxprint_engine.registry import DEFAULT_MODEL_ID, combined_catalog
 from voxprint_engine.registry.catalog import Catalog
 from voxprint_engine.vram import choose_tile, device_index, measure, overlap_for
@@ -114,7 +114,7 @@ class MainWindow(QWidget):
             self.stack.addWidget(page)
         body.addWidget(self.stack, 1)
         self.lbl_footer = QLabel(
-            f"Images only  ·  {STATUS}  ·  TensorRT, CUDA if that engine does not build, Lanczos with no GPU  ·  {version_label()}"
+            f"Images only  ·  {STATUS}  ·  TensorRT, CUDA if that engine does not build  ·  {version_label()}"
         )
         self.lbl_footer.setObjectName("footer")
         body.addWidget(self.lbl_footer)
@@ -222,12 +222,7 @@ class MainWindow(QWidget):
             return 0
 
     def _refresh_gpu_warning(self) -> None:
-        device = suite.gpu()
-        if device.strip().lower() == "cpu":
-            text = ""
-        else:
-            text = capability_warning(query_compute_capability(device_index(device)))
-        self.output_page.gpu_warning.setText(text)
+        self.output_page.gpu_warning.setText(assess_gpu(device_index(suite.gpu())).warning)
 
     def _update_tile_label(self) -> None:
         model = self.catalog.get(self.model_page.current_id())

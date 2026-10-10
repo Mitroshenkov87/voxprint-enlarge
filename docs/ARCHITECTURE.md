@@ -9,11 +9,11 @@ enlarge/                 Qt UI, suite.json, app settings
 voxprint_engine/         importable by Clarity (no Qt)
   registry/              manifest schema, licence gate, catalog.json
   worker/                JSON-line process
-  infer.py               Lanczos, ONNX, then PyTorch
+  infer.py               ONNX, then PyTorch; Lanczos only for CI
   session.py             one ONNX provider at a time
   tile.py                overlapping feathered tiles
   providers.py           TensorRT, CUDA after a failed engine build
-  hardware.py            compute-capability warning (does not block)
+  hardware.py            startup gate; compute-capability warning
   store.py               shared models folder and .users.json
   paths.py               models dir and TensorRT cache
   gpu_lock.py            %TEMP%/voxprint-gpu.lock
@@ -48,10 +48,10 @@ One object per model: `id`, `name`, `arch`, `scale` (1, 2, or 4), `role`
 BSD-2/3, CC0, and ISC. Non-commercial and missing licences are rejected in
 every build. The Credits screen lists models whose licence is CC-BY.
 
-The three pinned upscalers and Lanczos are selectable. Face, generative, and
-the other photo entries stay in the catalogue for credits and the licence gate.
-They are not selectable. Pinned hashes, folders, and the licence notes are in
-`docs/ENGINE.md`.
+The three pinned upscalers are selectable. Lanczos stays in the catalogue for
+the CI stand-in and is not selectable. Face, generative, and the other photo
+entries stay for credits and the licence gate. They are not selectable. Pinned
+hashes, folders, and the licence notes are in `docs/ENGINE.md`.
 
 ## Worker
 
@@ -62,7 +62,7 @@ per line on stdin and stdout. Logs go to stderr.
 * `{"op":"upscale", ...}` with `id`, `src`, `dst`, `scale` (2 or 4), `format`
   (`avif`, `jxl`, `webp`, `jpeg`, or `heic` when a system codec is present),
   `quality`, `lossless` (JPEG XL only), `model_id`, `tile`, `model_tile`,
-  `double`, `batch`, `device`, `engine` (`auto`, `onnx`, or `lanczos`),
+  `double`, `batch`, `device`, `engine` (`auto` or `onnx`),
   `custom_models_dir`
 * `{"op":"progress","id","fraction","message"}`
 * `{"op":"result", ...}` including `engine`, `tile`, `overlap`,

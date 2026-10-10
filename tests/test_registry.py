@@ -53,12 +53,11 @@ def test_builtin_catalog_is_release_safe() -> None:
     lanczos = catalog.get("lanczos")
     assert hq is not None and hq.sha256 == HQ_SHA and hq.licence == "CC-BY-4.0"
     assert anime is not None and anime.sha256 == ANIME_SHA and anime.licence == "BSD-3-Clause"
-    assert lanczos is not None and lanczos.selectable and lanczos.download_url == ""
+    assert lanczos is not None and not lanczos.selectable and lanczos.download_url == ""
     assert [model.id for model in catalog.selectable()] == [
         DEFAULT_MODEL_ID,
         "4x-nomos2-hq-dat2",
         "realesrgan-x4plus-anime6b",
-        "lanczos",
     ]
     plain = catalog.get("realesrgan-x4plus")
     assert plain is not None and not plain.selectable

@@ -8,7 +8,10 @@
 * Enlarge owns the shared inference engine and model registry. Clarity co-maintains them.
 * Models are licence-safe only (CC-BY, Apache, MIT, BSD). CC-BY models are credited in the app.
 * Platforms: Windows 11 24H2+ and Linux releases from 2025 onward. Local only.
-* Forward-only. The GPU floor is NVIDIA RTX 40 (Ada, compute capability 8.9) and newer. A card below 8.9 raises a diagnostics warning and the job still runs. DirectML is not a provider. CUDA EP is used when a TensorRT engine does not build. Lanczos stays the no-GPU preview.
+* Forward-only. Enlarge starts only when an NVIDIA GPU is usable through CUDA and the driver is from the 600 series or newer. A card below compute capability 8.9 (RTX 40 / Ada) raises a diagnostics warning and the app still starts. DirectML is not a provider. CUDA EP is used when a TensorRT engine does not build.
+* There is no CPU-only mode. Lanczos resampling runs only when `VOXPRINT_CI_LANCZOS=1`, which tests and CI set so they stay offline and GPU-free.
+* Python 3.14. Current PyTorch CUDA 13, onnxruntime-gpu, TensorRT, NumPy, Pillow, PySide6, and imagecodecs wheels support 3.14. Python 3.15 has no onnxruntime-gpu wheel. `imagecodecs` is 2026.10.10.
+* GPU packages target CUDA 13 (PyTorch `cu130`, `onnxruntime-gpu`, `tensorrt-cu13`). The `cu126` index and the R560 driver branch are not used.
 * The x86-64 CPU baseline is x86-64-v3, without an AVX-512 path. The same Python code runs on ARM.
 * VRAM use follows the suite margin: free memory minus max(2 GB, 8% of the card).
 * The program is Apache-2.0, the same licence as the other Voxprint apps.

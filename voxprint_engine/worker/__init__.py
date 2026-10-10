@@ -1,9 +1,9 @@
 """Inference worker: a separate process, JSON lines on stdin/stdout.
 
-An upscale with a GPU execution provider runs ONNX on TensorRT. CUDA runs when
-that engine does not build. Lanczos is the path when the model is Lanczos, the
-device is CPU, or neither NVIDIA provider is installed. The process holds the
-suite GPU lock for the inference itself. Downloads happen before that lock.
+An upscale runs ONNX on TensorRT. CUDA runs when that engine does not build.
+``VOXPRINT_CI_LANCZOS=1`` resamples with Lanczos for tests and CI. The process
+holds the suite GPU lock for the inference itself. Downloads happen before that
+lock.
 """
 from __future__ import annotations
 

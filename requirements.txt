@@ -1,9 +1,11 @@
-# CPU ONNX Runtime. TensorRT is the GPU session. CUDA EP is the engine-build
-# failure path. docs/ENGINE.md has the GPU packages. CI has no GPU.
+# Python 3.14. CI installs this CPU ONNX Runtime wheel so the package imports
+# on a runner without a GPU. The app refuses to start unless an NVIDIA GPU is
+# usable through CUDA. Tests and CI set VOXPRINT_CI_LANCZOS=1.
+# docs/ENGINE.md has the CUDA 13 packages.
 PySide6>=6.7,<7
 Pillow>=11.3,<13
 psutil>=5.9,<8
 numpy>=2,<3
 onnxruntime>=1.20,<2
-# 2026.5+ wheels are cp312-abi3 only. CI runs Python 3.11.
-imagecodecs==2026.3.6
+# 2026.10.10 publishes a cp312-abi3 wheel, which installs on Python 3.14.
+imagecodecs==2026.10.10

@@ -12,8 +12,9 @@ import pytest
 from onnx import TensorProto, helper
 from PIL import Image
 
+from voxprint_engine.errors import ImageJobError
 from voxprint_engine.formats import open_rgb
-from voxprint_engine.infer import _passes, _run_network, upscale_file
+from voxprint_engine.infer import _passes, _run_network, upscale_file, uses_lanczos
 from voxprint_engine.paths import cache_key, models_dir, trt_cache_dir
 from voxprint_engine.providers import CPU, CUDA, TRT, choices_for, cuda_fallback_choices, gpu_provider_names
 from voxprint_engine.registry.schema import ModelManifest
@@ -240,6 +241,40 @@ def _nearest_x2(path: Path) -> None:
     model.ir_version = 8
     onnx.checker.check_model(model)
     onnx.save(model, path)
+
+
+def test_a_job_without_a_gpu_provider_does_not_resample(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    monkeypatch.setattr("voxprint_engine.infer.gpu_provider_names", lambda *_args, **_kwargs: [])
+    src = tmp_path / "in.png"
+    dst = tmp_path / "out.avif"
+    Image.new("RGB", (8, 8), (1, 2, 3)).save(src)
+    with pytest.raises(ImageJobError, match="NVIDIA GPU"):
+        upscale_file(
+            src,
+            dst,
+            _manifest(),
+            scale=2,
+            image_format="avif",
+            quality=60,
+            double=False,
+            device="auto",
+            user_tile=0,
+            batch=1,
+        )
+    assert not dst.exists()
+
+
+def test_ci_flag_is_the_only_resample(monkeypatch: pytest.MonkeyPatch) -> None:
+    model = _manifest()
+    monkeypatch.setenv("VOXPRINT_CI_LANCZOS", "1")
+    assert uses_lanczos(model, "auto", "auto")
+    assert not uses_lanczos(model, "cpu-onnx", "onnx")
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    assert not uses_lanczos(model, "cpu", "auto")
+    assert not uses_lanczos(model, "auto", "lanczos")
 
 
 def test_cpu_onnx_smoke(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

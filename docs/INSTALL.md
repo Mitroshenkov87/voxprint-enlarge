@@ -5,8 +5,8 @@ Phase 1 has no installer. Run it from a checkout.
 ## Requirements
 
 * Windows 11 24H2 or newer, or a Linux distribution released in 2025 or later
-* An NVIDIA RTX 40 (Ada, compute capability 8.9) or newer for TensorRT. CUDA is the path when that engine does not build. Lanczos and the CPU ONNX smoke test do not need a GPU. GPU packages and a local benchmark are in `docs/ENGINE.md`.
-* Python 3.11 or newer
+* An NVIDIA GPU that CUDA can use, with a driver from the 600 series or newer. Without that GPU, or with an older driver, Enlarge does not start. An NVIDIA GPU below compute capability 8.9 (RTX 40 / Ada) still starts and shows a diagnostics warning. TensorRT is the session. CUDA is the path when that engine does not build. GPU packages and a local benchmark are in `docs/ENGINE.md`.
+* Python 3.14
 
 ## From source
 

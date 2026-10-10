@@ -39,8 +39,10 @@ def normalize_gpu(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     text = value.strip().lower()
-    if text in ("auto", "cpu"):
+    if text == "auto":
         return text
+    if text == "cpu":
+        return None
     if text in ("cuda", "gpu"):
         return "cuda:0"
     match = _GPU_RE.match(text)
@@ -91,7 +93,7 @@ def _write(data: dict[str, Any]) -> None:
 def set_gpu(value: str) -> str:
     stored = normalize_gpu(value)
     if stored is None:
-        raise ValueError(f"gpu must be auto, cpu, or cuda:N, got {value!r}")
+        raise ValueError(f"gpu must be auto or cuda:N, got {value!r}")
     data = read_raw()
     data["schema"] = SCHEMA
     data["gpu"] = stored

@@ -1,10 +1,11 @@
 # Local GPU extras. This file is comments on purpose.
 # CI audits requirements.txt, which stays on the CPU ONNX Runtime wheel.
 #
-# NVIDIA, after requirements.txt. Pick a torch index that matches the driver:
-#   python -m pip install torch --index-url https://download.pytorch.org/whl/cu128
-#   python -m pip install spandrel onnx onnxruntime-gpu
+# The NVIDIA driver must be from the 600 series or newer. The wheels are CUDA 13.
+#   python -m pip install torch --index-url https://download.pytorch.org/whl/cu130
+#   python -m pip install spandrel onnx onnxruntime-gpu tensorrt-cu13
 #
+# The cu126 index and the R560 driver branch are not used.
 # Do not install spandrel_extra_arches. The converter never imports it.
 #
 # CUDA EP is installed with onnxruntime-gpu. It runs when a TensorRT engine
