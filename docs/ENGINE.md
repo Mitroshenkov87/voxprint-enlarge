@@ -1,21 +1,58 @@
 # Shared inference engine
 
 `voxprint_engine` is the image upscaler Voxprint AI Enlarge owns and Voxprint AI
-Clarity imports. It does not import Qt. `API` is 1.
+Clarity imports. The installable distribution is `voxprint-engine` 1.0.0. It
+does not import Qt. `API` is 1. The package version and `API` are different
+numbers: the version marks this release, and `API` stays 1 until a breaking
+change.
+
+Clarity pins the merge commit of this release:
+
+```text
+voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0
+```
+
+The tag `engine-v1.0.0` is the commit on `main` that publishes this file and
+the root `pyproject.toml`. The wheel contains `voxprint_engine` only. The Qt
+app stays in this repository and is not part of the wheel.
+
+## Public API
+
+`from voxprint_engine.api import ...` is the supported surface. The same
+objects can be imported from the modules below. A pull request may add a
+name. Removing one, or changing what it means, bumps `API`. Clarity's
+video work (a multi-frame batch, a temporal window) lands as an addition
+on this list.
+
+| Name | Role |
+|---|---|
+| `API`, `__version__` | Compatibility number and package version |
+| `ModelManifest`, `Catalog`, `ManifestError` | One licence-bearing model, a catalogue, a rejected manifest |
+| `validate_manifest`, `load_builtin`, `combined_catalog` | Check a manifest, read the built-in file, add a custom folder |
+| `DEFAULT_MODEL_ID`, `LANCZOS_MODEL_ID` | The pinned fast photo model, and the CI stand-in id |
+| `WorkerClient`, `WorkerError`, `UpscaleRequest`, `UpscaleResult` | JSON-line worker process |
+| `upscale_file`, `uses_lanczos` | One image, and whether this job must skip the network |
+| `ensure_weight`, `register`, `unregister` | Pinned download, and the shared `.users.json` refcount |
+| `models_dir`, `trt_cache_dir` | Weights folder and the rebuildable TensorRT cache |
+| `vram_budget_gb`, `choose_tile`, `halve_tile`, `note_spill` | Suite VRAM margin and the tile ladder |
+| `gpu_job` | Hold `%TEMP%/voxprint-gpu.lock` for one job |
+| `decide` | Suite thermal pause rule |
 
 ```python
-from voxprint_engine import API
-from voxprint_engine.registry import combined_catalog, validate_manifest, LANCZOS_MODEL_ID
-from voxprint_engine.worker import WorkerClient, UpscaleRequest
-from voxprint_engine.infer import upscale_file, uses_lanczos
-from voxprint_engine.store import ensure_weight, register, unregister
-from voxprint_engine.paths import models_dir, trt_cache_dir
-from voxprint_engine.vram import vram_budget_gb, choose_tile, halve_tile, note_spill
-from voxprint_engine.gpu_lock import gpu_job
+from voxprint_engine.api import (
+    API,
+    WorkerClient,
+    UpscaleRequest,
+    combined_catalog,
+    gpu_job,
+    upscale_file,
+    validate_manifest,
+)
 ```
 
 Clarity should keep using the worker for a long job. `upscale_file` is the
-same function the worker calls, for a benchmark or a one-off frame.
+same function the worker calls, for a benchmark or a one-off frame. `tests/test_api.py`
+fails when a name in this table disappears.
 
 ## What Run does
 
