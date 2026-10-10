@@ -21,6 +21,7 @@ _stdout: TextIO = sys.stdout
 
 
 def emit(message: dict[str, Any], stdout: TextIO | None = None) -> None:
+    """Write one JSON line to the worker stdout."""
     out = stdout or _stdout
     out.write(json.dumps(message, ensure_ascii=True) + "\n")
     out.flush()
@@ -137,6 +138,7 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def serve(stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
+    """Read worker commands from stdin until shutdown."""
     global _stdout
     source = stdin or sys.stdin
     if stdout is not None:

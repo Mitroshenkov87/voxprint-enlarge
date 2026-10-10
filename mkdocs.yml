@@ -1,0 +1,41 @@
+site_name: Voxprint AI Enlarge
+site_description: Offline image upscaler in the Voxprint AI Media Suite.
+site_url: https://mitroshenkov87.github.io/voxprint-enlarge/
+repo_url: https://github.com/Mitroshenkov87/voxprint-enlarge
+repo_name: Mitroshenkov87/voxprint-enlarge
+theme:
+  name: material
+  palette:
+    primary: indigo
+    accent: amber
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: false
+nav:
+  - Home: index.md
+  - Roadmap: generated/roadmap.md
+  - Command line:
+      - Contract: CLI.md
+      - Reference: generated/cli-reference.md
+  - Architecture: ARCHITECTURE.md
+  - Memory placement: MEMORY-PLACEMENT.md
+  - IPC: IPC.md
+  - Engine: ENGINE.md
+  - Install: INSTALL.md
+  - GPU test: TESTING-GPU.md
+  - API:
+      - Engine: api/engine.md
+      - App: api/app.md
+exclude_docs: |
+  DECISIONS.md
+  RESEARCH.md
+markdown_extensions:
+  - toc:
+      permalink: true
+  - tables
+  - fenced_code

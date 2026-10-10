@@ -19,12 +19,14 @@ class Catalog:
     warnings: list[str] = field(default_factory=list)
 
     def get(self, model_id: str) -> ModelManifest | None:
+        """The manifest for this id, or None."""
         for model in self.models:
             if model.id == model_id:
                 return model
         return None
 
     def selectable(self) -> list[ModelManifest]:
+        """Models the user can pick. Lanczos and face entries stay out."""
         return [model for model in self.models if model.selectable]
 
     def credits(self) -> list[ModelManifest]:

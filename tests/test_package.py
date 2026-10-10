@@ -1,11 +1,13 @@
 """Release staging: no weights, build numbers, and the installer contract."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from enlarge.ipc.register import unregister_linux, write_linux
-from tools.assemble_bundle import python_asset_name, stage_app
+from tools.assemble_bundle import python_asset_name, release_version, stage_app
 from tools.build_number import build_number, codename
+from tools.generate_cli_reference import generate, render
 
 
 def test_build_number_uses_the_run_and_the_offset() -> None:
@@ -13,6 +15,24 @@ def test_build_number_uses_the_run_and_the_offset() -> None:
     assert build_number({"GITHUB_RUN_NUMBER": "4"}) == 4
     assert build_number({"VOXPRINT_BUILD": "9", "GITHUB_RUN_NUMBER": "4"}) == 9
     assert codename() == "Petach"
+    assert release_version() == "0.2.0-rc.1"
+    iss = Path("installer/windows/enlarge.iss").read_text(encoding="utf-8")
+    assert f'#define AppVersion "{release_version()}"' in iss
+    assert json.loads(Path("BUILD.json").read_text(encoding="utf-8"))["version"] == release_version()
+
+
+def test_cli_reference_is_generated_from_the_parser(tmp_path: Path) -> None:
+    text = render()
+    assert "--preset" in text
+    assert "photo" in text
+    assert "fast" in text
+    assert "600" in text
+    written = generate(tmp_path)
+    assert written.name == "cli-reference.md"
+    assert "CLI contract" in written.read_text(encoding="utf-8")
+    roadmap = (tmp_path / "roadmap.md").read_text(encoding="utf-8")
+    assert "Next version" in roadmap
+    assert "face-restore" in roadmap
 
 
 def test_python_asset_is_cpython_314_without_freethreading() -> None:

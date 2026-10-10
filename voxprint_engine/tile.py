@@ -17,6 +17,7 @@ Array = np.ndarray
 
 @dataclass(frozen=True)
 class TileBox:
+    """One overlapping tile: source rect, output rect, and feather width."""
     x: int
     y: int
     width: int

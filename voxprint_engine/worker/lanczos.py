@@ -22,6 +22,7 @@ MAX_DELAY_S = 5.0
 
 
 def output_scale(scale: int, double: bool) -> int:
+    """Pixel scale after the optional second pass. The model itself stays 4x."""
     if scale not in (2, 4):
         raise ImageJobError("scale must be 2 or 4")
     factor = scale * scale if double else scale

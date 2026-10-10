@@ -9,9 +9,11 @@ from __future__ import annotations
 import os
 import signal
 import sys
+import threading
 from typing import Any
 
-from enlarge.appinfo import APP_VERSION
+from enlarge.appinfo import product_version
+from enlarge.cli_parser import parse_cli
 from enlarge.ipc.capabilities import capabilities
 from enlarge.ipc.client import exchange
 from enlarge.ipc.discovery import resolve_exe
@@ -28,6 +30,7 @@ _USAGE = (
 
 
 def write_json(message: dict[str, Any]) -> None:
+    """Write one protocol object to stdout and flush it."""
     data = dumps(message)
     stream = sys.stdout
     buffer = getattr(stream, "buffer", None)
@@ -39,67 +42,58 @@ def write_json(message: dict[str, Any]) -> None:
     buffer.flush()
 
 
-def _arg(argv: list[str], name: str, default: str | None = None) -> str | None:
-    if name not in argv:
-        return default
-    index = argv.index(name)
-    if index + 1 < len(argv) and not argv[index + 1].startswith("--"):
-        return argv[index + 1]
-    return default
-
-
 def _fail_args(text: str) -> int:
     print(text, file=sys.stderr)
     write_json(error_message("cli", "bad_input", text))
     return exit_code("bad_input")
 
 
+def _parent_pid(parsed_pid: int | None) -> int | str:
+    if parsed_pid is not None:
+        if parsed_pid <= 0:
+            return "parent-lock-pid must be a process id"
+        return parsed_pid
+    raw_parent = os.environ.get("VOXPRINT_GPU_PARENT_PID", "").strip()
+    if not raw_parent:
+        return 0
+    try:
+        parent = int(raw_parent)
+    except ValueError:
+        return "parent-lock-pid must be a process id"
+    if parent <= 0:
+        return "parent-lock-pid must be a process id"
+    return parent
+
+
 def _parse(argv: list[str]) -> EnlargeRequest | int:
-    if "--json-progress" not in argv:
+    parsed = parse_cli(argv)
+    if isinstance(parsed, int):
+        return parsed
+    if not parsed.json_progress:
         print(_USAGE, file=sys.stderr)
         return 2
-    source = _arg(argv, "--input")
+    source = parsed.input
     if not source:
         return _fail_args("input is required")
-    if "--scale" in argv and "--long-side" in argv:
-        return _fail_args("pass scale or long-side, not both")
     long_side = 0
     scale = 4
-    if "--long-side" in argv:
-        raw_side = _arg(argv, "--long-side")
-        if raw_side is None:
-            return _fail_args("long-side needs a pixel size")
-        try:
-            long_side = int(raw_side)
-        except ValueError:
-            return _fail_args("long-side must be an integer")
-        if long_side < 1:
+    if parsed.long_side is not None:
+        if parsed.long_side < 1:
             return _fail_args("long-side must be a positive size")
+        long_side = int(parsed.long_side)
         scale = 0
-    elif "--scale" in argv:
-        raw_scale = _arg(argv, "--scale")
-        if raw_scale is None:
-            return _fail_args("scale must be 2 or 4")
-        try:
-            scale = int(raw_scale)
-        except ValueError:
-            return _fail_args("scale must be 2 or 4")
-        if scale not in (2, 4):
-            return _fail_args("scale must be 2 or 4")
-    preset = _arg(argv, "--preset", "") or ""
-    model = _arg(argv, "--model", "") or ""
-    if not preset and not model:
-        return _fail_args("preset or model is required")
-    tier = _arg(argv, "--quality-tier")
-    raw_quality = _arg(argv, "--quality")
+    elif parsed.scale is not None:
+        scale = int(parsed.scale)
+    preset = str(parsed.preset or "photo")
+    model = str(parsed.model or "")
+    tier = str(parsed.quality_tier or "fast")
+    raw_quality = parsed.quality
     encode = DEFAULT_QUALITY
-    if tier is None:
-        tier = "fast"
     if raw_quality is None:
         pass
-    elif raw_quality in {"fast", "max"}:
+    elif str(raw_quality) in {"fast", "max"}:
         if "--quality-tier" not in argv:
-            tier = raw_quality
+            tier = str(raw_quality)
     else:
         try:
             encode = int(raw_quality)
@@ -109,39 +103,28 @@ def _parse(argv: list[str]) -> EnlargeRequest | int:
             return _fail_args("quality must be from 1 to 100")
     if tier not in {"fast", "max"}:
         return _fail_args("quality tier must be fast or max")
-    raw_timeout = _arg(argv, "--lock-timeout", "600") or "600"
     try:
-        lock_timeout = float(raw_timeout)
-    except ValueError:
+        lock_timeout = float(parsed.lock_timeout)
+    except (TypeError, ValueError):
         return _fail_args("lock-timeout must be a number of seconds")
     if lock_timeout < 0:
         return _fail_args("lock-timeout must be zero or more")
-    raw_parent = _arg(argv, "--parent-lock-pid")
-    if raw_parent is None:
-        raw_parent = os.environ.get("VOXPRINT_GPU_PARENT_PID", "").strip()
-    parent = 0
-    if raw_parent:
-        try:
-            parent = int(raw_parent)
-        except ValueError:
-            return _fail_args("parent-lock-pid must be a process id")
-        if parent <= 0:
-            return _fail_args("parent-lock-pid must be a process id")
-    output = _arg(argv, "--output", "") or ""
-    if not output:
-        output = _arg(argv, "--out", "") or ""
+    parent = _parent_pid(parsed.parent_lock_pid)
+    if isinstance(parent, str):
+        return _fail_args(parent)
+    output = str(parsed.output or "")
     return EnlargeRequest(
         id="cli",
-        input=source,
+        input=str(source),
         scale=scale,
         preset=preset,
         model=model,
         quality=tier,
-        format=_arg(argv, "--format", "") or "",
+        format=str(parsed.format or ""),
         output=output,
-        output_dir=_arg(argv, "--output-dir", "") or "",
+        output_dir=str(parsed.output_dir or ""),
         open_ui=False,
-        lossless="--lossless" in argv,
+        lossless=bool(parsed.lossless),
         encode_quality=encode,
         long_side=long_side,
         lock_timeout=lock_timeout,
@@ -172,7 +155,7 @@ def _request_message(request: EnlargeRequest) -> dict[str, Any]:
 
 
 def _hello() -> dict[str, Any]:
-    return {"op": "hello", "type": "hello", "client": "enlarge", "version": APP_VERSION}
+    return {"op": "hello", "type": "hello", "client": "enlarge", "version": product_version()}
 
 
 def run_capabilities() -> int:
@@ -220,9 +203,13 @@ def _relay(request: EnlargeRequest, control: JobControl) -> int | None:
 
 
 def _install_stop(control: JobControl) -> tuple[Any, Any]:
+    """Install SIGINT and SIGTERM. A worker thread cannot, and leaves the pair empty."""
+
     def _handle(_signum: int, _frame: object) -> None:
         control.cancel()
 
+    if threading.current_thread() is not threading.main_thread():
+        return None, None
     previous_int = signal.signal(signal.SIGINT, _handle)
     previous_term = signal.signal(signal.SIGTERM, _handle)
     return previous_int, previous_term
@@ -240,8 +227,7 @@ def run_contract(argv: list[str]) -> int:
             write_json(error_message(parsed.id, "cancelled", "cancelled"))
             return exit_code("cancelled")
         resolve_exe()
-        dry_run = "--dry-run" in argv
-        if dry_run:
+        if "--dry-run" in argv:
             return run_job(parsed, write_json, control, dry_run=True)
         forwarded = _relay(parsed, control)
         if forwarded is not None:
@@ -251,5 +237,7 @@ def run_contract(argv: list[str]) -> int:
             return exit_code("cancelled")
         return run_job(parsed, write_json, control)
     finally:
-        signal.signal(signal.SIGINT, previous_int)
-        signal.signal(signal.SIGTERM, previous_term)
+        if previous_int is not None:
+            signal.signal(signal.SIGINT, previous_int)
+        if previous_term is not None:
+            signal.signal(signal.SIGTERM, previous_term)

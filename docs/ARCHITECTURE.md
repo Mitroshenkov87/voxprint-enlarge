@@ -4,9 +4,11 @@ Voxprint AI Enlarge is the image app. Voxprint AI Clarity is the video app.
 They share one engine, owned here and co-maintained by Clarity.
 
 ```text
-main.py                  window, splash, CLI, protocol 1 entry points
+main.py                  process entry. Qt loads only for the window and --serve
+enlarge/cli.py           headless contract (docs/CLI.md)
+enlarge/cli_parser.py    argparse source for the process and the generated reference
 enlarge/                 Qt UI, suite.json, app settings
-enlarge/ipc/             Lucent hand-off (docs/IPC.md); the engine stays Qt-free
+enlarge/ipc/             protocol 1 server, jobs, and a Qt-free client (docs/IPC.md)
 voxprint_engine/         importable by Clarity (no Qt)
   registry/              manifest schema, licence gate, catalog.json
   worker/                JSON-line process
@@ -37,7 +39,51 @@ from voxprint_engine.video import temporal_windows, restore_frames
 
 `API` is 1. A breaking change to the manifest or the worker messages bumps it.
 How a job actually runs (providers, tiles, downloads, the GPU benchmark) is
-`docs/ENGINE.md`.
+`docs/ENGINE.md`. A later placement of weights across graphics memory, pinned
+system RAM, and disk is designed in `docs/MEMORY-PLACEMENT.md` and is not
+implemented.
+
+## App
+
+`main.py` parses arguments with `enlarge.cli_parser` and then dispatches.
+`--version`, `--capabilities`, `--dry-run`, and a headless `upscale` never
+import PySide6. The window and `--serve` import Qt inside those functions, so
+a machine without libEGL can still answer `--capabilities`.
+
+The product version is one value. A stamped `build_info.json` wins, then the
+`version` field of `BUILD.json`, then the source constant. `--version` and
+`--capabilities` both read it. The installer `AppVersion` is that same
+`BUILD.json` field.
+
+## IPC and CLI
+
+Protocol 1 is `docs/IPC.md`. The headless command is `docs/CLI.md`. The flag
+list and the defaults are the argparse parser. The docs site renders that
+parser at build time, so the reference page and the process stay the same.
+`docs/CLI.md` stays the contract prose.
+
+A warm `--serve` process receives a job over the per-user socket (Linux) or
+named pipe (Windows). The client is the stdlib, not Qt. If nothing is
+listening, the same process runs the job. `--dry-run` never forwards.
+`gpu_busy` is `retryable: true`. So is `model_missing`.
+
+The suite GPU lock is held by the job. A caller that already holds it passes
+`--parent-lock-pid`. The worker shares that lock and does not delete the file.
+
+## Packaging
+
+Release builds use a relocatable CPython 3.14 from python-build-standalone.
+Weights are not in the installer or the tarball.
+
+| Platform | Install path |
+|---|---|
+| Windows | `%LOCALAPPDATA%\Voxprint\Enlarge\VoxprintEnlarge.exe` |
+| Linux | `$XDG_DATA_HOME/voxprint/enlarge/voxprint-enlarge` (`~/.local/share` when unset) |
+
+`BUILD.json` holds `version`, the build-number `offset`, and the codename.
+The release workflow adds `GITHUB_RUN_NUMBER` to the offset. `--install-gpu`
+adds the CUDA 13 ONNX Runtime and TensorRT wheels on the machine that has
+the driver. A frozen app refuses that command.
 
 ## Registry
 

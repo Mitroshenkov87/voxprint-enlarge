@@ -11,10 +11,12 @@ FINISHED = "Done"
 
 
 def queue_path() -> Path:
+    """Where the batch queue is saved for the next launch."""
     return app_home() / "queue.json"
 
 
 def dump_queue(rows: list[dict[str, object]], path: Path | None = None) -> None:
+    """Write the queue rows as JSON so a later launch can resume them."""
     target = path or queue_path()
     items = [_item(row) for row in rows]
     target.parent.mkdir(parents=True, exist_ok=True)

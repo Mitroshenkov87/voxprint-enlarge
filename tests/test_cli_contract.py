@@ -6,6 +6,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -17,6 +18,7 @@ from PIL import Image
 from PySide6.QtWidgets import QApplication
 
 from enlarge.ipc.discovery import known_install_exe
+from enlarge.ipc.jobs import resolve_model_id
 from enlarge.ipc.protocol import ERROR_CODES, exit_code
 from enlarge.ipc.scale import choose_scale, fit_long_side, planned_size
 from enlarge.ipc.server import IpcServer
@@ -215,6 +217,7 @@ def test_gpu_busy_reports_the_lock_holder(tmp_path: Path, capsys: pytest.Capture
     waiting = next(message for message in messages if message.get("stage") == "waiting_gpu")
     assert waiting["lock_holder"] == {"owner": "canvas", "pid": os.getpid(), "job": "canvas:export"}
     assert messages[-1]["code"] == "gpu_busy"
+    assert messages[-1]["retryable"] is True
     assert not (tmp_path / "hill.enlarged-2x.avif").exists()
 
 
@@ -266,12 +269,30 @@ def test_contract_does_not_open_a_window(
             raise AssertionError("the CLI opened a window")
 
     monkeypatch.setattr("enlarge.ui.window.MainWindow", _Window)
-    monkeypatch.setattr("main.MainWindow", _Window)
     monkeypatch.setattr("enlarge.ipc.server.MainWindow", _Window)
     code = main(_job(source, "--scale", "2", "--format", "webp"))
     captured = capsys.readouterr()
     assert code == 0, captured.err
     assert _lines(captured.out)[-1]["type"] == "done"
+
+
+def _call_while_serving(argv: list[str]) -> int:
+    """Run ``main`` off the Qt thread so a blocking socket can be served by ``processEvents``."""
+    box: dict[str, int] = {}
+
+    def _target() -> None:
+        box["code"] = main(argv)
+
+    thread = threading.Thread(target=_target)
+    thread.start()
+    app = _app()
+    deadline = time.monotonic() + 30
+    while thread.is_alive() and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+    thread.join(timeout=1)
+    assert not thread.is_alive()
+    return int(box["code"])
 
 
 def test_warm_server_forwards_and_matches_one_shot(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -282,7 +303,7 @@ def test_warm_server_forwards_and_matches_one_shot(tmp_path: Path, capsys: pytes
     assert server.listen()
     warm_out = tmp_path / "warm.webp"
     try:
-        code = main(_job(source, "--scale", "2", "--format", "webp", "--output", str(warm_out)))
+        code = _call_while_serving(_job(source, "--scale", "2", "--format", "webp", "--output", str(warm_out)))
     finally:
         server.close()
     captured = capsys.readouterr()
@@ -309,7 +330,7 @@ def test_capabilities_go_through_the_warm_server(capsys: pytest.CaptureFixture[s
     server = IpcServer()
     assert server.listen()
     try:
-        code = main(["--capabilities", "--json"])
+        code = _call_while_serving(["--capabilities", "--json"])
     finally:
         server.close()
     captured = capsys.readouterr()
@@ -366,3 +387,70 @@ def test_known_install_exe_and_icons() -> None:
     assert suite_icon("download").isNull() is False
     assert suite_icon("save-as").isNull() is False
     assert suite_icon("save-copy").isNull() is False
+
+
+def test_omitted_preset_defaults_to_photo_fast(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "hill.png"
+    _picture(source)
+    seen: dict[str, tuple[str, str, str]] = {}
+    real = resolve_model_id
+
+    def _spy(preset: str, quality: str, model: str) -> str:
+        seen["args"] = (preset, quality, model)
+        return real(preset, quality, model)
+
+    monkeypatch.setattr("enlarge.ipc.jobs.resolve_model_id", _spy)
+    code = main(
+        [
+            "--input",
+            str(source),
+            "--scale",
+            "2",
+            "--format",
+            "webp",
+            "--dry-run",
+            "--json-progress",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 0, captured.err
+    assert _lines(captured.out)[-1]["type"] == "done"
+    assert seen["args"] == ("photo", "fast", "")
+
+
+def test_headless_commands_do_not_import_pyside(tmp_path: Path) -> None:
+    source = tmp_path / "hill.png"
+    _picture(source)
+    script = """
+import json, os, sys
+sys.path.insert(0, os.environ["VOXPRINT_ROOT"])
+from main import main
+source = os.environ["VOXPRINT_SOURCE"]
+checks = [
+    ["--version"],
+    ["--capabilities", "--json"],
+    ["--input", source, "--dry-run", "--json-progress"],
+    ["upscale", "--input", source, "--scale", "2", "--dry-run", "--json-progress"],
+]
+for argv in checks:
+    rc = main(argv)
+    if rc != 0:
+        raise SystemExit(f"{argv} exited {rc}")
+if "PySide6" in sys.modules:
+    raise SystemExit("PySide6 was imported: " + ", ".join(name for name in sys.modules if name.startswith("PySide6")))
+"""
+    env = os.environ.copy()
+    env["VOXPRINT_ROOT"] = str(ROOT)
+    env["VOXPRINT_SOURCE"] = str(source)
+    env.setdefault("QT_QPA_PLATFORM", "offscreen")
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr

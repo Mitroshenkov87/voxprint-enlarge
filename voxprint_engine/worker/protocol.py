@@ -17,6 +17,7 @@ __all__ = ["UpscaleRequest", "UpscaleResult", "RestoreBatchRequest"]
 
 @dataclass(frozen=True)
 class UpscaleRequest:
+    """One image job sent to the worker."""
     id: str
     src: str
     dst: str
@@ -34,6 +35,7 @@ class UpscaleRequest:
     lossless: bool = False
 
     def to_message(self) -> dict[str, Any]:
+        """The upscale JSON line for this request."""
         return {
             "op": "upscale",
             "id": self.id,
@@ -56,6 +58,7 @@ class UpscaleRequest:
 
 @dataclass(frozen=True)
 class UpscaleResult:
+    """The worker's result line, including tile and spill fields."""
     id: str
     ok: bool
     message: str
@@ -73,6 +76,7 @@ class UpscaleResult:
 
     @classmethod
     def from_message(cls, message: Mapping[str, Any]) -> UpscaleResult:
+        """Build a result from a worker JSON object."""
         ok = bool(message.get("ok"))
         return cls(
             id=str(message.get("id") or ""),

@@ -107,6 +107,7 @@ def _kind(name: str) -> dict[str, str]:
 
 
 def hello_message(version: str) -> dict[str, Any]:
+    """Server hello: version, protocol range, and both op and type."""
     return {
         **_kind("hello"),
         "version": version,
@@ -118,6 +119,7 @@ def hello_message(version: str) -> dict[str, Any]:
 
 
 def accepted_message(job_id: str, queue_pos: int) -> dict[str, Any]:
+    """The job is queued. queue_pos is how many jobs were already ahead."""
     return {**_kind("accepted"), "id": job_id, "queue_pos": queue_pos}
 
 
@@ -128,6 +130,7 @@ def progress_message(
     eta_s: float | None = None,
     lock_holder: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Progress in percent. waiting_gpu also carries the lock holder."""
     bounded = max(0.0, min(100.0, float(pct)))
     eta = None if eta_s is None else round(max(0.0, float(eta_s)), 1)
     body: dict[str, Any] = {
@@ -147,6 +150,7 @@ def progress_message(
 
 
 def done_message(job_id: str, output: str, width: int, height: int, image_format: str, ms: float) -> dict[str, Any]:
+    """The finished file, its pixel size, the format, and the elapsed milliseconds."""
     return {
         **_kind("done"),
         "id": job_id,
@@ -159,6 +163,7 @@ def done_message(job_id: str, output: str, width: int, height: int, image_format
 
 
 def error_message(job_id: str, code: ErrorCode, message: str) -> dict[str, Any]:
+    """An error object. retryable is true only for gpu_busy and model_missing."""
     return {
         **_kind("error"),
         "id": job_id,
@@ -181,6 +186,7 @@ def message_kind(message: dict[str, Any]) -> str:
 
 @dataclass(frozen=True)
 class EnlargeRequest:
+    """One enlarge.request. Paths only; the socket never carries image bytes."""
     id: str
     input: str
     scale: int

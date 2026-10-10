@@ -41,13 +41,16 @@ def _pixmap(side: int) -> QPixmap:
 
 
 class Splash(QSplashScreen):
+    """Startup splash. The bar colour stays pink."""
     def __init__(self) -> None:
+        """Load the artwork and the version line."""
         self.side = _side()
         super().__init__(_pixmap(self.side))
         self._text = ""
         self._fraction = 0.0
 
     def drawContents(self, painter: QPainter) -> None:  # noqa: N802 - Qt name
+        """Paint the mark, the title, and the progress bar."""
         side = self.side
         top = side - STRIP
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -84,6 +87,7 @@ class Splash(QSplashScreen):
         )
 
     def status(self, text: str, fraction: float = -1.0) -> None:
+        """Set the status line and the bar fraction from 0 to 1."""
         self._text = text
         if fraction >= 0:
             self._fraction = max(0.0, min(1.0, fraction))
@@ -92,6 +96,7 @@ class Splash(QSplashScreen):
 
 
 def show() -> Splash:
+    """Create the splash, show it, and return it."""
     splash = Splash()
     splash.show()
     QApplication.processEvents()

@@ -20,6 +20,7 @@ CPU = "CPUExecutionProvider"
 
 @dataclass(frozen=True)
 class ProviderChoice:
+    """One ONNX Runtime provider and the options passed to it."""
     name: str
     options: dict[str, str]
 

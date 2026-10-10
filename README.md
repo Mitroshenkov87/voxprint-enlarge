@@ -6,11 +6,15 @@ Voxprint AI Enlarge makes a still picture larger on your own computer. You pick 
 
 **Images only.** Video restoration belongs to Voxprint AI Clarity. Enlarge does not open video files.
 
-**Status:** `v0.2.0-rc.1` is the installable release candidate for a GPU machine. A source checkout still reports pre-alpha until a release build stamps it. Run uses ONNX Runtime on TensorRT. CUDA is used when that engine does not build. Weights for the three pinned models download into the shared Voxprint models folder. The installer and the tarball do not contain those weights.
+**Status:** `v0.2.0-rc.1` is the installable release candidate for a GPU machine. `--version` and `--capabilities` read that version from `BUILD.json`, and a release build's `build_info.json` overrides it with the same number when the stamp matches. Run uses ONNX Runtime on TensorRT. CUDA is used when that engine does not build. Weights for the three pinned models download into the shared Voxprint models folder. The installer and the tarball do not contain those weights.
 
 **License:** Apache-2.0. See `LICENSE` and `NOTICE`. Model weights keep the licence recorded in the registry. A release build refuses non-commercial or unlicensed weights.
 
-The VM checklist is [docs/TESTING-GPU.md](docs/TESTING-GPU.md). The headless command other suite apps call is [docs/CLI.md](docs/CLI.md). Later work is listed in [docs/ROADMAP.md](docs/ROADMAP.md).
+The VM checklist is [docs/TESTING-GPU.md](docs/TESTING-GPU.md). The headless command other suite apps call is [docs/CLI.md](docs/CLI.md). The docs site is [mitroshenkov87.github.io/voxprint-enlarge](https://mitroshenkov87.github.io/voxprint-enlarge/).
+
+## Roadmap
+
+The next version brings the command line up to everything the window does, chooses a model from the graphics memory the card can spare, downloads models from more than one mirror, and uses graphics memory, system memory, and disk so bigger models fit on 16 GB and 24 GB cards. Later versions add more upscaling models, including an optional face-restore model. The list is [ROADMAP.md](ROADMAP.md).
 
 ## System requirements
 

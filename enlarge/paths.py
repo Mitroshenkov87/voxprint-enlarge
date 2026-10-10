@@ -48,6 +48,7 @@ def trt_cache_dir() -> Path:
 
 
 def logs_dir() -> Path:
+    """Directory for enlarge.log, created if it is missing."""
     path = app_home() / "logs"
     path.mkdir(parents=True, exist_ok=True)
     return path

@@ -23,6 +23,7 @@ class WorkerClient:
     """One worker process. Use it as a context manager so the child is shut down."""
 
     def __init__(self, python: str | None = None) -> None:
+        """Remember which Python will start the worker. The process is not started yet."""
         self.python = python or sys.executable
         self.proc: subprocess.Popen[str] | None = None
         self._lines: queue.Queue[str | None] = queue.Queue()
@@ -30,13 +31,16 @@ class WorkerClient:
         self._reader: threading.Thread | None = None
 
     def __enter__(self) -> WorkerClient:
+        """Start the worker and return this client."""
         self.start()
         return self
 
     def __exit__(self, *exc: object) -> None:
+        """Close the worker, including when the block raises."""
         self.close()
 
     def start(self, timeout: float = 15.0) -> None:
+        """Start the worker and wait until it sends ready."""
         if self.proc is not None:
             return
         env = os.environ.copy()
@@ -79,6 +83,7 @@ class WorkerClient:
         on_progress: Callable[[float, str], None] | None = None,
         timeout: float = 120.0,
     ) -> UpscaleResult:
+        """Send one upscale and call on_progress for each progress line."""
         self._send(request.to_message())
         while True:
             message = self._read(timeout)
@@ -104,6 +109,7 @@ class WorkerClient:
         proc.kill()
 
     def close(self) -> None:
+        """Ask the worker to shut down and wait for it to exit."""
         proc = self.proc
         self.proc = None
         if proc is None:
@@ -121,6 +127,7 @@ class WorkerClient:
             proc.wait(timeout=5)
 
     def stderr_text(self) -> str:
+        """Text the worker wrote to stderr, for a failure message."""
         return "".join(self._stderr)[-4000:]
 
     def _send(self, message: dict[str, object]) -> None:

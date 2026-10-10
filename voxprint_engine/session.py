@@ -19,6 +19,7 @@ class InferenceError(RuntimeError):
 
 
 def available_providers() -> list[str]:
+    """ONNX Runtime providers this process can actually load."""
     return list(ort.get_available_providers())
 
 

@@ -29,6 +29,7 @@ def voxprint_home() -> Path:
 
 
 def suite_file() -> Path:
+    """Path of the shared suite.json."""
     return voxprint_home() / "state" / "suite.json"
 
 

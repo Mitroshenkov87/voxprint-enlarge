@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from enlarge.appinfo import APP_VERSION
+from enlarge.appinfo import product_version
 from enlarge.ipc.protocol import PROTOCOL
 from voxprint_engine.formats import DEFAULT_FORMAT, heic_backend
 from voxprint_engine.hardware import MIN_DRIVER_MAJOR, capability_warning, driver_major, query_gpus
@@ -75,6 +75,7 @@ def model_catalog() -> list[dict[str, Any]]:
 
 
 def input_formats() -> list[str]:
+    """Sorted input format names the worker can open."""
     names = {_INPUT_NAMES[suffix] for suffix in IMAGE_EXTENSIONS if suffix in _INPUT_NAMES}
     return sorted(names)
 
@@ -88,10 +89,11 @@ def output_formats() -> list[str]:
 
 
 def capabilities() -> dict[str, Any]:
+    """One capabilities object. ``version`` is ``product_version()``."""
     return {
         "protocol": PROTOCOL,
         "app": "enlarge",
-        "version": APP_VERSION,
+        "version": product_version(),
         "gpu": gpu_capability(),
         "models": model_catalog(),
         "presets": ["photo", "art"],

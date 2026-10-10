@@ -59,6 +59,7 @@ class RestoreBatchRequest:
     owner: str = "clarity"
 
     def to_message(self) -> dict[str, Any]:
+        """The restore_batch worker message for this request."""
         return {
             "op": "restore_batch",
             "id": self.id,

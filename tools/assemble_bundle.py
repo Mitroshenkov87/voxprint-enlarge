@@ -19,7 +19,15 @@ from pathlib import Path
 from tools.build_number import build_number, codename
 
 ROOT = Path(__file__).resolve().parent.parent
-RELEASE_VERSION = "0.2.0-rc.1"
+
+
+def release_version() -> str:
+    """Product version stamped into ``build_info.json``. It is the ``version`` field of ``BUILD.json``."""
+    payload = json.loads((ROOT / "BUILD.json").read_text(encoding="utf-8"))
+    version = str(payload.get("version") or "").strip() if isinstance(payload, dict) else ""
+    if not version:
+        raise SystemExit("BUILD.json needs a version")
+    return version
 DIRS = ("enlarge", "voxprint_engine", "assets", "samples", "docs")
 FILES = ("main.py", "LICENSE", "NOTICE", "README.md", "requirements.txt", "requirements-gpu.txt", "BUILD.json")
 SKIP_SUFFIXES = {".pth", ".onnx", ".pyc"}
@@ -61,7 +69,7 @@ def stage_app(dest: Path) -> None:
 def stamp_build_info(dest: Path, env: dict[str, str] | None = None) -> None:
     source = os.environ if env is None else env
     payload = {
-        "version": RELEASE_VERSION,
+        "version": release_version(),
         "build": build_number(source),
         "codename": codename(),
         "commit": str(source.get("GITHUB_SHA", ""))[:12],

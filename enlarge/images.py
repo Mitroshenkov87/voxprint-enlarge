@@ -8,6 +8,7 @@ from voxprint_engine.worker.lanczos import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, o
 
 
 def is_image(path: Path) -> bool:
+    """True when the path has an image suffix this app can open."""
     return path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
 
 

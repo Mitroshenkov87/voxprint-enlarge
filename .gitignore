@@ -16,6 +16,8 @@ build_info.json
 audit-report.txt
 .mypy_cache/
 .ruff_cache/
+site/
+docs/generated/
 .app/
 .tools/
 

@@ -22,12 +22,14 @@ DWMWCP_ROUND = 2
 
 @dataclass(frozen=True)
 class OsCheck:
+    """Whether this Windows build is new enough to run the app."""
     ok: bool
     build: Optional[int]
     message: str
 
 
 def windows_build() -> Optional[int]:
+    """The Windows build number, or 0 when this is not Windows."""
     if not IS_WINDOWS:
         return None
     try:

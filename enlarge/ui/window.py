@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from enlarge import platform_win, settings, suite
-from enlarge.appinfo import APP_DISPLAY_NAME, STATUS, resource_dir, version_label
+from enlarge.appinfo import APP_DISPLAY_NAME, resource_dir, status_label, version_label
 from enlarge.images import collect, plan_outputs
 from enlarge.queue_state import dump_queue, load_queue, still_open
 from enlarge.ui import pages
@@ -45,7 +45,9 @@ _IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.webp *.avif *.jxl *.bmp *.tif *.ti
 
 
 class MainWindow(QWidget):
+    """The five-step window: Images, Model, Output, Run, and the menus."""
     def __init__(self) -> None:
+        """Build the pages and restore a saved queue."""
         super().__init__()
         self.setObjectName("root")
         self.setAcceptDrops(True)
@@ -121,7 +123,7 @@ class MainWindow(QWidget):
             self.stack.addWidget(page)
         body.addWidget(self.stack, 1)
         self.lbl_footer = QLabel(
-            f"Images only  ·  {STATUS}  ·  TensorRT, CUDA if that engine does not build  ·  {version_label()}"
+            f"Images only  ·  {status_label()}  ·  TensorRT, CUDA if that engine does not build  ·  {version_label()}"
         )
         self.lbl_footer.setObjectName("footer")
         body.addWidget(self.lbl_footer)
@@ -245,6 +247,7 @@ class MainWindow(QWidget):
         )
 
     def go(self, index: int) -> None:
+        """Switch to the step at this index."""
         index = max(0, min(index, len(STEPS) - 1))
         self.stack.setCurrentIndex(index)
         for number, button in enumerate(self.step_buttons):
@@ -253,16 +256,19 @@ class MainWindow(QWidget):
             self._rebuild_rows()
 
     def choose_files(self) -> None:
+        """Add images from a file dialog."""
         names, _selected = QFileDialog.getOpenFileNames(self, "Add images", str(Path.home()), _IMAGE_FILTER)
         if names:
             self.add_paths([Path(name) for name in names])
 
     def choose_folder(self) -> None:
+        """Add a folder, including subfolders when that option is on."""
         folder = QFileDialog.getExistingDirectory(self, "Add a folder", str(Path.home()))
         if folder:
             self.add_paths([Path(folder)])
 
     def add_paths(self, paths: list[Path]) -> None:
+        """Add these files or folders to the image list."""
         found, warnings = collect(paths, recursive=self.images_page.subfolders.isChecked())
         have = {self._key(path) for path in self.sources}
         for path in found:
@@ -274,6 +280,7 @@ class MainWindow(QWidget):
         self._sync_list()
 
     def remove_selected(self) -> None:
+        """Remove the selected rows from the image list."""
         indexes = sorted({item.row() for item in self.images_page.files.selectedIndexes()}, reverse=True)
         for index in indexes:
             if 0 <= index < len(self.sources):
@@ -281,6 +288,7 @@ class MainWindow(QWidget):
         self._sync_list()
 
     def clear_images(self) -> None:
+        """Clear the image list."""
         self.sources.clear()
         self.images_page.note.setText("")
         self._sync_list()
@@ -382,6 +390,7 @@ class MainWindow(QWidget):
         self._rebuild_rows()
 
     def choose_output_folder(self) -> None:
+        """Pick a folder for the enlarged files."""
         start = self.output_page.output_edit.text().strip() or str(Path.home())
         folder = QFileDialog.getExistingDirectory(self, "Output folder", start)
         if folder:
@@ -389,10 +398,12 @@ class MainWindow(QWidget):
             self._on_output_changed()
 
     def clear_output_folder(self) -> None:
+        """Save beside each source again."""
         self.output_page.output_edit.clear()
         self._on_output_changed()
 
     def start_run(self) -> None:
+        """Start the batch for the current list, model, and output settings."""
         if self._running() or not self.rows:
             self.run_page.status.setText("Add an image first.")
             return
@@ -442,6 +453,7 @@ class MainWindow(QWidget):
         self.job.start()
 
     def cancel_run(self) -> None:
+        """Cancel the image that is running."""
         self._cancel = True
         if self.job is not None:
             self.job.cancel()
@@ -504,6 +516,7 @@ class MainWindow(QWidget):
         self.run_page.zoom_text.setText(self.run_page.compare.zoom_text())
 
     def open_settings(self) -> None:
+        """Open the settings dialog."""
         dialog = SettingsDialog(self, self.settings)
         if dialog.exec() != int(QDialog.DialogCode.Accepted):
             return
@@ -528,6 +541,7 @@ class MainWindow(QWidget):
         self._rebuild_rows()
 
     def open_credits(self) -> None:
+        """Open the credits dialog."""
         CreditsDialog(self, list(self.catalog.models), self.catalog.warnings).exec()
 
     def _current_model(self) -> ModelManifest | None:
@@ -545,9 +559,11 @@ class MainWindow(QWidget):
         self.model_page.file_status.setText(f"{model.filename}  ·  {detail}")
 
     def check_model(self) -> None:
+        """Compare the selected weight file with its pinned sha256."""
         self._refresh_model_file()
 
     def download_model(self) -> None:
+        """Download the selected model into the shared models folder."""
         model = self._current_model()
         if model is None or (self.download is not None and self.download.isRunning()):
             return
@@ -568,6 +584,7 @@ class MainWindow(QWidget):
         self.model_page.file_status.setText(message)
 
     def remove_model(self) -> None:
+        """Delete the weight file when no other Voxprint app still uses it."""
         model = self._current_model()
         if model is None:
             return
@@ -625,14 +642,17 @@ class MainWindow(QWidget):
         self.run_page.btn_cancel.setEnabled(busy)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802 - Qt name
+        """Accept a drag that contains files."""
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
 
     def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802 - Qt name
+        """Add the dropped files or folders."""
         self.add_paths([Path(url.toLocalFile()) for url in event.mimeData().urls()])
         event.acceptProposedAction()
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 - Qt name
+        """Finish the first layout once the window is on screen."""
         super().showEvent(event)
         if sys.platform == "win32" and self.backdrop == "plain":
             self.backdrop = platform_win.apply_backdrop(int(self.winId()))
@@ -641,6 +661,7 @@ class MainWindow(QWidget):
             self.setStyleSheet(build_style(glass))
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt name
+        """Save the queue, then close."""
         self._cancel = True
         if self.job is not None and self.job.isRunning():
             self.job.cancel()

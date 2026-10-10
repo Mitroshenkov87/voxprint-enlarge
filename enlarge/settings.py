@@ -27,6 +27,7 @@ TILES = ("auto", "128", "256", "512", "768")
 
 
 def path() -> Path:
+    """Path of this app's settings file."""
     return app_home() / "settings.json"
 
 
@@ -60,6 +61,7 @@ def _clean(raw: object) -> dict[str, Any]:
 
 
 def load() -> dict[str, Any]:
+    """Read settings, filling any missing key from the defaults."""
     try:
         raw = json.loads(path().read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
@@ -68,6 +70,7 @@ def load() -> dict[str, Any]:
 
 
 def save(updates: dict[str, Any]) -> dict[str, Any]:
+    """Merge updates into the settings file and return the stored mapping."""
     cleaned = _clean({**load(), **updates})
     target = path()
     target.parent.mkdir(parents=True, exist_ok=True)

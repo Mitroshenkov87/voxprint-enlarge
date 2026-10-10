@@ -169,6 +169,7 @@ def encode_with_libheif(frame: Image.Image, dest: Path, quality: int) -> None:
 
 
 def heif_enc_path() -> str | None:
+    """Path of a system heif-enc binary, or None when this machine has none."""
     return shutil.which("heif-enc")
 
 
@@ -196,6 +197,7 @@ def heif_enc_can_encode() -> bool:
 
 
 def encode_with_heif_enc(frame: Image.Image, dest: Path, quality: int) -> None:
+    """Write one HEIC file with the system encoder. The app does not bundle one."""
     exe = heif_enc_path()
     if not exe:
         raise OSError("heif-enc is not installed")

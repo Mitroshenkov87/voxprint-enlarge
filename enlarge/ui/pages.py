@@ -34,12 +34,14 @@ def _card() -> tuple[QFrame, QVBoxLayout]:
 
 
 class ImagesPage(QWidget):
+    """The Images step: the file list and the add and remove buttons."""
     add_files = Signal()
     add_folder = Signal()
     remove_selected = Signal()
     clear_all = Signal()
 
     def __init__(self) -> None:
+        """Build the image list and its buttons."""
         super().__init__()
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -81,11 +83,13 @@ class ImagesPage(QWidget):
 
 
 class ModelPage(QWidget):
+    """The Model step: the pinned catalogue, download, and hash check."""
     download_clicked = Signal()
     check_clicked = Signal()
     remove_clicked = Signal()
 
     def __init__(self) -> None:
+        """Build the model list and its buttons."""
         super().__init__()
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -126,6 +130,7 @@ class ModelPage(QWidget):
         root.addWidget(card, 1)
 
     def fill(self, models: list[ModelManifest], selected: str) -> None:
+        """Replace the rows with this catalogue and keep the selection."""
         self.models.clear()
         for model in models:
             if model.arch == "lanczos":
@@ -144,6 +149,7 @@ class ModelPage(QWidget):
             self.models.setCurrentRow(0)
 
     def current_id(self) -> str:
+        """The selected model id, or an empty string."""
         item = self.models.currentItem()
         if item is None:
             return ""
@@ -151,7 +157,9 @@ class ModelPage(QWidget):
 
 
 class OutputPage(QWidget):
+    """The Output step: scale, format, quality, and the destination folder."""
     def __init__(self) -> None:
+        """Build the scale, format, and quality controls."""
         super().__init__()
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -229,13 +237,16 @@ class OutputPage(QWidget):
         root.addWidget(card, 1)
 
     def scale(self) -> int:
+        """The selected scale, 2 or 4."""
         return 2 if self.scale_x2.isChecked() else 4
 
     def set_scale(self, scale: int) -> None:
+        """Select 2 or 4."""
         self.scale_x2.setChecked(scale == 2)
         self.scale_x4.setChecked(scale != 2)
 
     def fill_formats(self) -> None:
+        """Fill the format list, including HEIC only when a codec exists."""
         current = str(self.format_box.currentData() or DEFAULT_FORMAT) if self.format_box.count() else DEFAULT_FORMAT
         self.format_box.clear()
         for label, key in choices():
@@ -244,9 +255,11 @@ class OutputPage(QWidget):
         self.format_box.setCurrentIndex(index if index >= 0 else 0)
 
     def image_format(self) -> str:
+        """The selected output format id."""
         return str(self.format_box.currentData() or DEFAULT_FORMAT)
 
     def apply_output(self, image_format: str, quality: int, lossless: bool) -> None:
+        """Apply a saved format, quality, and lossless flag."""
         key = normalize_format(image_format)
         index = self.format_box.findData(key)
         self.format_box.setCurrentIndex(index if index >= 0 else 0)
@@ -255,6 +268,7 @@ class OutputPage(QWidget):
 
 
 class RunPage(QWidget):
+    """The Run step: the queue, the compare view, and the Run button."""
     run_clicked = Signal()
     cancel_clicked = Signal()
     zoom_in = Signal()
@@ -262,6 +276,7 @@ class RunPage(QWidget):
     zoom_fit = Signal()
 
     def __init__(self) -> None:
+        """Build the queue table and the compare view."""
         super().__init__()
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)

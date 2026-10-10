@@ -1,4 +1,4 @@
-# Code audit (tools/audit.py): ruff F/E9, mypy, bandit high, pip-audit, gitleaks.
+# Code audit (tools/audit.py): ruff F/E9/D1, mypy, bandit high, pip-audit, gitleaks.
 # Vulture and radon are report-only. Tests run in the same job, on Windows and Linux.
 name: audit
 on:

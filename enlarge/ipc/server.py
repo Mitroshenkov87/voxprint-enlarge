@@ -21,7 +21,7 @@ from enlarge.ipc.protocol import (
     message_kind,
     request_from_message,
 )
-from enlarge.appinfo import APP_VERSION
+from enlarge.appinfo import product_version
 from enlarge.ui.window import MainWindow
 from voxprint_engine.hardware import assess_gpu, ci_lanczos
 
@@ -38,6 +38,7 @@ class IpcServer(QObject):
     _kick = Signal()
 
     def __init__(self) -> None:
+        """Build the listener. The window stays None until open_ui."""
         super().__init__()
         self.server = QLocalServer(self)
         self.server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
@@ -57,6 +58,7 @@ class IpcServer(QObject):
         self.error = ""
 
     def listen(self) -> bool:
+        """Bind the per-user socket or pipe. False means the endpoint is taken."""
         self.name = prepare_endpoint()
         if not self.server.listen(self.name):
             self.error = self.server.errorString()
@@ -66,9 +68,11 @@ class IpcServer(QObject):
         return True
 
     def endpoint(self) -> str:
+        """The listen name passed to QLocalServer."""
         return self.name or listen_name()
 
     def close(self) -> None:
+        """Stop listening and drop the current client."""
         self.timer.stop()
         for control in self.controls.values():
             control.cancel()
@@ -116,7 +120,7 @@ class IpcServer(QObject):
             return
         kind = message_kind(message)
         if kind == "hello":
-            self._send(client, hello_message(APP_VERSION))
+            self._send(client, hello_message(product_version()))
             return
         if kind == "capabilities":
             payload = capabilities()

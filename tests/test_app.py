@@ -14,7 +14,7 @@ from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
 from main import main
 from voxprint_engine.hardware import NO_GPU_MESSAGE, OLD_DRIVER_MESSAGE, GpuInfo
 
-from enlarge.appinfo import version_line
+from enlarge.appinfo import format_version, version_line
 from enlarge.images import collect, plan_outputs
 from enlarge.queue_state import dump_queue
 from enlarge.platform_win import MIN_BUILD, START_MENU_FOLDER, check_os
@@ -79,7 +79,8 @@ def test_platform_names() -> None:
     assert MIN_BUILD == 26100
     assert check_os(build=26100, is_windows=True).ok
     assert not check_os(build=22000, is_windows=True).ok
-    assert "pre-alpha" in version_line()
+    assert "0.2.0-rc.1" in version_line()
+    assert "pre-alpha" in format_version("0.1.0-pre")
     source = Path("enlarge/platform_win.py").read_text(encoding="utf-8")
     assert "22621" not in source
     assert "22H2" not in source
@@ -261,7 +262,7 @@ def test_gui_refuses_without_a_cuda_gpu(monkeypatch: pytest.MonkeyPatch, capsys:
     def critical(_parent: object, title: str, text: str) -> None:
         shown.append(f"{title}: {text}")
 
-    monkeypatch.setattr("main.QMessageBox.critical", critical)
+    monkeypatch.setattr("PySide6.QtWidgets.QMessageBox.critical", critical)
     _app()
     code = main([])
     captured = capsys.readouterr()
