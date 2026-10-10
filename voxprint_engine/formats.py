@@ -35,7 +35,7 @@ _heic_known = False
 
 
 def _avif_ready() -> bool:
-    """Pillow 11.3 and newer ship an AVIF saver. No extra plugin is imported."""
+    """Pillow 12.3.0 and newer ship an AVIF saver. No extra plugin is imported."""
     Image.init()
     return "AVIF" in Image.SAVE
 
