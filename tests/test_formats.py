@@ -128,7 +128,7 @@ def test_no_bundled_heic_or_avif_plugin() -> None:
     assert "pillow-jxl" not in requirements
     assert "pillow-avif" not in requirements
     assert "pillow_avif" not in requirements
-    assert "Pillow>=11.3" in requirements
+    assert "Pillow>=12.3.0" in requirements
     for path in Path("voxprint_engine").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         assert "import pillow_heif" not in text
