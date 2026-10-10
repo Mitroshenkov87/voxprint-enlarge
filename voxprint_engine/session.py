@@ -7,6 +7,7 @@ import numpy as np
 import onnxruntime as ort
 
 from voxprint_engine.providers import CPU, ProviderChoice
+from voxprint_engine.video import run_batch as _video_run_batch
 
 
 class EngineBuildError(RuntimeError):
@@ -87,3 +88,11 @@ def run_tile(session: ort.InferenceSession, tile: np.ndarray) -> np.ndarray:
     elif output.ndim != 3:
         raise InferenceError(f"unexpected network output shape {output.shape}")
     return output.astype(np.float32, copy=False)
+
+
+def run_batch(session: ort.InferenceSession, batch: np.ndarray) -> np.ndarray:
+    """NCHW float batch. fp16 when the session input type contains float16.
+
+    Image ``run_tile`` is unchanged. This delegates to ``voxprint_engine.video``.
+    """
+    return _video_run_batch(session, batch)

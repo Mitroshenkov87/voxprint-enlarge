@@ -13,6 +13,7 @@ voxprint_engine/         importable by Clarity (no Qt)
   infer.py               ONNX, then PyTorch; Lanczos only for CI
   session.py             one ONNX provider at a time
   tile.py                overlapping feathered tiles
+  video.py               temporal windows, per-frame tiles, NCHW batch
   providers.py           TensorRT, CUDA after a failed engine build
   hardware.py            startup gate; compute-capability warning
   store.py               shared models folder and .users.json
@@ -31,6 +32,7 @@ from voxprint_engine.worker import WorkerClient, UpscaleRequest
 from voxprint_engine.vram import vram_budget_gb, choose_tile, note_spill
 from voxprint_engine.gpu_lock import gpu_job
 from voxprint_engine.thermal import decide
+from voxprint_engine.video import temporal_windows, restore_frames
 ```
 
 `API` is 1. A breaking change to the manifest or the worker messages bumps it.
@@ -60,6 +62,9 @@ The app starts `python -m voxprint_engine.worker`. Messages are one JSON object
 per line on stdin and stdout. Logs go to stderr.
 
 * `{"op":"ready","engine":"voxprint","pid":N}` when the process is up
+* `{"op":"restore_batch", ...}` restores an NHWC float `.npy` for Clarity.
+  The fields and the keep rules are the Video API in `docs/ENGINE.md`.
+  The image `upscale` path does not use this op.
 * `{"op":"upscale", ...}` with `id`, `src`, `dst`, `scale` (2 or 4), `format`
   (`avif`, `jxl`, `webp`, `jpeg`, or `heic` when a system codec is present),
   `quality`, `lossless` (JPEG XL only), `model_id`, `tile`, `model_tile`,
@@ -84,11 +89,12 @@ true, and never go below 1. Enlarge still sends one image at a time. Clarity
 can send `batch` for a frame group and read `next_batch` back. A tile that
 does not fit is halved as well (see `docs/ENGINE.md`).
 
-Video paths are rejected. Video frames, scene cuts, and NVDEC belong in a
-later revision of this package, co-maintained with Clarity.
+The image upscale path rejects video files. Clarity sends frames through
+`restore_batch`. Scene cuts and NVDEC stay out of this package.
 
 ## What this build does not do
 
-Face restore and generative upscale are registered and not run. Video frames,
-scene cuts, and NVDEC stay out of this package until Clarity co-maintains that
-path. The thermal rule is implemented and is not yet applied between batches.
+Face restore and generative upscale are registered and not run. Scene cuts
+and NVDEC stay out of this package. Video frame restore for Clarity is the
+Video API in `docs/ENGINE.md`. The thermal rule is implemented and is not
+yet applied between batches.

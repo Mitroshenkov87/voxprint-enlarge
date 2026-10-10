@@ -14,6 +14,7 @@ from voxprint_engine.registry import combined_catalog
 from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.store import StoreError, ensure_weight, register_quietly
 from voxprint_engine.worker.lanczos import ImageJobError
+from voxprint_engine.worker.restore import handle_restore
 
 
 _stdout: TextIO = sys.stdout
@@ -122,6 +123,11 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
         return None
     if op == "ping":
         return {"op": "result", "id": str(message.get("id") or ""), "ok": True, "message": "pong", "engine": "voxprint"}
+    if op == "restore_batch":
+        try:
+            return handle_restore(message)
+        except (OSError, RuntimeError, ValueError) as exc:
+            return {"op": "error", "id": str(message.get("id") or ""), "ok": False, "message": str(exc)}
     if op != "upscale":
         return {"op": "error", "id": str(message.get("id") or ""), "ok": False, "message": f"unknown op {op!r}"}
     try:
