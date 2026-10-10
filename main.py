@@ -3,6 +3,10 @@
     python main.py                         open the window
     python main.py --selftest              open the window, then quit (smoke test)
     python main.py --version
+    python main.py --capabilities --json   one JSON object, exit 0 with or without a GPU
+    python main.py --serve --hidden        protocol 1 listener, no window until open_ui
+    python main.py --register [--exe PATH] discovery records for a future installer
+    python main.py --input FILE --scale 2|4 --preset photo|art [--model ID] [--quality fast|max] [--format FMT] [--output PATH] --json-progress
     python main.py --upscale FILE --out FILE [--scale 2|4] [--format avif|jxl|webp|jpeg|heic] [--quality N] [--lossless]
     python main.py --worker                internal: the inference process
 """
@@ -12,12 +16,18 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from enlarge.appinfo import APP_DISPLAY_NAME, version_line
 from enlarge.batch import run_batch
+from enlarge.ipc.capabilities import capabilities
+from enlarge.ipc.jobs import JobControl, run_job
+from enlarge.ipc.protocol import EnlargeRequest, dumps
+from enlarge.ipc.register import register_install
+from enlarge.ipc.server import IpcServer
 from enlarge.paths import logs_dir
 from enlarge.suite import gpu
 from enlarge.ui import splash as splash_mod
@@ -143,6 +153,75 @@ def _gui(argv: list[str]) -> int:
     return app.exec()
 
 
+def _write_json(message: dict[str, Any]) -> None:
+    data = dumps(message)
+    stream = sys.stdout
+    buffer = getattr(stream, "buffer", None)
+    if buffer is None:
+        stream.write(data.decode("utf-8"))
+        stream.flush()
+        return
+    buffer.write(data)
+    buffer.flush()
+
+
+def _capabilities() -> int:
+    _write_json(capabilities())
+    return 0
+
+
+def _register(argv: list[str]) -> int:
+    exe = Path(_arg(argv, "--exe") or str(ROOT / "main.py"))
+    register_install(exe)
+    return 0
+
+
+def _serve() -> int:
+    running = QApplication.instance()
+    app = running if isinstance(running, QApplication) else QApplication(sys.argv)
+    app.setApplicationName(APP_DISPLAY_NAME)
+    app.setOrganizationName("Voxprint")
+    server = IpcServer()
+    if not server.listen():
+        print(server.error or "could not listen for Lucent", file=sys.stderr)
+        return 1
+    return int(app.exec())
+
+
+def _json_progress(argv: list[str]) -> int:
+    if "--json-progress" not in argv:
+        print(
+            "usage: main.py --input FILE --scale 2|4 --preset photo|art "
+            "[--model ID] [--quality fast|max] [--format FMT] [--output PATH] --json-progress",
+            file=sys.stderr,
+        )
+        return 2
+    source = _arg(argv, "--input")
+    preset = _arg(argv, "--preset", "") or ""
+    model = _arg(argv, "--model", "") or ""
+    if not source or (not preset and not model):
+        print("input and preset (or model) are required", file=sys.stderr)
+        return 2
+    try:
+        scale = int(_arg(argv, "--scale", "4") or "4")
+    except ValueError:
+        print("scale must be an integer", file=sys.stderr)
+        return 2
+    request = EnlargeRequest(
+        id="cli",
+        input=source,
+        scale=scale,
+        preset=preset,
+        model=model,
+        quality=_arg(argv, "--quality", "fast") or "fast",
+        format=_arg(argv, "--format", "") or "",
+        output=_arg(argv, "--output", "") or "",
+        output_dir="",
+        open_ui=False,
+    )
+    return run_job(request, _write_json, JobControl())
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     _guard_stdio()
@@ -151,7 +230,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if "--worker" in args:
         return serve()
+    if "--capabilities" in args:
+        if "--json" not in args:
+            print("usage: main.py --capabilities --json", file=sys.stderr)
+            return 2
+        return _capabilities()
+    if "--register" in args:
+        return _register(args)
     _setup_logging()
+    if "--serve" in args:
+        return _serve()
+    if "--input" in args:
+        return _json_progress(args)
     if "--upscale" in args:
         blocked = _gpu_block()
         if blocked:

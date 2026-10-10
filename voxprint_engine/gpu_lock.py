@@ -104,12 +104,25 @@ def _ours(data: dict[str, Any] | None) -> bool:
     return data.get("owner") == OWNER and data.get("pid") == os.getpid()
 
 
+def _held_by_parent(data: dict[str, Any] | None) -> bool:
+    """The worker subprocess shares a lock its parent already holds for this job."""
+    if not data or data.get("owner") != OWNER:
+        return False
+    pid = data.get("pid")
+    if isinstance(pid, bool) or not isinstance(pid, (int, str)):
+        return False
+    try:
+        return int(pid) == os.getppid()
+    except (TypeError, ValueError):
+        return False
+
+
 def try_acquire(job: str, eta_s: float = 600.0, path: Path | None = None) -> dict[str, Any] | None:
     """Create the lock. None means this process holds it; otherwise the holder's data is returned."""
     target = path or lock_path()
     current = read_lock(target)
     if current is not None:
-        if _ours(current):
+        if _ours(current) or _held_by_parent(current):
             return None
         if not is_stale(current):
             return current or {"owner": "?"}

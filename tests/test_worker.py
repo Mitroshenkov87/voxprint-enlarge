@@ -149,6 +149,28 @@ def test_worker_process_resizes_and_releases_the_lock(tmp_path: Path, monkeypatc
     assert not (Path(os.environ["VOXPRINT_HOME"]) / "models" / "4xNomos2_realplksr_dysample.pth").exists()
 
 
+def test_a_child_worker_shares_the_parent_lock() -> None:
+    target = lock_path()
+    future = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    target.write_text(
+        json.dumps(
+            {
+                "owner": "enlarge",
+                "pid": os.getppid(),
+                "job": "enlarge:ipc:parent",
+                "started": future,
+                "eta": future,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert try_acquire("child") is None
+    release()
+    data = read_lock()
+    assert data is not None and data.get("pid") == os.getppid()
+    assert target.is_file()
+
+
 def test_thermal_rule() -> None:
     early = decide(elapsed_s=60, median_c=90, throttling_s=120, paused=False)
     assert early.action == "run"
