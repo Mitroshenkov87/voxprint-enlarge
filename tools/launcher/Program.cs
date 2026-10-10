@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 string dir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 bool console = args.Length > 0;
 string folder = Path.Combine(dir, "python");
