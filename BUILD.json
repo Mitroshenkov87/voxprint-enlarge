@@ -1,6 +1,6 @@
 {
-  "version": "0.2.0-rc.1",
+  "version": "0.2.0-rc.2",
   "offset": 0,
-  "codename": "Petach",
-  "offset_note": "The release workflow's GITHUB_RUN_NUMBER plus offset. version is what --version and --capabilities report. Petach names the v0.2.0-rc.1 installer."
+  "codename": "Bahir",
+  "offset_note": "The release workflow's GITHUB_RUN_NUMBER plus offset. version is what --version and --capabilities report. Bahir names the v0.2.0-rc.2 installer."
 }

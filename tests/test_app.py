@@ -79,7 +79,7 @@ def test_platform_names() -> None:
     assert MIN_BUILD == 26100
     assert check_os(build=26100, is_windows=True).ok
     assert not check_os(build=22000, is_windows=True).ok
-    assert "0.2.0-rc.1" in version_line()
+    assert "0.2.0-rc.2" in version_line()
     assert "pre-alpha" in format_version("0.1.0-pre")
     source = Path("enlarge/platform_win.py").read_text(encoding="utf-8")
     assert "22621" not in source
