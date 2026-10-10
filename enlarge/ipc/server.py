@@ -9,6 +9,7 @@ from typing import Any
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
+from enlarge.ipc.capabilities import capabilities
 from enlarge.ipc.jobs import JobControl, run_job
 from enlarge.ipc.naming import listen_name, prepare_endpoint, tighten_socket
 from enlarge.ipc.protocol import (
@@ -17,6 +18,7 @@ from enlarge.ipc.protocol import (
     error_message,
     hello_message,
     loads,
+    message_kind,
     request_from_message,
 )
 from enlarge.appinfo import APP_VERSION
@@ -112,17 +114,23 @@ class IpcServer(QObject):
         except (UnicodeError, ValueError) as exc:
             self._send(client, error_message("", "internal", str(exc)))
             return
-        op = message.get("op")
-        if op == "hello":
+        kind = message_kind(message)
+        if kind == "hello":
             self._send(client, hello_message(APP_VERSION))
             return
-        if op == "cancel":
+        if kind == "capabilities":
+            payload = capabilities()
+            payload["op"] = "capabilities"
+            payload["type"] = "capabilities"
+            self._send(client, payload)
+            return
+        if kind == "cancel":
             job_id = message.get("id")
             control = self.controls.get(job_id) if isinstance(job_id, str) else None
             if control is not None:
                 control.cancel()
             return
-        if op == "enlarge.request":
+        if kind == "enlarge.request":
             self._enqueue(client, message)
             return
         job_id = message.get("id")

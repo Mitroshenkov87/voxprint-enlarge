@@ -10,7 +10,7 @@ Voxprint AI Enlarge makes a still picture larger on your own computer. You pick 
 
 **License:** Apache-2.0. See `LICENSE` and `NOTICE`. Model weights keep the licence recorded in the registry. A release build refuses non-commercial or unlicensed weights.
 
-The VM checklist is [docs/TESTING-GPU.md](docs/TESTING-GPU.md). Later work is listed in [docs/ROADMAP.md](docs/ROADMAP.md) and is not in this build.
+The VM checklist is [docs/TESTING-GPU.md](docs/TESTING-GPU.md). The headless command other suite apps call is [docs/CLI.md](docs/CLI.md). Later work is listed in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## System requirements
 

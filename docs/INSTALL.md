@@ -63,4 +63,4 @@ python main.py --upscale FILE --out FILE [--scale 2|4] [--format avif|jxl|webp|j
 python main.py --worker                internal worker process
 ```
 
-`--json-progress` streams the same JSON objects as the socket. Exit 0 after `done`, 1 after `error`. The message list, discovery keys, and output names are in `docs/IPC.md`.
+The headless command other apps call is `docs/CLI.md`. `--json-progress` streams JSON lines on stdout and does not open a window. The socket messages are in `docs/IPC.md`. `python main.py --upscale FILE --out FILE` is unchanged.

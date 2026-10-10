@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from enlarge.ui.compare import CompareView
+from enlarge.ui.icons import apply_suite_icon
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY, choices, normalize_format
 from voxprint_engine.registry.schema import ModelManifest
 
@@ -111,6 +112,7 @@ class ModelPage(QWidget):
         actions = QHBoxLayout()
         self.btn_download = QPushButton("Download")
         self.btn_download.setObjectName("primary")
+        apply_suite_icon(self.btn_download, "download", on_primary=True)
         self.btn_check = QPushButton("Check hash")
         self.btn_remove = QPushButton("Remove")
         self.btn_download.clicked.connect(self.download_clicked.emit)
@@ -201,7 +203,9 @@ class OutputPage(QWidget):
         self.output_edit = QLineEdit()
         self.output_edit.setPlaceholderText("Empty: save beside each image")
         self.btn_output = QPushButton("Browse")
+        apply_suite_icon(self.btn_output, "save-as")
         self.btn_output_clear = QPushButton("Beside source")
+        apply_suite_icon(self.btn_output_clear, "save-copy")
         folder_row.addWidget(self.output_edit, 1)
         folder_row.addWidget(self.btn_output)
         folder_row.addWidget(self.btn_output_clear)
@@ -300,6 +304,7 @@ class RunPage(QWidget):
 
         actions = QHBoxLayout()
         self.btn_run = QPushButton("Run")
+        apply_suite_icon(self.btn_run, "export", on_primary=True)
         self.btn_run.setObjectName("primary")
         self.btn_run.setProperty("big", True)
         self.btn_cancel = QPushButton("Cancel")

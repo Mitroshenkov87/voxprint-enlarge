@@ -24,4 +24,6 @@ def isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("VOXPRINT_FAKE_DELAY", raising=False)
     monkeypatch.delenv("VOXPRINT_ORT_DEVICE", raising=False)
     monkeypatch.delenv("VOXPRINT_TRT_CACHE", raising=False)
+    monkeypatch.delenv("VOXPRINT_GPU_PARENT_PID", raising=False)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
     reset_heic_cache()
