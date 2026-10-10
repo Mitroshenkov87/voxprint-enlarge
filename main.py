@@ -5,7 +5,9 @@
     python main.py --version
     python main.py --capabilities --json   one JSON object, exit 0 with or without a GPU
     python main.py --serve --hidden        protocol 1 listener, no window until open_ui
-    python main.py --register [--exe PATH] discovery records for a future installer
+    python main.py --register [--exe PATH] discovery records for Lucent
+    python main.py --unregister            remove those discovery records
+    python main.py --install-gpu           CUDA 13 ONNX Runtime and TensorRT wheels
     python main.py --input FILE --scale 2|4 --preset photo|art [--model ID] [--quality fast|max] [--format FMT] [--output PATH] --json-progress
     python main.py --upscale FILE --out FILE [--scale 2|4] [--format avif|jxl|webp|jpeg|heic] [--quality N] [--lossless]
     python main.py --worker                internal: the inference process
@@ -14,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -26,7 +29,7 @@ from enlarge.batch import run_batch
 from enlarge.ipc.capabilities import capabilities
 from enlarge.ipc.jobs import JobControl, run_job
 from enlarge.ipc.protocol import EnlargeRequest, dumps
-from enlarge.ipc.register import register_install
+from enlarge.ipc.register import register_install, unregister_install
 from enlarge.ipc.server import IpcServer
 from enlarge.paths import logs_dir
 from enlarge.suite import gpu
@@ -176,6 +179,25 @@ def _register(argv: list[str]) -> int:
     return 0
 
 
+def _unregister() -> int:
+    unregister_install()
+    return 0
+
+
+def _install_gpu() -> int:
+    """Replace the CPU ONNX Runtime wheel with the CUDA 13 wheels. Needs a network."""
+    if getattr(sys, "frozen", False):
+        print("install the app directory, then run voxprint-enlarge --install-gpu", file=sys.stderr)
+        return 1
+    python = sys.executable
+    subprocess.run([python, "-m", "pip", "uninstall", "-y", "onnxruntime"], check=False)
+    completed = subprocess.run(
+        [python, "-m", "pip", "install", "onnxruntime-gpu>=1.20,<2", "tensorrt-cu13"],
+        check=False,
+    )
+    return int(completed.returncode)
+
+
 def _serve() -> int:
     running = QApplication.instance()
     app = running if isinstance(running, QApplication) else QApplication(sys.argv)
@@ -237,6 +259,10 @@ def main(argv: list[str] | None = None) -> int:
         return _capabilities()
     if "--register" in args:
         return _register(args)
+    if "--unregister" in args:
+        return _unregister()
+    if "--install-gpu" in args:
+        return _install_gpu()
     _setup_logging()
     if "--serve" in args:
         return _serve()

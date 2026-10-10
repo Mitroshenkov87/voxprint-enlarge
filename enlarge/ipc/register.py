@@ -91,6 +91,40 @@ def write_windows(exe: Path, ipc_name: str | None = None) -> None:
         app_key.Close()
 
 
+def unregister_linux(data_home: Path, bin_dir: Path) -> None:
+    """Remove the discovery desktop file and the PATH launcher."""
+    (data_home / "applications" / DESKTOP_NAME).unlink(missing_ok=True)
+    (bin_dir / LAUNCHER_NAME).unlink(missing_ok=True)
+
+
+def unregister_windows() -> None:
+    """Remove the HKCU discovery key and the App Paths entry."""
+    if winreg is None:
+        raise OSError("the Windows registry is only available on Windows")
+    for key in (REGISTRY_KEY, APP_PATHS_KEY):
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, key)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == 2:
+                continue
+            raise
+
+
+def unregister_install(data_home: Path | None = None, bin_dir: Path | None = None) -> None:
+    """Drop the discovery records. The uninstaller calls this before it deletes files."""
+    if sys.platform == "win32":
+        unregister_windows()
+        return
+    if data_home is None:
+        env = os.environ.get("XDG_DATA_HOME", "").strip()
+        data_home = Path(env) if env else Path.home() / ".local" / "share"
+    if bin_dir is None:
+        bin_dir = Path.home() / ".local" / "bin"
+    unregister_linux(data_home, bin_dir)
+
+
 def register_install(exe: Path, data_home: Path | None = None, bin_dir: Path | None = None) -> Path | None:
     """Record this install for Lucent. Linux returns the desktop path. Windows returns None."""
     target = exe.resolve()
