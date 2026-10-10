@@ -48,14 +48,34 @@ jobs:
         run: dotnet publish tools/launcher/VoxprintEnlarge.csproj -c Release -o dist/launcher
       - name: Copy the launcher into the payload
         run: Copy-Item dist/launcher/VoxprintEnlarge.exe dist/payload/VoxprintEnlarge.exe
+      # 7.1.0's installer sat on an invisible prompt on windows-latest
+      # (/DIR without /SP- and /ALLUSERS). 6.7.3 is the compiler enlarge.iss needs.
       - name: Install Inno Setup
         shell: pwsh
+        timeout-minutes: 8
         run: |
-          $url = "https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe"
-          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\innosetup.exe"
-          Start-Process "$env:RUNNER_TEMP\innosetup.exe" -ArgumentList "/VERYSILENT","/NORESTART","/DIR=C:\InnoSetup" -Wait
+          $ProgressPreference = "SilentlyContinue"
+          $url = "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe"
+          $exe = Join-Path $env:RUNNER_TEMP "innosetup.exe"
+          $log = Join-Path $env:RUNNER_TEMP "inno-install.log"
+          curl.exe -fL --retry 5 --retry-all-errors --retry-delay 2 -o $exe $url
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup download failed" }
+          $proc = Start-Process -FilePath $exe -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/ALLUSERS", "/LOG=$log"
+          ) -Wait -PassThru
+          $candidates = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if ($proc.ExitCode -ne 0 -or -not $iscc) {
+            if (Test-Path $log) { Get-Content $log -Tail 80 }
+            throw "Inno Setup install failed (exit $($proc.ExitCode))"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value (Split-Path $iscc)
+          Write-Host "Using $iscc"
       - name: Compile the installer
-        run: C:\InnoSetup\ISCC.exe /DSource=dist\payload installer\windows\enlarge.iss
+        run: ISCC.exe /DSource=dist\payload installer\windows\enlarge.iss
       - uses: actions/upload-artifact@v4
         with:
           name: enlarge-windows
@@ -86,11 +106,21 @@ jobs:
           name=$(python -c "import sys; sys.path.insert(0, '${{ github.workspace }}'); from tools.build_number import codename; print(codename())")
           tag="${GITHUB_REF_NAME}"
           title="Voxprint AI Enlarge ${tag#v} · build ${build} \"${name}\""
-          gh release create "$tag" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "$title" \
-            --prerelease \
-            --notes "Pre-release. No model weights are included. On a GPU machine run \`voxprint-enlarge --install-gpu\` once, then follow docs/TESTING-GPU.md. Build number is the release workflow run plus BUILD.json offset. Codename: ${name}." \
-            VoxprintEnlarge-Setup.exe \
-            voxprint-enlarge-linux-x64.tar.gz \
-            SHA256SUMS
+          notes="Pre-release. No model weights are included. On a GPU machine run \`voxprint-enlarge --install-gpu\` once, then follow docs/TESTING-GPU.md. Build number is the release workflow run plus BUILD.json offset. Codename: ${name}."
+          if gh release view "$tag" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "$tag" --repo "${GITHUB_REPOSITORY}" --clobber \
+              VoxprintEnlarge-Setup.exe \
+              voxprint-enlarge-linux-x64.tar.gz \
+              SHA256SUMS
+            gh release edit "$tag" --repo "${GITHUB_REPOSITORY}" \
+              --title "$title" --prerelease --notes "$notes"
+          else
+            gh release create "$tag" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "$title" \
+              --prerelease \
+              --notes "$notes" \
+              VoxprintEnlarge-Setup.exe \
+              voxprint-enlarge-linux-x64.tar.gz \
+              SHA256SUMS
+          fi
