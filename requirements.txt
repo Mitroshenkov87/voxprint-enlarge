@@ -1,0 +1,5 @@
+# Voxprint AI Enlarge, phase 1. Neural runtimes (onnxruntime, torch) are not
+# dependencies until a later phase loads real weights.
+PySide6>=6.7,<7
+Pillow>=10,<13
+psutil>=5.9,<8
