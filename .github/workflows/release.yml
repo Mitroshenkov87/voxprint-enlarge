@@ -1,0 +1,96 @@
+# Free GitHub-hosted runners only. No GPU. The bundle has no model weights.
+# Linux is a tarball of a relocatable CPython plus the app, so --install-gpu can
+# write CUDA wheels on the target. An AppImage is read-only and is not used.
+name: release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Assemble the Linux tree
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: python -m tools.assemble_bundle --dest dist/voxprint-enlarge --platform linux --with-python
+      - name: Pack the tarball
+        run: tar -C dist -czf dist/voxprint-enlarge-linux-x64.tar.gz voxprint-enlarge
+      - uses: actions/upload-artifact@v4
+        with:
+          name: enlarge-linux
+          path: dist/voxprint-enlarge-linux-x64.tar.gz
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Assemble the Windows tree
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: python -m tools.assemble_bundle --dest dist/payload --platform windows --with-python
+      - name: Build the launcher
+        run: dotnet publish tools/launcher/VoxprintEnlarge.csproj -c Release -o dist/launcher
+      - name: Copy the launcher into the payload
+        run: Copy-Item dist/launcher/VoxprintEnlarge.exe dist/payload/VoxprintEnlarge.exe
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $url = "https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe"
+          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\innosetup.exe"
+          Start-Process "$env:RUNNER_TEMP\innosetup.exe" -ArgumentList "/VERYSILENT","/NORESTART","/DIR=C:\InnoSetup" -Wait
+      - name: Compile the installer
+        run: C:\InnoSetup\ISCC.exe /DSource=dist\payload installer\windows\enlarge.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: enlarge-windows
+          path: dist/VoxprintEnlarge-Setup.exe
+          if-no-files-found: error
+
+  publish:
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Checksums and pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd dist
+          mv enlarge-linux/voxprint-enlarge-linux-x64.tar.gz .
+          mv enlarge-windows/VoxprintEnlarge-Setup.exe .
+          sha256sum VoxprintEnlarge-Setup.exe voxprint-enlarge-linux-x64.tar.gz > SHA256SUMS
+          build=$(python -c "import sys; sys.path.insert(0, '${{ github.workspace }}'); from tools.build_number import build_number, codename; print(build_number())")
+          name=$(python -c "import sys; sys.path.insert(0, '${{ github.workspace }}'); from tools.build_number import codename; print(codename())")
+          tag="${GITHUB_REF_NAME}"
+          title="Voxprint AI Enlarge ${tag#v} · build ${build} \"${name}\""
+          gh release create "$tag" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "$title" \
+            --prerelease \
+            --notes "Pre-release. No model weights are included. On a GPU machine run \`voxprint-enlarge --install-gpu\` once, then follow docs/TESTING-GPU.md. Build number is the release workflow run plus BUILD.json offset. Codename: ${name}." \
+            VoxprintEnlarge-Setup.exe \
+            voxprint-enlarge-linux-x64.tar.gz \
+            SHA256SUMS

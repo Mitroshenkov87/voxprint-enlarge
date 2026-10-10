@@ -27,7 +27,15 @@ def format_version(version: str = APP_VERSION, build: int = APP_BUILD, codename:
 
 
 def version_label() -> str:
-    return format_version()
+    info = build_info()
+    version = str(info.get("version") or APP_VERSION)
+    raw_build = info.get("build", APP_BUILD)
+    try:
+        build = int(raw_build)
+    except (TypeError, ValueError):
+        build = APP_BUILD
+    codename = str(info.get("codename") or CODENAME)
+    return format_version(version, build, codename)
 
 
 def resource_dir() -> Path:

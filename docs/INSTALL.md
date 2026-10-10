@@ -1,6 +1,6 @@
 # Install and configuration
 
-Phase 1 has no installer. Run it from a checkout.
+A checkout runs from source. A release build is a per-user Windows installer or a Linux tarball. Neither one contains model weights. On the machine with the NVIDIA driver, run `voxprint-enlarge --install-gpu` once before the first TensorRT build. The VM checklist is `docs/TESTING-GPU.md`.
 
 ## Requirements
 
@@ -43,7 +43,7 @@ python main.py --upscale samples/sample.png --out out.avif --scale 2 --format av
 
 ## Start menu
 
-On Windows the shortcut belongs in the shared **Voxprint** folder, next to the other suite apps. `installer/windows/start-menu.ps1` creates that shortcut for a checkout. There is no silent installer switch yet.
+On Windows the shortcut belongs in the shared **Voxprint** folder, next to the other suite apps. `installer/windows/enlarge.iss` is the per-user installer. `installer/windows/start-menu.ps1` creates that shortcut for a checkout.
 
 On Linux, `installer/linux/voxprint-enlarge.desktop` is the desktop entry. The icon file is `installer/linux/voxprint-enlarge-256.png`.
 
@@ -55,7 +55,9 @@ python main.py --selftest              open the window, then quit
 python main.py --version
 python main.py --capabilities --json   one JSON object, exit 0 with or without a GPU
 python main.py --serve --hidden        protocol 1 listener; the window stays closed until open_ui
-python main.py --register [--exe PATH] discovery records (no installer in this build)
+python main.py --register [--exe PATH]   discovery records for Lucent
+python main.py --unregister              remove those records
+python main.py --install-gpu             CUDA 13 ONNX Runtime and TensorRT, on a GPU machine
 python main.py --input FILE --scale 2|4 --preset photo|art [--model ID] [--quality fast|max] [--format FMT] [--output PATH] --json-progress
 python main.py --upscale FILE --out FILE [--scale 2|4] [--format avif|jxl|webp|jpeg|heic] [--quality N] [--lossless] [--model ID] [--double]
 python main.py --worker                internal worker process
