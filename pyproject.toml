@@ -1,9 +1,27 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "voxprint-enlarge"
-version = "0.1.0-pre"
-description = "Voxprint AI Enlarge: offline image upscaling for the Voxprint AI Media Suite."
+name = "voxprint-engine"
+version = "1.0.0"
+description = "Shared ONNX image-upscale engine for the Voxprint suite. Clarity depends on this distribution."
 requires-python = ">=3.14,<3.15"
-readme = "README.md"
+readme = "docs/ENGINE.md"
+license = "Apache-2.0"
+dependencies = [
+    "Pillow>=11.3,<13",
+    "numpy>=2,<3",
+    "onnxruntime>=1.20,<2",
+    "imagecodecs==2026.10.10",
+]
+
+[tool.setuptools.packages.find]
+include = ["voxprint_engine*"]
+
+[tool.setuptools.package-data]
+"voxprint_engine.registry" = ["catalog.json"]
+voxprint_engine = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
