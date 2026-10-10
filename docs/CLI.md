@@ -92,7 +92,7 @@ Prints one JSON object and exits 0. It does not need a GPU, a network, or a wind
 {
   "protocol": 1,
   "app": "enlarge",
-  "version": "0.2.0-rc.1",
+  "version": "0.2.0-rc.2",
   "gpu": {"name": null, "cc": null, "status": "none", "reason": "no_nvidia"},
   "models": [
     {"id": "4x-nomos2-realplksr-dysample", "preset": "photo", "quality": "fast", "scales": [2, 4], "installed": false}

@@ -1,81 +1,82 @@
 # GPU VM checklist
 
-Use this on a rented Windows 11 or Linux machine with an RTX 4090 (or another NVIDIA GPU) and a driver from the 600 series or newer. The GitHub build does not run these steps. CI has no GPU, and the installer does not contain model weights.
+Use this on the RTX 4090 machine (Windows 11 or Linux, NVIDIA driver from the 600 series or newer). CI does not run these steps. The installer contains no model weights.
 
-Install the `v0.2.0-rc.1` pre-release first. The steps below match the README.
+Install `v0.2.0-rc.2`. Check `SHA256SUMS` before you install.
 
-* Windows: run `VoxprintEnlarge-Setup.exe`. It installs for the current user under `%LOCALAPPDATA%\Voxprint\Enlarge`, adds **Voxprint AI Enlarge** to the Start menu folder **Voxprint**, and writes the Lucent discovery key. Uninstall runs `--unregister` before it deletes the files.
-* Linux: unpack `voxprint-enlarge-linux-x64.tar.gz` and run `./install.sh`. That copies the tree to `~/.local/share/voxprint/enlarge`, puts `voxprint-enlarge` on `PATH`, and writes the discovery desktop file.
+* Windows: run `VoxprintEnlarge-Setup.exe`. It installs for the current user under `%LOCALAPPDATA%\Voxprint\Enlarge`.
+* Linux: unpack `voxprint-enlarge-linux-x64.tar.gz` and run `./install.sh`. The command is then `voxprint-enlarge`.
 
-Check `SHA256SUMS` against the downloaded files before installing.
-
-## 1. Driver
-
-```bash
-nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv
-voxprint-enlarge --capabilities --json
-```
-
-`nvidia-smi` shows the 4090 and a driver major of 600 or newer. The JSON exits 0. `gpu.status` is `ok` for an RTX 4090 on that driver. `gpu.status` `none` with `driver_too_old` means the driver is below 600. `no_nvidia` means CUDA cannot see a GPU. A card below compute capability 8.9 would be `warn` and would still run.
-
-## 2. GPU wheels, once
-
-The bundle ships the CPU ONNX Runtime wheel so the app can start. TensorRT is installed on this machine:
+Once, before the GPU cases, install the CUDA wheels (network, no model download):
 
 ```bash
 voxprint-enlarge --install-gpu
 ```
 
-That removes `onnxruntime` and installs `onnxruntime-gpu` and `tensorrt-cu13` (CUDA 13). It needs a network. It does not download model weights.
+## 1. No-GPU checks first
 
-## 3. First TensorRT build
-
-Open the app from the Start menu or with `voxprint-enlarge`. Add `samples/sample.png` (or any small PNG). Choose the fast photo model **4xNomos2 RealPLKSR DySample**. Run scale x2.
-
-The status line says `building the TensorRT engine` the first time. The engine file lands under the TensorRT cache (`%LOCALAPPDATA%\Voxprint\trt-cache` or `~/.cache/voxprint/trt-cache`). Run the same image again. The status line says `loading the cached TensorRT engine`, and the run is shorter.
-
-## 4. Three models at x2 and x4
-
-Download each pinned model from the Model step (progress, then Check hash). Then run one still image at x2 and at x4:
-
-| Model | Preset |
-|---|---|
-| 4xNomos2 RealPLKSR DySample | photo, fast |
-| 4xNomos2 HQ DAT2 | photo, max |
-| RealESRGAN x4plus anime 6B | art |
-
-Record for each of the six runs:
-
-* output path, width, and height (x2 of a W×H image is 2W×2H, x4 is 4W×4H)
-* wall time
-* peak VRAM from `nvidia-smi` while the tiles are running (`memory.used`)
-
-The output sits next to the source as `<name>.enlarged-<scale>x.avif` when the job comes from Lucent, and as `<name>_x<scale>.avif` from the window. An existing file is not overwritten.
-
-Delete one downloaded weight from the Model step after the runs. With only Enlarge listed in `<models>/.users.json`, the file is removed. If another suite app is still true in that file, the delete is refused.
-
-## 5. Batch, compare, cancel
-
-Add a folder that contains a subfolder of images. Include subfolders stays on. Run the queue. Each row shows its own progress. Cancel during a later image. The finished files stay. Quit the app while a row is still running, then open it again. The queue comes back and Run continues the images that are not done.
-
-Open a finished row. The divider slides, and the scroll wheel zooms both pictures together.
-
-Credits lists the registry, including the CC-BY Nomos lines and the BSD RealESRGAN lines.
-
-## 6. Lucent hand-off
-
-With the app not already serving:
+Run these before any model download. They must not build a TensorRT engine.
 
 ```bash
-voxprint-enlarge --serve --hidden
+voxprint-enlarge --version
+voxprint-enlarge --capabilities --json
 ```
 
-From another terminal, a one-shot client can use the CLI fallback, which speaks the same JSON lines:
+`--version` exits 0 and prints `0.2.0-rc.2` and `Bahir`. `--capabilities --json` exits 0. On this machine `gpu.status` is `ok`, `gpu.reason` is null, and `version` matches `--version`. `installed` is false until the weight file is on disk.
+
+Dry-run and a bad argument, with `--json-progress`. Stdout is one JSON object per line. Every object has `"protocol": 1` and the same string in `type` and `op`.
 
 ```bash
-voxprint-enlarge --input samples/sample.png --scale 2 --preset photo --quality fast --json-progress
+voxprint-enlarge upscale --input samples/sample.png --scale 4 --dry-run --json-progress
+voxprint-enlarge upscale --input samples/sample.png --scale 3 --json-progress
 ```
 
-Exit 0, and the last line is `done` with an `output` path. A socket client (see `docs/IPC.md`) sends `hello`, then `enlarge.request`, and reads `accepted`, `progress`, and `done`. `open_ui` true opens the window with that image loaded.
+With the weights absent, the dry-run exits 7. The last line is `error` with `code` `model_missing` and `retryable` true. It creates no file. `--scale 3` exits 2 (`bad_input`). Other codes, if you hit them: `gpu_unsupported` 4, `gpu_busy` 5 (`retryable` true), `oom` 6, `io_error` 8, `cancelled` 130.
 
-`--capabilities --json` stays exit 0 even if you later hide the GPU. The window itself still does not open without a usable NVIDIA GPU.
+After the two models below are downloaded, repeat the dry-run. It exits 0: `accepted`, then `done` with the planned `output`, `width`, `height`, `format`, and `ms` 0. The file is not created.
+
+## 2. Three GPU cases
+
+Download only these two models from the Model step and press Check hash:
+
+| Model | Id | Preset |
+|---|---|---|
+| 4xNomos2 HQ DAT2 | `4x-nomos2-hq-dat2` | photo, max |
+| RealESRGAN x4plus anime 6B | `realesrgan-x4plus-anime6b` | art |
+
+**Photo, tiling and VRAM.** A noisy, compressed photograph, long side at least 2000 px. Scale x4 with Nomos2 DAT2:
+
+```bash
+voxprint-enlarge upscale --input photo.jpg --scale 4 --preset photo --quality-tier max --format avif --json-progress
+```
+
+The first run of this model builds the TensorRT engine. Time that run with a clock. The status line says it is building the engine. The cache is `%LOCALAPPDATA%\Voxprint\trt-cache` or `~/.cache/voxprint/trt-cache`. Run the same command again. The status line says it is loading the cached engine, and the run is shorter. Record both times.
+
+**Line art.** An anime or line-art image, x4, RealESRGAN anime 6B:
+
+```bash
+voxprint-enlarge upscale --input line.png --scale 4 --preset art --format avif --json-progress
+```
+
+**Hand-off chain.** A roughly 2K image (long side around 1920–2560). Another process already holds `%TEMP%/voxprint-gpu.lock` (`$TMP/voxprint-gpu.lock` on Linux): JSON `owner`, `pid` of a process that is still alive, `job`, `started`, and `eta` about an hour ahead, ISO-8601 UTC. Pass that pid:
+
+```bash
+voxprint-enlarge upscale --input photo-2k.png --output out.avif --long-side 3840 --format avif --json-progress --parent-lock-pid <pid>
+```
+
+Preset and quality tier stay at their defaults (`photo`, `fast`) when you omit them. The long side of the file is 3840. The command does not open a window. After `done`, the lock file is still there and its `pid` is still the caller's. A normal job, with no parent pid, removes the lock when it finishes.
+
+## 3. What to record
+
+For each GPU run:
+
+* Wall time, and `ms` on the `done` line. Keep the first TensorRT build separate from the cached second run.
+* Peak VRAM from `nvidia-smi` (`memory.used`) while tiles are running.
+* Whether work spilled into system memory: `memory.used` flat while the run slows and retries a smaller tile, or shared GPU memory climbing in `nvidia-smi`.
+* The lock: created and removed for a normal job; left untouched, same pid, for `--parent-lock-pid`.
+
+`done` carries `output`, `width`, `height`, `format`, and `ms`. x4 of a W×H image is 4W×4H. The long-side job is 3840 on the long side.
+
+## 4. Crops for review
+
+From the photo run and the line-art run, save a few full-resolution crops of the same region, before and after. Label each file with the model and the scale. These are for a person to look at. They are not a score.
