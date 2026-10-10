@@ -1,13 +1,18 @@
 """JSON-line messages between the app and the worker process.
 
 One JSON object per line. The child writes logs to stderr so stdout stays a
-protocol stream. ``op`` is ``ready``, ``upscale``, ``progress``, ``result``,
-``error``, ``ping``, or ``shutdown``.
+protocol stream. ``op`` is ``ready``, ``upscale``, ``restore_batch``,
+``progress``, ``result``, ``error``, ``ping``, or ``shutdown``.
+``RestoreBatchRequest`` is the video op added for Clarity. API stays 1.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Mapping
+
+from voxprint_engine.video import RestoreBatchRequest
+
+__all__ = ["UpscaleRequest", "UpscaleResult", "RestoreBatchRequest"]
 
 
 @dataclass(frozen=True)

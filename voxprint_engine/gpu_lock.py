@@ -98,15 +98,21 @@ def is_stale(data: dict[str, Any], now: datetime | None = None) -> bool:
     return moment - eta > STALE_AFTER
 
 
-def _ours(data: dict[str, Any] | None) -> bool:
+def _ours(data: dict[str, Any] | None, owner: str | None = None) -> bool:
     if not data:
         return False
-    return data.get("owner") == OWNER and data.get("pid") == os.getpid()
+    expected = OWNER if owner is None else owner
+    return data.get("owner") == expected and data.get("pid") == os.getpid()
 
 
-def _held_by_parent(data: dict[str, Any] | None) -> bool:
-    """The worker subprocess shares a lock its parent already holds for this job."""
-    if not data or data.get("owner") != OWNER:
+def _held_by_parent(data: dict[str, Any] | None, owner: str | None = None) -> bool:
+    """The worker subprocess shares a lock its parent already holds for this job.
+
+    The parent and the child name the same owner. An ``enlarge`` parent lock
+    is not a ``clarity`` lock, and the child does not release the parent's file.
+    """
+    expected = OWNER if owner is None else owner
+    if not data or data.get("owner") != expected:
         return False
     pid = data.get("pid")
     if isinstance(pid, bool) or not isinstance(pid, (int, str)):
@@ -117,12 +123,23 @@ def _held_by_parent(data: dict[str, Any] | None) -> bool:
         return False
 
 
-def try_acquire(job: str, eta_s: float = 600.0, path: Path | None = None) -> dict[str, Any] | None:
-    """Create the lock. None means this process holds it; otherwise the holder's data is returned."""
+def try_acquire(
+    job: str,
+    eta_s: float = 600.0,
+    path: Path | None = None,
+    owner: str | None = None,
+) -> dict[str, Any] | None:
+    """Create the lock. None means this process holds it; otherwise the holder's data is returned.
+
+    ``owner`` defaults to ``enlarge`` so existing callers stay the same.
+    One process has one owner: re-entrancy is the process-global depth.
+    A lock held by this process's parent, with the same owner, is shared.
+    """
+    name = OWNER if owner is None else owner
     target = path or lock_path()
     current = read_lock(target)
     if current is not None:
-        if _ours(current) or _held_by_parent(current):
+        if _ours(current, name) or _held_by_parent(current, name):
             return None
         if not is_stale(current):
             return current or {"owner": "?"}
@@ -134,7 +151,7 @@ def try_acquire(job: str, eta_s: float = 600.0, path: Path | None = None) -> dic
             return current or {"owner": "?"}
     moment = _now()
     payload = {
-        "owner": OWNER,
+        "owner": name,
         "pid": os.getpid(),
         "job": job,
         "started": _iso(moment),
@@ -150,11 +167,11 @@ def try_acquire(job: str, eta_s: float = 600.0, path: Path | None = None) -> dic
     return None
 
 
-def release(path: Path | None = None) -> None:
+def release(path: Path | None = None, owner: str | None = None) -> None:
     """Delete the lock when this process owns it."""
     target = path or lock_path()
     current = read_lock(target)
-    if not _ours(current):
+    if not _ours(current, owner):
         return
     try:
         target.unlink()
@@ -171,8 +188,12 @@ def gpu_job(
     path: Path | None = None,
     cancel: Callable[[], bool] | None = None,
     on_wait: Callable[[dict[str, Any], float], None] | None = None,
+    owner: str | None = None,
 ) -> Iterator[None]:
-    """Hold the suite lock for one job. Re-entrant for nested blocks in this process."""
+    """Hold the suite lock for one job. Re-entrant for nested blocks in this process.
+
+    ``owner`` defaults to ``enlarge``. Clarity passes ``owner="clarity"``.
+    """
     global _depth
     if _depth > 0:
         _depth += 1
@@ -183,7 +204,7 @@ def gpu_job(
         return
     started = time.monotonic()
     while True:
-        holder = try_acquire(job, eta_s, path)
+        holder = try_acquire(job, eta_s, path, owner)
         if holder is None:
             break
         waited = time.monotonic() - started
@@ -201,4 +222,4 @@ def gpu_job(
         yield
     finally:
         _depth = 0
-        release(path)
+        release(path, owner)

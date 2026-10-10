@@ -8,6 +8,6 @@ lock.
 from __future__ import annotations
 
 from voxprint_engine.worker.client import WorkerClient, WorkerError
-from voxprint_engine.worker.protocol import UpscaleRequest, UpscaleResult
+from voxprint_engine.worker.protocol import RestoreBatchRequest, UpscaleRequest, UpscaleResult
 
-__all__ = ["UpscaleRequest", "UpscaleResult", "WorkerClient", "WorkerError"]
+__all__ = ["RestoreBatchRequest", "UpscaleRequest", "UpscaleResult", "WorkerClient", "WorkerError"]

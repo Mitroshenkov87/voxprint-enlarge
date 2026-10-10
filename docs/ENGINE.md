@@ -20,9 +20,8 @@ app stays in this repository and is not part of the wheel.
 
 `from voxprint_engine.api import ...` is the supported surface. The same
 objects can be imported from the modules below. A pull request may add a
-name. Removing one, or changing what it means, bumps `API`. Clarity's
-video work (a multi-frame batch, a temporal window) lands as an addition
-on this list.
+name. Removing one, or changing what it means, bumps `API`. The video
+names below are that addition.
 
 | Name | Role |
 |---|---|
@@ -31,11 +30,14 @@ on this list.
 | `validate_manifest`, `load_builtin`, `combined_catalog` | Check a manifest, read the built-in file, add a custom folder |
 | `DEFAULT_MODEL_ID`, `LANCZOS_MODEL_ID` | The pinned fast photo model, and the CI stand-in id |
 | `WorkerClient`, `WorkerError`, `UpscaleRequest`, `UpscaleResult` | JSON-line worker process |
+| `RestoreBatchRequest` | Video worker op: NHWC frames in, restored frames out |
 | `upscale_file`, `uses_lanczos` | One image, and whether this job must skip the network |
+| `restore_frames`, `temporal_windows`, `tile_frames` | Temporal windows and per-frame tiles for Clarity |
 | `ensure_weight`, `register`, `unregister` | Pinned download, and the shared `.users.json` refcount |
 | `models_dir`, `trt_cache_dir` | Weights folder and the rebuildable TensorRT cache |
-| `vram_budget_gb`, `choose_tile`, `halve_tile`, `note_spill` | Suite VRAM margin and the tile ladder |
-| `gpu_job` | Hold `%TEMP%/voxprint-gpu.lock` for one job |
+| `vram_budget_gb`, `choose_tile`, `halve_tile`, `note_spill`, `sysmem_spill` | Suite VRAM margin, the tile ladder, and the 256 MB spill check |
+| `read_shared_usage` | Windows shared GPU memory for one pid, or `None` |
+| `gpu_job` | Hold `%TEMP%/voxprint-gpu.lock` for one job. `owner` defaults to `enlarge` |
 | `decide` | Suite thermal pause rule |
 
 ```python
@@ -52,7 +54,8 @@ from voxprint_engine.api import (
 
 Clarity should keep using the worker for a long job. `upscale_file` is the
 same function the worker calls, for a benchmark or a one-off frame. `tests/test_api.py`
-fails when a name in this table disappears.
+fails when a name in this table disappears. Clarity's video calls are on this
+list and in the Video API below. `API` stays 1.
 
 ## What Run does
 
@@ -190,6 +193,99 @@ edges are padded with edge pixels when the tile is short, and that padding is
 cropped off the network output. An out-of-memory error or a system-memory spill
 halves the tile (minimum 32) and retries. The next batch size is halved too,
 and never goes below 1.
+
+## Video API
+
+Voxprint AI Clarity calls these helpers. Enlarge's image job leaves the new
+arguments at their defaults, so `run_tile`, the `upscale` worker op, and the
+compute-capability warning stay as they are. `API` stays 1. Scene cuts and
+NVDEC are not part of this package. Clarity does not call `formats.py` or
+`heic_system.py`.
+
+```python
+from voxprint_engine.hardware import assess_gpu
+from voxprint_engine.gpu_lock import gpu_job
+from voxprint_engine.session import open_session, run_batch
+from voxprint_engine.vram import measure, choose_tile, note_spill, halve_tile, sysmem_spill
+from voxprint_engine.video import temporal_windows, tile_frames, restore_frames
+from voxprint_engine.worker.protocol import RestoreBatchRequest
+```
+
+### Startup and the GPU lock
+
+`assess_gpu(index=0, runner=None, refuse_below=None)` is the Enlarge gate.
+Omit `refuse_below` and a card below compute capability 8.9 still starts, with
+the warning from the section above. Clarity passes `refuse_below=(8, 9)`. A
+missing capability, or a card below that pair, then refuses to start. The
+driver check still comes first: a driver below the 600 series refuses with the
+same message as Enlarge. `VOXPRINT_CI_LANCZOS=1` still skips the gate. Clarity
+does not honour that flag.
+
+`try_acquire`, `release`, and `gpu_job` take `owner`. The default is
+`enlarge`. Clarity passes `owner="clarity"`. One process has one owner.
+A nested `gpu_job` in that process re-enters the lock the outer block already
+holds and releases it only when the outer block ends. A worker whose parent
+already holds the lock, with the same `owner`, shares that file: it does not
+take a second lock and it does not delete the parent's. `eta` is written at
+acquire as now plus `eta_s` (at least 60 seconds). The lock is stale when the
+pid is gone, or when `eta` (else `started`) is more than two hours in the past.
+
+### Session and VRAM
+
+`open_session` is unchanged: TensorRT EP with fp16 and the engine cache under
+the trt-cache directory, then CUDA EP when that engine does not build.
+`session.run_batch(session, nchw)` runs one NCHW batch on that session and
+returns float32 NCHW. When the session input type contains `float16`, the
+batch is converted to fp16 before `session.run`. `run_tile` remains the image
+path (one HWC tile in, one HWC tile out).
+
+Clarity measures VRAM with the existing helpers, again before each batch:
+`budget = max(0, free_now - max(2 GB, 8% of total))`, then `choose_tile`,
+`note_spill`, and `halve_tile`. `sysmem_spill(shared_now, shared_baseline)` is
+true when Windows shared GPU memory grew by more than 256 MB. `None` for
+either sample means there is no spill, which is also what a missing counter
+returns. `voxprint_engine.video.read_shared_usage` reads
+`GPU Process Memory(pid_*)\Shared Usage` with `typeperf` on Windows and
+returns `None` everywhere else. The thermal rule is the existing
+`thermal.decide`: full speed for 2.5 hours, then pause between chunks while
+the 5-minute median is at least 83 C or throttling exceeds 60 seconds, and
+resume at or below 75 C.
+
+### Windows, tiles, and the worker
+
+`temporal_windows(frame_count, length, overlap)` slides a window of `length`
+frames. `overlap` is left context and must be `>= 0` and `< length`. `length`
+1 and `overlap` 0 is the frame-wise case: one window per frame, and every
+frame is kept. A longer window pads with the edge frame outside the clip.
+Across the list, the kept slots cover source frames `0 .. frame_count` once.
+Padding slots are discarded.
+
+`tile_frames` tiles each frame. The feather is the same ramp as `tile.py`:
+interior overlaps sum to 1, and a picture border stays at full weight. A short
+edge tile is padded by edge replication, and that padding is cropped off the
+network output. The tiles of one step are stacked on N and passed to `infer`
+as NCHW. `infer` returns NCHW at `scale` times the tile.
+
+`restore_frames` gathers each window, runs `tile_frames`, and writes only the
+kept rows back to the source index. Frame-wise models use `length=1` and
+`window_overlap=0`.
+
+The worker accepts `op` `restore_batch` on the same JSON-line stream as
+`upscale`. `RestoreBatchRequest` (`id`, `frames_npy`, `out_npy`, `onnx`, and
+optional `tile`, `overlap`, `batch`, `scale`, `length`, `window_overlap`,
+`device`, `owner`) is defined in `voxprint_engine.video` and re-exported from
+`voxprint_engine.worker.protocol`. The handler loads the NHWC float `.npy`
+with `allow_pickle=False`, then holds `gpu_job` for `owner` (default
+`clarity`) across the session build and `restore_frames`. The session is
+`choices_for` (TensorRT when that provider is installed, fp16, trt-cache) and,
+when that build fails, `cuda_fallback_choices`. The success line is `op`
+`result`, `engine` `onnx`, with `dst` and `frames`. A missing file or a bad
+array is `op` `error`. On the wire, a missing or zero `tile` is 512 and a
+missing or zero `overlap` is 16. The image `upscale` op is unchanged and
+still rejects a video file.
+
+Weights stay in the shared store. Clarity's refcount key is `clarity`
+(`register` / `unregister`). Downloads still finish before the GPU lock.
 
 ## Offline conversion
 

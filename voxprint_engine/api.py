@@ -1,8 +1,8 @@
 """Public imports for Clarity. This list is the stable surface.
 
 Additive names can land in a pull request. Removing a name, or changing the
-meaning of one, bumps ``API``. Video features (multi-frame batches, temporal
-windows) belong here when Clarity adds them. This package does not import Qt.
+meaning of one, bumps ``API``. The video names in ``__all__`` are that
+addition. This package does not import Qt.
 """
 from __future__ import annotations
 
@@ -22,7 +22,14 @@ from voxprint_engine.registry import (
 )
 from voxprint_engine.store import ensure_weight, register, unregister
 from voxprint_engine.thermal import decide
-from voxprint_engine.vram import choose_tile, halve_tile, note_spill, vram_budget_gb
+from voxprint_engine.video import (
+    RestoreBatchRequest,
+    read_shared_usage,
+    restore_frames,
+    temporal_windows,
+    tile_frames,
+)
+from voxprint_engine.vram import choose_tile, halve_tile, note_spill, sysmem_spill, vram_budget_gb
 from voxprint_engine.worker import UpscaleRequest, UpscaleResult, WorkerClient, WorkerError
 
 __all__ = [
@@ -32,6 +39,7 @@ __all__ = [
     "LANCZOS_MODEL_ID",
     "ManifestError",
     "ModelManifest",
+    "RestoreBatchRequest",
     "UpscaleRequest",
     "UpscaleResult",
     "WorkerClient",
@@ -46,7 +54,12 @@ __all__ = [
     "load_builtin",
     "models_dir",
     "note_spill",
+    "read_shared_usage",
     "register",
+    "restore_frames",
+    "sysmem_spill",
+    "temporal_windows",
+    "tile_frames",
     "trt_cache_dir",
     "unregister",
     "upscale_file",

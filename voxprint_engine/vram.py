@@ -11,6 +11,8 @@ import subprocess
 from dataclasses import dataclass
 from typing import Callable
 
+from voxprint_engine.video import sysmem_spill as _video_sysmem_spill
+
 GB = 1024 ** 3
 HEADROOM_GB = 2.0
 HEADROOM_FRAC = 0.08
@@ -154,3 +156,16 @@ def measure(device: str = "auto") -> VramSnapshot:
         return VramSnapshot(device or "auto", 0.0, 0.0, 0.0, "none")
     total, free = found
     return VramSnapshot(device or "auto", total, free, vram_budget_gb(free, total), "nvidia-smi")
+
+
+def sysmem_spill(
+    shared_now: int | None,
+    shared_baseline: int | None,
+    threshold: int = 256 * 1024 * 1024,
+) -> bool:
+    """True when shared GPU memory grew past ``threshold`` bytes.
+
+    ``None`` on either sample means there is no spill. The reading lives in
+    ``voxprint_engine.video`` so Windows typeperf stays in one place.
+    """
+    return _video_sysmem_spill(shared_now, shared_baseline, threshold)

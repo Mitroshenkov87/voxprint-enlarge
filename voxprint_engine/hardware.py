@@ -131,8 +131,18 @@ def query_gpus(runner: Callable[..., subprocess.CompletedProcess[str]] | None = 
     return parse_gpu_table(proc.stdout or "")
 
 
-def assess_gpu(index: int = 0, runner: Callable[..., subprocess.CompletedProcess[str]] | None = None) -> LaunchGate:
-    """Whether Enlarge may start, plus the compute-capability warning when it may."""
+def assess_gpu(
+    index: int = 0,
+    runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
+    refuse_below: tuple[int, int] | None = None,
+) -> LaunchGate:
+    """Whether Enlarge may start, plus the compute-capability warning when it may.
+
+    ``refuse_below`` is optional. Omit it and a card below 8.9 still starts
+    with a warning, which is Enlarge's behaviour. When it is set, a missing
+    capability or a card below that pair refuses to start. ``VOXPRINT_CI_LANCZOS``
+    is unchanged and still skips this gate.
+    """
     if ci_lanczos():
         return LaunchGate(True, "", "")
     gpus = query_gpus(runner)
@@ -145,6 +155,20 @@ def assess_gpu(index: int = 0, runner: Callable[..., subprocess.CompletedProcess
     if major is None or major < MIN_DRIVER_MAJOR:
         shown = gpu.driver or "unknown"
         return LaunchGate(False, OLD_DRIVER_MESSAGE.format(driver=shown), "")
+    if refuse_below is not None and (gpu.compute is None or gpu.compute < refuse_below):
+        floor = f"{refuse_below[0]}.{refuse_below[1]}"
+        if gpu.compute is None:
+            message = (
+                f"This GPU did not report a compute capability. "
+                f"This program starts only on compute capability {floor} (RTX 40 / Ada) or newer."
+            )
+        else:
+            got = f"{gpu.compute[0]}.{gpu.compute[1]}"
+            message = (
+                f"GPU compute capability {got} is below {floor} (RTX 40 / Ada). "
+                "This program starts only on RTX 40 series or newer."
+            )
+        return LaunchGate(False, message, "")
     return LaunchGate(True, "", capability_warning(gpu.compute))
 
 
