@@ -3,7 +3,7 @@
   #define Source "..\..\dist\payload"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.1.0-rc.1"
+  #define AppVersion "0.2.0-rc.1"
 #endif
 
 [Setup]

@@ -6,7 +6,7 @@ Voxprint AI Enlarge makes a still picture larger on your own computer. You pick 
 
 **Images only.** Video restoration belongs to Voxprint AI Clarity. Enlarge does not open video files.
 
-**Status:** `v0.1.0-rc.1` is the installable release candidate for a GPU machine. A source checkout still reports pre-alpha until a release build stamps it. Run uses ONNX Runtime on TensorRT. CUDA is used when that engine does not build. Weights for the three pinned models download into the shared Voxprint models folder. The installer and the tarball do not contain those weights.
+**Status:** `v0.2.0-rc.1` is the installable release candidate for a GPU machine. A source checkout still reports pre-alpha until a release build stamps it. Run uses ONNX Runtime on TensorRT. CUDA is used when that engine does not build. Weights for the three pinned models download into the shared Voxprint models folder. The installer and the tarball do not contain those weights.
 
 **License:** Apache-2.0. See `LICENSE` and `NOTICE`. Model weights keep the licence recorded in the registry. A release build refuses non-commercial or unlicensed weights.
 
