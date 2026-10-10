@@ -1,9 +1,7 @@
-"""Draw assets/enlarge.png, the Enlarge mark, and a synthetic sample picture.
+"""Draw the synthetic sample picture used by the preview.
 
-The mark matches the supplied app icon: a navy rounded tile, a dashed selection,
-a picture glyph, and a two-way enlarge arrow, in a pink-to-coral neon. Run this
-only to regenerate that source. tools/make_icon.py scales the PNG; it does not
-redraw the glyph.
+assets/enlarge.png is the supplied 1024 icon. This script does not write that
+file or the splash. tools/make_icon.py scales the icon and writes the splash.
 """
 from __future__ import annotations
 
@@ -159,15 +157,9 @@ def render_sample() -> Image.Image:
 
 
 def main() -> None:
-    ASSETS.mkdir(exist_ok=True)
     SAMPLES.mkdir(exist_ok=True)
-    icon = render_icon(1024)
-    icon.save(ASSETS / "enlarge.png")
-    rgb = Image.new("RGB", icon.size, (0, 0, 0))
-    rgb.paste(icon.convert("RGB"), mask=icon.getchannel("A"))
-    rgb.save(ASSETS / "splash.jpg", quality=90, optimize=True)
     render_sample().save(SAMPLES / "sample.png", optimize=True)
-    print("wrote", ASSETS / "enlarge.png")
+    print("wrote", SAMPLES / "sample.png")
 
 
 if __name__ == "__main__":
