@@ -16,17 +16,58 @@ from pathlib import Path
 _KEY = re.compile(r"[^A-Za-z0-9._+-]+")
 
 
-def voxprint_home() -> Path:
-    """``%LOCALAPPDATA%\\Voxprint`` or ``~/.local/share/voxprint``."""
-    env = os.environ.get("VOXPRINT_HOME", "").strip()
-    if env:
-        return Path(env)
+def default_voxprint_home() -> Path:
+    """The Voxprint home used when ``VOXPRINT_HOME`` is unset."""
     if sys.platform == "win32":
         local = os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))
         return Path(local) / "Voxprint"
     xdg = os.environ.get("XDG_DATA_HOME", "").strip()
     base = Path(xdg) if xdg and os.path.isabs(xdg) else Path.home() / ".local" / "share"
     return base / "voxprint"
+
+
+def voxprint_home() -> Path:
+    """``VOXPRINT_HOME`` when it is set, otherwise :func:`default_voxprint_home`."""
+    env = os.environ.get("VOXPRINT_HOME", "").strip()
+    if env:
+        return Path(env)
+    return default_voxprint_home()
+
+
+def voxprint_home_source() -> str:
+    """``env`` when ``VOXPRINT_HOME`` is set, otherwise ``default``."""
+    if os.environ.get("VOXPRINT_HOME", "").strip():
+        return "env"
+    return "default"
+
+
+def voxprint_home_warning() -> str | None:
+    """Warn when ``VOXPRINT_HOME`` hides a default home that already has a manifest.
+
+    A stray home made rc.4 provision a second runtime beside the one the other
+    suite apps were already using. The warning is empty when the variable is
+    unset, when it points at the default, or when that default has no manifest yet.
+    """
+    if voxprint_home_source() != "env":
+        return None
+    chosen = voxprint_home()
+    default = default_voxprint_home()
+    if _same_path(chosen, default):
+        return None
+    manifest = default / "shared" / "manifest.json"
+    if not manifest.is_file():
+        return None
+    return (
+        f"warning: VOXPRINT_HOME is {chosen} and differs from the default {default}, "
+        "which already has a shared manifest"
+    )
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return os.path.normcase(os.path.abspath(left)) == os.path.normcase(os.path.abspath(right))
 
 
 def suite_file() -> Path:

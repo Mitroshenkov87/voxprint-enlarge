@@ -1,6 +1,6 @@
 # Roadmap
 
-This is what is coming next for Voxprint AI Enlarge. The current install is `v0.2.0-rc.4`.
+This is what is coming next for Voxprint AI Enlarge. The current install is `v0.2.0-rc.5` (codename Chayil). The shared runtime manifest is schema 1.
 
 ## Next version
 
