@@ -1,6 +1,6 @@
 # Architecture
 
-Voxprint AI Enlarge is the image app. Voxprint AI Clarity is the video app.
+VOXPrint AI Enlarge is the image app. VOXPrint AI Clarity is the video app.
 They share one engine, owned here and co-maintained by Clarity.
 
 ```text
@@ -75,8 +75,8 @@ Weights are not in the installer or the tarball.
 
 | Platform | Install path |
 |---|---|
-| Windows | `%LOCALAPPDATA%\Voxprint\Enlarge\VoxprintEnlarge.exe` |
-| Linux | `$XDG_DATA_HOME/voxprint/enlarge/voxprint-enlarge` (`~/.local/share` when unset) |
+| Windows | `%ProgramFiles%\VOXPrint AI Suite\Enlarge\` (`voxprint-enlarge.exe`, `voxprint-enlarge-cli.exe`) |
+| Linux | `/opt/voxprint-ai-suite/enlarge/voxprint-enlarge` |
 
 `BUILD.json` holds `version`, the build-number `offset`, and the codename.
 `voxprint_common.buildinfo` adds `GITHUB_RUN_NUMBER` to the offset. Without that

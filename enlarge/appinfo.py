@@ -9,13 +9,13 @@ from typing import Any
 
 from voxprint_common.buildinfo import label, load
 
-APP_NAME = "VoxprintEnlarge"
-APP_DISPLAY_NAME = "Voxprint AI Enlarge"
+APP_NAME = "voxprint-enlarge"
+APP_DISPLAY_NAME = "VOXPrint AI Enlarge"
 APP_VERSION = "0.1.0-pre"
 APP_BUILD = 0
 CODENAME = ""
 STATUS = "pre-alpha"
-START_MENU_FOLDER = "Voxprint"
+START_MENU_FOLDER = "VOXPrint AI Suite"
 
 
 def format_version(version: str = APP_VERSION, build: int = APP_BUILD, codename: str = CODENAME) -> str:

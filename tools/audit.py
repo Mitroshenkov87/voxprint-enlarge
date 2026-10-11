@@ -1,4 +1,4 @@
-"""Suite audit gate for Voxprint AI Enlarge.
+"""Suite audit gate for VOXPrint AI Enlarge.
 
 Runs ruff (F, E9, and D1 pydocstyle on the app and the engine), mypy, bandit (high severity), pip-audit, and gitleaks.
 Vulture and radon are report-only. Exit code 1 when a blocking check fails.
@@ -205,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
         check_report_only("vulture", ["enlarge", "voxprint_engine", "main.py", "tools"]),
         check_report_only("radon", ["cc", "-s", "enlarge", "voxprint_engine"]),
     ]
-    lines = ["Voxprint AI Enlarge audit", ""]
+    lines = ["VOXPrint AI Enlarge audit", ""]
     failed = False
     for check in checks:
         mark = "FAIL" if check.blocks else "ok"

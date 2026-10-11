@@ -1,10 +1,10 @@
-# Voxprint AI Enlarge
+# VOXPrint AI Enlarge
 
 <p align="center">
-  <img src="images/enlarge-main.webp" alt="The Images step of Voxprint AI Enlarge" width="840">
+  <img src="images/enlarge-main.webp" alt="The Images step of VOXPrint AI Enlarge" width="840">
 </p>
 
-Offline image upscaling for the Voxprint suite. Nothing is uploaded.
+Offline image upscaling for the VOXPrint suite. Nothing is uploaded.
 
 Enlarge makes a still picture larger on your own computer. You pick images or a folder, pick a model, choose the scale and the file format, and run. The installer does not contain model weights. The first TensorRT engine for a model is built on your GPU and then cached.
 

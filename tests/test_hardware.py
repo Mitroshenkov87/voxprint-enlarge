@@ -86,13 +86,13 @@ def test_gate_is_quiet_on_ada_with_a_600_driver(monkeypatch: pytest.MonkeyPatch)
 
 def test_gpu_refusal_uses_the_caller_name(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
-    missing = assess("Voxprint AI Canvas", runner=_smi("", code=1))
-    assert missing.message == no_gpu_message("Voxprint AI Canvas")
+    missing = assess("VOXPrint AI Canvas", runner=_smi("", code=1))
+    assert missing.message == no_gpu_message("VOXPrint AI Canvas")
     assert "Enlarge" not in missing.message
-    old = assess("Voxprint AI Canvas", runner=_smi("NVIDIA GeForce RTX 4090, 580.88, 8.9, 24564\n"))
-    assert old.message == old_driver_message("Voxprint AI Canvas", "580.88")
-    warned = assess("Voxprint AI Canvas", runner=_smi("NVIDIA GeForce RTX 3090, 610.73.01, 8.6, 24576\n"))
-    assert "Voxprint AI Canvas is built for RTX 40" in warned.warning
+    old = assess("VOXPrint AI Canvas", runner=_smi("NVIDIA GeForce RTX 4090, 580.88, 8.9, 24564\n"))
+    assert old.message == old_driver_message("VOXPrint AI Canvas", "580.88")
+    warned = assess("VOXPrint AI Canvas", runner=_smi("NVIDIA GeForce RTX 3090, 610.73.01, 8.6, 24576\n"))
+    assert "VOXPrint AI Canvas is built for RTX 40" in warned.warning
     root = Path(__file__).resolve().parents[1]
     infer = (root / "voxprint_engine" / "infer.py").read_text(encoding="utf-8")
     assert "Enlarge needs" not in infer

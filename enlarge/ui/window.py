@@ -99,7 +99,7 @@ class MainWindow(QWidget):
         head.addWidget(self.btn_credits)
         body.addLayout(head)
 
-        self.lbl_tagline = QLabel("Offline image upscaling for the Voxprint suite. Nothing is uploaded.")
+        self.lbl_tagline = QLabel("Offline image upscaling for the VOXPrint suite. Nothing is uploaded.")
         self.lbl_tagline.setObjectName("subtitle")
         self.lbl_tagline.setWordWrap(True)
         body.addWidget(self.lbl_tagline)
@@ -589,7 +589,7 @@ class MainWindow(QWidget):
         self.model_page.file_status.setText(message)
 
     def remove_model(self) -> None:
-        """Delete the weight file when no other Voxprint app still uses it."""
+        """Delete the weight file when no other VOXPrint app still uses it."""
         model = self._current_model()
         if model is None:
             return

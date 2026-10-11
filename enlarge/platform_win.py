@@ -1,8 +1,8 @@
 """Windows specifics (guarded by ``sys.platform``): minimum build check and the Acrylic window backdrop.
 
-Adapted from Voxprint AI Movie Dubber ``dubber/platform_win.py`` (Apache-2.0), same approach as Voxprint AI Audiobook Builder: DWM through ctypes only. Every function is a no-op on other platforms.
+Adapted from VOXPrint AI Movie Dubber ``dubber/platform_win.py`` (Apache-2.0), same approach as VOXPrint AI Audiobook Builder: DWM through ctypes only. Every function is a no-op on other platforms.
 
-The Start-menu folder for this app is ``Voxprint``, shared with the other suite programs.
+The Start-menu folder for this app is ``VOXPrint AI Suite``, shared with the other suite programs.
 """
 from __future__ import annotations
 
@@ -11,6 +11,10 @@ import sys
 from ctypes import wintypes
 from dataclasses import dataclass
 from typing import Any, Optional
+
+from enlarge import appinfo
+
+START_MENU_FOLDER = appinfo.START_MENU_FOLDER
 
 _WINREG: Any = None
 try:
@@ -22,7 +26,6 @@ except ImportError:  # not Windows
 
 IS_WINDOWS = sys.platform == "win32"
 MIN_BUILD = 26100            # Windows 11 24H2
-START_MENU_FOLDER = "Voxprint"
 DWMWA_USE_IMMERSIVE_DARK_MODE, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWA_SYSTEMBACKDROP_TYPE = 20, 33, 38
 DWMSBT_TRANSIENTWINDOW = 3     # Acrylic
 DWMWCP_ROUND = 2

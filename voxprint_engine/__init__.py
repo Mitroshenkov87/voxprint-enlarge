@@ -1,6 +1,6 @@
-"""Shared image-upscale engine for the Voxprint suite.
+"""Shared image-upscale engine for the VOXPrint suite.
 
-Voxprint AI Enlarge owns this package. Voxprint AI Clarity imports it
+VOXPrint AI Enlarge owns this package. VOXPrint AI Clarity imports it
 (registry, worker IPC, ONNX tiling, the model store, and the VRAM budget)
 and co-maintains it. Paths, the GPU lock, thermal decisions, and the
 runtime manifest live in ``voxprint_common``. The package does not import Qt

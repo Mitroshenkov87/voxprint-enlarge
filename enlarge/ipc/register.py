@@ -1,6 +1,7 @@
-"""Discovery records a future installer writes. There is no installer in this build.
+"""Discovery records the installer writes.
 
-Windows: ``HKCU\\Software\\Voxprint\\Enlarge`` and App Paths.
+Windows: ``HKLM`` and ``HKCU`` ``Software\\Voxprint\\Enlarge``, plus App Paths for
+``voxprint-enlarge-cli.exe`` and ``voxprint-enlarge.exe``.
 Linux: ``ai.voxprint.Enlarge.desktop`` plus a ``voxprint-enlarge`` launcher on ``PATH``.
 """
 from __future__ import annotations
@@ -9,6 +10,7 @@ import os
 import stat
 import sys
 from pathlib import Path
+from typing import Any
 
 if sys.platform == "win32":
     import winreg
@@ -16,14 +18,15 @@ else:
     winreg = None
 
 from enlarge.appinfo import APP_DISPLAY_NAME, product_version
-from enlarge.ipc.discovery import IPC_BASE
+from enlarge.ipc.discovery import IPC_BASE, REGISTRY_KEY
 from enlarge.ipc.naming import listen_name
 from enlarge.ipc.protocol import PROTOCOL
 
 DESKTOP_NAME = "ai.voxprint.Enlarge.desktop"
 LAUNCHER_NAME = "voxprint-enlarge"
-REGISTRY_KEY = r"Software\Voxprint\Enlarge"
-APP_PATHS_KEY = r"Software\Microsoft\Windows\CurrentVersion\App Paths\voxprint-enlarge.exe"
+APP_PATHS_DIR = r"Software\Microsoft\Windows\CurrentVersion\App Paths"
+CLI_APP_PATHS = APP_PATHS_DIR + r"\voxprint-enlarge-cli.exe"
+GUI_APP_PATHS = APP_PATHS_DIR + r"\voxprint-enlarge.exe"
 
 
 def discovery_values(exe: Path, ipc_name: str | None = None, version: str | None = None) -> dict[str, str]:
@@ -82,26 +85,24 @@ def write_linux(exe: Path, data_home: Path, bin_dir: Path, ipc_name: str | None 
     return desktop
 
 
+def gui_exe_for(exe: Path) -> Path:
+    """The window launcher beside ``exe`` when that file exists, otherwise ``exe``."""
+    sibling = exe.with_name("voxprint-enlarge.exe")
+    if sibling.is_file():
+        return sibling
+    return exe
+
+
 def write_windows(exe: Path, ipc_name: str | None = None) -> None:
-    """Write HKCU discovery values and the per-user App Paths entry."""
+    """Write HKLM (best effort) and HKCU discovery values, plus both App Paths entries."""
     if winreg is None:
         raise OSError("the Windows registry is only available on Windows")
     values = discovery_values(exe, ipc_name=ipc_name)
-    enlarge_key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY)
-    try:
-        for name, value in values.items():
-            if name == "ProtocolVersion":
-                winreg.SetValueEx(enlarge_key, name, 0, winreg.REG_DWORD, int(value))
-            else:
-                winreg.SetValueEx(enlarge_key, name, 0, winreg.REG_SZ, value)
-    finally:
-        enlarge_key.Close()
-    app_key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, APP_PATHS_KEY)
-    try:
-        winreg.SetValueEx(app_key, "", 0, winreg.REG_SZ, values["Exe"])
-        winreg.SetValueEx(app_key, "Path", 0, winreg.REG_SZ, values["InstallPath"])
-    finally:
-        app_key.Close()
+    gui = gui_exe_for(exe)
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        _write_enlarge(hive, values)
+        _write_app_path(hive, CLI_APP_PATHS, exe)
+        _write_app_path(hive, GUI_APP_PATHS, gui)
 
 
 def unregister_linux(data_home: Path, bin_dir: Path) -> None:
@@ -110,19 +111,72 @@ def unregister_linux(data_home: Path, bin_dir: Path) -> None:
     (bin_dir / LAUNCHER_NAME).unlink(missing_ok=True)
 
 
-def unregister_windows() -> None:
-    """Remove the HKCU discovery key and the App Paths entry."""
+def _hive_denied(hive: int, exc: OSError) -> bool:
+    """HKLM writes fail closed when the process is not elevated. HKCU does not."""
+    if winreg is None or hive != winreg.HKEY_LOCAL_MACHINE:
+        return False
+    if isinstance(exc, PermissionError):
+        return True
+    return getattr(exc, "winerror", None) == 5
+
+
+def _create_key(hive: int, subkey: str) -> Any | None:
     if winreg is None:
         raise OSError("the Windows registry is only available on Windows")
-    for key in (REGISTRY_KEY, APP_PATHS_KEY):
-        try:
-            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, key)
-        except FileNotFoundError:
-            continue
-        except OSError as exc:
-            if getattr(exc, "winerror", None) == 2:
+    try:
+        return winreg.CreateKey(hive, subkey)
+    except OSError as exc:
+        if _hive_denied(hive, exc):
+            return None
+        raise
+
+
+def _write_enlarge(hive: int, values: dict[str, str]) -> None:
+    if winreg is None:
+        raise OSError("the Windows registry is only available on Windows")
+    key = _create_key(hive, REGISTRY_KEY)
+    if key is None:
+        return
+    try:
+        for name, value in values.items():
+            if name == "ProtocolVersion":
+                winreg.SetValueEx(key, name, 0, winreg.REG_DWORD, int(value))
+            else:
+                winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+    finally:
+        key.Close()
+
+
+def _write_app_path(hive: int, subkey: str, exe: Path) -> None:
+    if winreg is None:
+        raise OSError("the Windows registry is only available on Windows")
+    key = _create_key(hive, subkey)
+    if key is None:
+        return
+    try:
+        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, str(exe))
+        winreg.SetValueEx(key, "Path", 0, winreg.REG_SZ, str(exe.parent))
+    finally:
+        key.Close()
+
+
+def unregister_windows() -> None:
+    """Remove discovery from HKLM and HKCU, including both App Paths keys."""
+    if winreg is None:
+        raise OSError("the Windows registry is only available on Windows")
+    subkeys = (REGISTRY_KEY, CLI_APP_PATHS, GUI_APP_PATHS)
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        for subkey in subkeys:
+            try:
+                winreg.DeleteKey(hive, subkey)
+            except FileNotFoundError:
                 continue
-            raise
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == 2:
+                    continue
+                if _hive_denied(hive, exc):
+                    continue
+                raise
 
 
 def unregister_install(data_home: Path | None = None, bin_dir: Path | None = None) -> None:

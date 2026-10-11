@@ -1,4 +1,4 @@
-"""Voxprint AI Enlarge.
+"""VOXPrint AI Enlarge.
 
     python main.py                         open the window
     python main.py --selftest [--json]     re-check the shared install and repair it

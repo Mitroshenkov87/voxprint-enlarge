@@ -1,4 +1,4 @@
-# Create a Start menu shortcut in the shared Voxprint folder.
+# Create a Start menu shortcut in the shared VOXPrint AI Suite folder.
 # The folder is the same one Audiobook Builder and Movie Dubber use.
 # This script does not install a runtime. It only points at a checkout.
 # The interpreter is the shared runtime, then py -3, then python3.
@@ -34,12 +34,12 @@ function Resolve-VoxprintPython {
         Write-Host "python: python3"
         return @{ Path = $python3.Source; Arguments = "" }
     }
-    throw "No Voxprint runtime, py -3, or python3 interpreter was found."
+    throw "No shared runtime, py -3, or python3 interpreter was found."
 }
 
-$folder = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Voxprint"
+$folder = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\VOXPrint AI Suite"
 New-Item -ItemType Directory -Force -Path $folder | Out-Null
-$shortcut = Join-Path $folder "Voxprint AI Enlarge.lnk"
+$shortcut = Join-Path $folder "VOXPrint AI Enlarge.lnk"
 $python = Resolve-VoxprintPython
 $shell = New-Object -ComObject WScript.Shell
 $link = $shell.CreateShortcut($shortcut)
@@ -53,6 +53,6 @@ if ($python.Arguments) {
 $link.WorkingDirectory = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $icon = Join-Path $link.WorkingDirectory "assets\enlarge.ico"
 if (Test-Path $icon) { $link.IconLocation = $icon }
-$link.Description = "Voxprint AI Enlarge"
+$link.Description = "VOXPrint AI Enlarge"
 $link.Save()
 Write-Output $shortcut

@@ -1,6 +1,6 @@
 # Shared inference engine
 
-`voxprint_engine` is the image upscaler Voxprint AI Enlarge owns and Voxprint AI
+`voxprint_engine` is the image upscaler VOXPrint AI Enlarge owns and VOXPrint AI
 Clarity imports. The installable distribution is `voxprint-engine` 1.4.0. It
 does not import Qt. `API` is 1. The package version and `API` are different
 numbers: the version marks this release, and `API` stays 1 until a breaking
@@ -344,7 +344,7 @@ and never goes below 1.
 
 ## Video API
 
-Voxprint AI Clarity calls these helpers. Enlarge's image job leaves the new
+VOXPrint AI Clarity calls these helpers. Enlarge's image job leaves the new
 arguments at their defaults, so `run_tile`, the `upscale` worker op, and the
 compute-capability warning stay as they are. `API` stays 1. Scene cuts and
 NVDEC are not part of this package. Clarity does not call `formats.py` or

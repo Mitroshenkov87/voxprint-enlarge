@@ -391,11 +391,11 @@ def test_sigterm_removes_the_partial_output(tmp_path: Path) -> None:
 def test_known_install_exe_and_icons() -> None:
     path = known_install_exe()
     if sys.platform == "win32":
-        assert path.name == "VoxprintEnlarge.exe"
-        assert "Voxprint" in path.parts and "Enlarge" in path.parts
+        assert path.name == "voxprint-enlarge-cli.exe"
+        assert path.parts[-3:] == ("VOXPrint AI Suite", "Enlarge", "voxprint-enlarge-cli.exe")
     else:
         assert path.name == "voxprint-enlarge"
-        assert path.parts[-3:] == ("voxprint", "enlarge", "voxprint-enlarge")
+        assert path.parts[-3:] == ("voxprint-ai-suite", "enlarge", "voxprint-enlarge")
     _app()
     icon = suite_icon("save")
     assert not icon.isNull()

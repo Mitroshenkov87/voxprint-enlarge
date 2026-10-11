@@ -1,4 +1,4 @@
-Voxprint AI Enlarge icon
+VOXPrint AI Enlarge icon
 =========================
 
 assets/enlarge.png is the application icon (1024 px): a picture glyph and a
@@ -12,4 +12,4 @@ It writes:
   * assets/enlarge-256.png and installer/linux/voxprint-enlarge-256.png
   * assets/splash.jpg, a JPEG of the same 1024 image, for the start-up splash
 
-The mark is original artwork for Voxprint AI Enlarge by Aleksandr Mitroshenkov.
+The mark is original artwork for VOXPrint AI Enlarge by Aleksandr Mitroshenkov.

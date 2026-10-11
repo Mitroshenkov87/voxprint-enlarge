@@ -1,6 +1,6 @@
 # Install and configuration
 
-A checkout runs from source. A release build is a per-user Windows installer or a Linux tarball. Neither one contains model weights. The installer runs `--install-suite` before it finishes: it copies Python 3.14 into the shared suite folder, installs the CUDA wheels, and downloads the default model, with progress on the console. A later launch repairs anything missing. `--selftest` runs that check without opening a window. The GPU checklist is `docs/TESTING-GPU.md`.
+A checkout runs from source. A release build is a Windows installer or a Linux tarball. Neither one contains model weights. The installer runs `--install-suite` before it finishes: it copies Python 3.14 into the shared suite folder, installs the CUDA wheels, and downloads the default model, with progress on the console. A later launch repairs anything missing. `--selftest` runs that check without opening a window. The GPU checklist is `docs/TESTING-GPU.md`.
 
 ## Requirements
 
@@ -22,7 +22,7 @@ python main.py --selftest
 python main.py --selftest --json
 ```
 
-Add a folder on the Images step to include subfolders. Run keeps a queue file and continues unfinished images after a restart. Cancel stops the image that is running. The Model step can download a pinned file, check its sha256, and remove it when no other Voxprint app is listed in `.users.json`. Credits are built from the registry.
+Add a folder on the Images step to include subfolders. Run keeps a queue file and continues unfinished images after a restart. Cancel stops the image that is running. The Model step can download a pinned file, check its sha256, and remove it when no other VOXPrint app is listed in `.users.json`. Credits are built from the registry.
 
 One image, without the window:
 
@@ -45,9 +45,9 @@ python main.py --upscale samples/sample.png --out out.avif --scale 2 --format av
 
 ## Start menu
 
-On Windows the shortcut belongs in the shared **Voxprint** folder, next to the other suite apps. `installer/windows/enlarge.iss` is the per-user installer. `installer/windows/start-menu.ps1` creates that shortcut for a checkout.
+On Windows the shortcut belongs in the shared **VOXPrint AI Suite** folder, next to the other suite apps. The name is **VOXPrint AI Enlarge**. `installer/windows/enlarge.iss` installs for an administrator under `%ProgramFiles%\VOXPrint AI Suite\Enlarge`. `installer/windows/start-menu.ps1` creates that shortcut for a checkout.
 
-On Linux, `installer/linux/voxprint-enlarge.desktop` is the desktop entry. The icon file is `installer/linux/voxprint-enlarge-256.png`.
+On Linux, `installer/linux/voxprint-enlarge.desktop` is the desktop entry. Its name is **VOXPrint AI Enlarge**. The installed copy lives in `/opt/voxprint-ai-suite/enlarge`. The icon file is `installer/linux/voxprint-enlarge-256.png`.
 
 ## CLI
 
