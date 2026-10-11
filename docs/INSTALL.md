@@ -1,6 +1,6 @@
 # Install and configuration
 
-A checkout runs from source. A release build is a per-user Windows installer or a Linux tarball. Neither one contains model weights. The installer runs `--install-suite` before it finishes: it copies Python 3.14 into the shared suite folder, installs the CUDA wheels, and downloads the default model, with progress on the console. A later launch repairs anything missing. `--selftest` runs that check without opening a window. The VM checklist for the published `v0.2.0-rc.2` build, which still expects a manual `--install-gpu`, is `docs/TESTING-GPU.md`.
+A checkout runs from source. A release build is a per-user Windows installer or a Linux tarball. Neither one contains model weights. The installer runs `--install-suite` before it finishes: it copies Python 3.14 into the shared suite folder, installs the CUDA wheels, and downloads the default model, with progress on the console. A later launch repairs anything missing. `--selftest` runs that check without opening a window. The GPU checklist is `docs/TESTING-GPU.md`.
 
 ## Requirements
 

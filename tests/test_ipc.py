@@ -172,7 +172,7 @@ def test_linux_discovery_files(tmp_path: Path) -> None:
     assert "X-Voxprint-Ipc=/run/user/1/voxprint/enlarge.sock" in text
     assert "X-Voxprint-Protocol=1" in text
     assert "X-Voxprint-Ipc-Base=voxprint-enlarge" in text
-    assert "X-Voxprint-Version=0.2.0-rc.2" in text
+    assert "X-Voxprint-Version=0.2.0-rc.3" in text
     assert f"X-Voxprint-Exe={exe}" in text
     launcher = tmp_path / "bin" / "voxprint-enlarge"
     assert os.access(launcher, os.X_OK)
