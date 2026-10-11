@@ -19,7 +19,8 @@ voxprint_engine/         importable by Clarity (no Qt)
   providers.py           TensorRT, CUDA after a failed engine build
   hardware.py            startup gate; compute-capability warning
   store.py               shared models folder and .users.json
-  paths.py               models dir and TensorRT cache
+  suite_runtime.py       shared Python, CUDA wheels, default model, refcounted manifest
+  paths.py               models dir, shared runtime dir, and TensorRT cache
   gpu_lock.py            %TEMP%/voxprint-gpu.lock
   vram.py                budget = free_now - max(2 GB, 8% total)
   thermal.py             suite pause rule
@@ -81,9 +82,13 @@ Weights are not in the installer or the tarball.
 | Linux | `$XDG_DATA_HOME/voxprint/enlarge/voxprint-enlarge` (`~/.local/share` when unset) |
 
 `BUILD.json` holds `version`, the build-number `offset`, and the codename.
-The release workflow adds `GITHUB_RUN_NUMBER` to the offset. `--install-gpu`
-adds the CUDA 13 ONNX Runtime and TensorRT wheels on the machine that has
-the driver. A frozen app refuses that command.
+The release workflow adds `GITHUB_RUN_NUMBER` to the offset. The installer
+runs `--install-suite`, which copies Python 3.14 into the shared suite folder,
+installs torch plus the CUDA 13 ONNX Runtime and TensorRT wheels, and downloads
+the default model. `--uninstall-suite` drops this app's hold and deletes a
+shared file only when no other app still lists it. Every real launch and
+`--selftest` re-check that install and repair it. `--install-gpu` still
+installs the wheels by themselves. A frozen app refuses that command.
 
 ## Registry
 

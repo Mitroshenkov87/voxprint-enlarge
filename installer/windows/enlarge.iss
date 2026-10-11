@@ -30,7 +30,9 @@ Source: "{#Source}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 Name: "{userprograms}\Voxprint\Voxprint AI Enlarge"; Filename: "{app}\VoxprintEnlarge.exe"; WorkingDir: "{app}"; IconFilename: "{app}\assets\enlarge.ico"
 
 [Run]
+Filename: "{app}\VoxprintEnlarge.exe"; Parameters: "--install-suite"; Flags: waituntilterminated
 Filename: "{app}\VoxprintEnlarge.exe"; Parameters: "--register --exe ""{app}\VoxprintEnlarge.exe"""; Flags: runhidden waituntilterminated
 
 [UninstallRun]
+Filename: "{app}\VoxprintEnlarge.exe"; Parameters: "--uninstall-suite"; Flags: waituntilterminated; RunOnceId: uninstallsuite
 Filename: "{app}\VoxprintEnlarge.exe"; Parameters: "--unregister"; Flags: runhidden waituntilterminated; RunOnceId: unregister

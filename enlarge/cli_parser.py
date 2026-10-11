@@ -94,7 +94,7 @@ def build_parser() -> CliParser:
     parser.add_argument("--version", action="store_true", help="Print the version and exit.")
     parser.add_argument("--worker", action="store_true", help="Internal inference process.")
     parser.add_argument("--capabilities", action="store_true", help="Print what this install can run.")
-    parser.add_argument("--json", action="store_true", help="Required with --capabilities.")
+    parser.add_argument("--json", action="store_true", help="JSON for --capabilities and --selftest.")
     parser.add_argument("--serve", action="store_true", help="Listen for protocol 1.")
     parser.add_argument("--hidden", action="store_true", help="With --serve, leave the window closed.")
     parser.add_argument("--register", action="store_true", help="Write discovery records for this user.")
@@ -103,9 +103,23 @@ def build_parser() -> CliParser:
     parser.add_argument(
         "--install-gpu",
         action="store_true",
-        help="Install the CUDA 13 ONNX Runtime and TensorRT wheels.",
+        help="Install torch, the CUDA 13 ONNX Runtime, and TensorRT.",
     )
-    parser.add_argument("--selftest", action="store_true", help="Open the window, then quit.")
+    parser.add_argument(
+        "--install-suite",
+        action="store_true",
+        help="Install shared Python 3.14, the CUDA wheels, and the default model.",
+    )
+    parser.add_argument(
+        "--uninstall-suite",
+        action="store_true",
+        help="Drop this app's hold on shared files. Delete a file only when nothing else uses it.",
+    )
+    parser.add_argument(
+        "--selftest",
+        action="store_true",
+        help="Re-check the shared install and repair it. With --json, print one object.",
+    )
     parser.add_argument("--double", action="store_true", help="Legacy --upscale only. Run a second pass.")
     parser.add_argument(
         "--upscale",

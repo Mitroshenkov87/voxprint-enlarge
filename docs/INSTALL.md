@@ -1,6 +1,6 @@
 # Install and configuration
 
-A checkout runs from source. A release build is a per-user Windows installer or a Linux tarball. Neither one contains model weights. On the machine with the NVIDIA driver, run `voxprint-enlarge --install-gpu` once before the first TensorRT build. The VM checklist is `docs/TESTING-GPU.md`.
+A checkout runs from source. A release build is a per-user Windows installer or a Linux tarball. Neither one contains model weights. The installer runs `--install-suite` before it finishes: it copies Python 3.14 into the shared suite folder, installs the CUDA wheels, and downloads the default model, with progress on the console. A later launch repairs anything missing. `--selftest` runs that check without opening a window. The VM checklist for the published `v0.2.0-rc.2` build, which still expects a manual `--install-gpu`, is `docs/TESTING-GPU.md`.
 
 ## Requirements
 
@@ -15,10 +15,11 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
-Smoke test, no window left open:
+Re-check the shared install, no window:
 
 ```bash
 python main.py --selftest
+python main.py --selftest --json
 ```
 
 Add a folder on the Images step to include subfolders. Run keeps a queue file and continues unfinished images after a restart. Cancel stops the image that is running. The Model step can download a pinned file, check its sha256, and remove it when no other Voxprint app is listed in `.users.json`. Credits are built from the registry.
@@ -36,6 +37,7 @@ python main.py --upscale samples/sample.png --out out.avif --scale 2 --format av
 | Shared suite settings (GPU, models folder, language, theme) | `%LOCALAPPDATA%\Voxprint\state\suite.json` on Windows, `~/.local/share/voxprint/state/suite.json` on Linux |
 | Enlarge-only settings (scale, format, tile, output folder, custom models folder) | `%LOCALAPPDATA%\VoxprintEnlarge\settings.json` or `~/.local/share/voxprint-enlarge/settings.json` |
 | Shared model weights | `%LOCALAPPDATA%\Voxprint\models` or `~/.local/share/voxprint/models`, with `.users.json` |
+| Shared runtime (Python 3.14, CUDA wheels, refcounted manifest) | `%LOCALAPPDATA%\Voxprint\shared` or `~/.local/share/voxprint/shared` |
 | TensorRT engine cache (rebuildable, not refcounted) | `%LOCALAPPDATA%\Voxprint\trt-cache\<gpu>-<driver>-<trt>` or `~/.cache/voxprint/trt-cache/...` |
 | Logs | `<Enlarge home>/logs/enlarge.log` |
 
@@ -51,13 +53,15 @@ On Linux, `installer/linux/voxprint-enlarge.desktop` is the desktop entry. The i
 
 ```text
 python main.py                         open the window
-python main.py --selftest              open the window, then quit
+python main.py --selftest [--json]    re-check the shared install and repair it
 python main.py --version
 python main.py --capabilities --json   one JSON object, exit 0 with or without a GPU
 python main.py --serve --hidden        protocol 1 listener; the window stays closed until open_ui
 python main.py --register [--exe PATH]   discovery records for Lucent
 python main.py --unregister              remove those records
-python main.py --install-gpu             CUDA 13 ONNX Runtime and TensorRT, on a GPU machine
+python main.py --install-suite           shared Python, CUDA wheels, and the default model
+python main.py --uninstall-suite         drop this app's hold; delete a file only at zero holders
+python main.py --install-gpu             torch, CUDA 13 ONNX Runtime, and TensorRT
 python main.py --input FILE --scale 2|4 --preset photo|art [--model ID] [--quality fast|max] [--format FMT] [--output PATH] --json-progress
 python main.py --upscale FILE --out FILE [--scale 2|4] [--format avif|jxl|webp|jpeg|heic] [--quality N] [--lossless] [--model ID] [--double]
 python main.py --worker                internal worker process

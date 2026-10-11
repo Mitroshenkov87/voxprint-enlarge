@@ -55,15 +55,24 @@ def test_stage_app_leaves_weights_out(tmp_path: Path) -> None:
     assert (dest / "voxprint_engine" / "registry" / "catalog.json").is_file()
     assert (dest / "voxprint-enlarge").is_file()
     text = (dest / "install.sh").read_text(encoding="utf-8")
+    assert "--install-suite" in text
     assert "--register" in text
-    assert "--unregister" in (dest / "uninstall.sh").read_text(encoding="utf-8")
+    uninstall = (dest / "uninstall.sh").read_text(encoding="utf-8")
+    assert "--uninstall-suite" in uninstall
+    assert "--unregister" in uninstall
+    launcher = (dest / "voxprint-enlarge").read_text(encoding="utf-8")
+    assert "voxprint/shared/python/bin/python3" in launcher
     weights = [path for path in dest.rglob("*") if path.suffix.lower() in {".pth", ".onnx"}]
     assert weights == []
     iss = Path("installer/windows/enlarge.iss").read_text(encoding="utf-8")
     assert r"{localappdata}\Voxprint\Enlarge" in iss
     assert r"{userprograms}\Voxprint" in iss
+    assert "--uninstall-suite" in iss
     assert "--unregister" in iss
+    assert "--install-suite" in iss
     assert "--register" in iss
+    launcher = Path("tools/launcher/Program.cs").read_text(encoding="utf-8")
+    assert 'Path.Combine(local, "Voxprint", "shared", "python")' in launcher
 
 
 def test_unregister_removes_the_linux_discovery_files(tmp_path: Path) -> None:

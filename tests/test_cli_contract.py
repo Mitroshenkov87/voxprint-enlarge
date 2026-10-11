@@ -431,6 +431,8 @@ source = os.environ["VOXPRINT_SOURCE"]
 checks = [
     ["--version"],
     ["--capabilities", "--json"],
+    ["--selftest"],
+    ["--selftest", "--json"],
     ["--input", source, "--dry-run", "--json-progress"],
     ["upscale", "--input", source, "--scale", "2", "--dry-run", "--json-progress"],
 ]

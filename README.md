@@ -22,7 +22,7 @@ The next version brings the command line up to everything the window does, choos
 * An NVIDIA GPU that CUDA can use, and an NVIDIA driver from the 600 series or newer. An RTX 40 series card (compute capability 8.9) or newer is recommended. A card below that still starts and shows a diagnostics warning.
 * There is no CPU mode. Without that GPU, or with an older driver, the window does not start and shows a clear message. `--capabilities --json` and `--serve --hidden` still start in that case, so another app can see there is nothing to run.
 * The x86-64 CPU baseline is x86-64-v3. There is no AVX-512 requirement. The same code runs on ARM, and the GPU path still needs NVIDIA CUDA.
-* A network connection the first time, for `--install-gpu` and for the model download. After that, a run is offline.
+* A network connection while the installer fills the shared suite folder (Python 3.14, the CUDA wheels, and the default model). A later launch repairs anything missing. After that, a run is offline.
 
 Check `SHA256SUMS` from the GitHub release against the file you downloaded before you install.
 
@@ -31,13 +31,13 @@ Check `SHA256SUMS` from the GitHub release against the file you downloaded befor
 1. Run `VoxprintEnlarge-Setup.exe`. It does not need an administrator. It installs for the current user under `%LOCALAPPDATA%\Voxprint\Enlarge`.
 2. The Start menu folder **Voxprint** gains **Voxprint AI Enlarge**. The installer registers the Lucent hand-off. Uninstall removes that registration before it deletes the files.
 3. Open **Voxprint AI Enlarge** from that Start menu folder. The first window is the Images step.
-4. Once, from a terminal, install the GPU wheels into the bundled Python (this needs the network, and it does not download models):
+4. The installer shows progress while it copies Python 3.14 to `%LOCALAPPDATA%\Voxprint\shared`, installs the CUDA wheels there, and downloads the default model. Enlarge and Clarity share that folder. To re-check it later:
 
    ```text
-   "%LOCALAPPDATA%\Voxprint\Enlarge\VoxprintEnlarge.exe" --install-gpu
+   "%LOCALAPPDATA%\Voxprint\Enlarge\VoxprintEnlarge.exe" --selftest
    ```
 
-5. On **Model**, select a pinned model, press **Download**, and wait for the progress line. **Check hash** confirms the sha256. **Remove** deletes the file only when no other Voxprint app is listed in the shared `.users.json`.
+5. On **Model**, the default model is already there after a finished install. Other pinned models still use **Download**. **Check hash** confirms the sha256. **Remove** deletes a file only when no other Voxprint app is listed in the shared `.users.json`.
 6. On **Images**, press **Add images** or **Add folder**. **Include subfolders** is on by default. On **Output**, leave the format at AVIF and pick **x2** or **x4**. On **Run**, press **Run**.
 7. The first TensorRT engine for that model and GPU is built during the run. The status line says it is building the engine. The cache is `%LOCALAPPDATA%\Voxprint\trt-cache`. The next run of the same model loads the cached engine and is shorter.
 8. A folder batch shows one row per image, with its own progress. A failed image is recorded and the queue continues. **Cancel** stops the image that is running. If the app closes while a row is still unfinished, the next launch restores the queue and **Run** continues those images.
@@ -61,15 +61,10 @@ The window writes `<name>_x<scale>.avif` next to the source. It does not overwri
    * `ai.voxprint.Enlarge.desktop` is the hidden discovery file for the Lucent hand-off.
 
 3. Start **Voxprint AI Enlarge** from the application menu, or run `voxprint-enlarge`.
-4. Once, install the GPU wheels:
+4. `install.sh` shows progress while it copies Python 3.14 to `~/.local/share/voxprint/shared`, installs the CUDA wheels there, and downloads the default model. The launcher uses that shared Python when it is present. To re-check it later, run `voxprint-enlarge --selftest`.
+5. Run a scale, and use the batch and the compare view the same way as on Windows. The TensorRT cache is `~/.cache/voxprint/trt-cache`.
 
-   ```bash
-   voxprint-enlarge --install-gpu
-   ```
-
-5. Download a model, run a scale, and use the batch and the compare view the same way as on Windows. The TensorRT cache is `~/.cache/voxprint/trt-cache`.
-
-`uninstall.sh` in the installed tree unregisters the hand-off and removes the install directory.
+`uninstall.sh` drops this app's hold on the shared folder, deletes a shared file only when no other suite app still uses it, unregisters the hand-off, and removes the install directory.
 
 ## Formats
 

@@ -1,0 +1,261 @@
+"""Shared suite runtime: refcount, repair, and the installer commands."""
+from __future__ import annotations
+
+import json
+import stat
+import sys
+from pathlib import Path
+
+import pytest
+
+from main import main
+from voxprint_engine.api import shared_dir
+from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
+from voxprint_engine.store import register
+from voxprint_engine.suite_runtime import (
+    PYTHON_VERSION,
+    ComponentStatus,
+    RuntimeReport,
+    SuiteInstallError,
+    bundled_python_tree,
+    ensure_runtime,
+    read_manifest,
+    release_runtime,
+)
+
+COMPONENTS = ("python", "gpu", "model")
+
+
+def _hooks() -> tuple[list[str], dict[str, object], dict[str, object], dict[str, object]]:
+    calls: list[str] = []
+
+    def probe(name: str):
+        def check(path: Path) -> bool:
+            return (path / name).is_file()
+
+        return check
+
+    def install(name: str):
+        def run(path: Path, progress) -> None:
+            calls.append(name)
+            progress(f"Installing {name}")
+            (path / name).write_text("ready", encoding="utf-8")
+
+        return run
+
+    def remove(name: str):
+        def run(path: Path) -> None:
+            (path / name).unlink(missing_ok=True)
+
+        return run
+
+    probes = {name: probe(name) for name in COMPONENTS}
+    installers = {name: install(name) for name in COMPONENTS}
+    removers = {name: remove(name) for name in COMPONENTS}
+    return calls, probes, installers, removers
+
+
+def test_shared_dir_follows_voxprint_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VOXPRINT_HOME", str(tmp_path / "home"))
+    assert shared_dir() == tmp_path / "home" / "shared"
+
+
+def test_ci_skips_without_installing(tmp_path: Path) -> None:
+    def boom(_path: Path, _progress) -> None:
+        raise AssertionError("installer ran")
+
+    report = ensure_runtime("enlarge", root=tmp_path, installers={name: boom for name in COMPONENTS})
+    assert report.ok is True
+    assert report.skipped is True
+    assert {item.id for item in report.components} == set(COMPONENTS)
+    assert not (tmp_path / "manifest.json").exists()
+
+
+def test_holders_are_shared_and_removed_only_at_zero(tmp_path: Path) -> None:
+    calls, probes, installers, removers = _hooks()
+    kwargs = {"root": tmp_path, "allow_skip": False, "probes": probes, "installers": installers}
+    first = ensure_runtime("enlarge", **kwargs)
+    assert first.ok is True
+    assert calls == list(COMPONENTS)
+    again = ensure_runtime("enlarge", **kwargs)
+    assert calls == list(COMPONENTS)
+    enlarge_holders = {item.id: item.holders for item in again.components}
+    assert enlarge_holders == {name: ("enlarge",) for name in COMPONENTS}
+    clarity = ensure_runtime("clarity", **kwargs)
+    assert calls == list(COMPONENTS)
+    assert {item.holders for item in clarity.components} == {("enlarge", "clarity")}
+    released = release_runtime("enlarge", root=tmp_path, removers=removers)
+    assert released.ok is True
+    assert all((tmp_path / name).is_file() for name in COMPONENTS)
+    assert {item.holders for item in released.components} == {("clarity",)}
+    gone = release_runtime("clarity", root=tmp_path, removers=removers)
+    assert gone.ok is True
+    assert {item.detail for item in gone.components} == {"removed"}
+    assert all(not (tmp_path / name).exists() for name in COMPONENTS)
+    manifest = read_manifest(tmp_path)
+    assert manifest["components"] == {}
+
+
+def test_a_missing_component_is_repaired_once(tmp_path: Path) -> None:
+    calls, probes, installers, removers = _hooks()
+    ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
+    (tmp_path / "gpu").unlink()
+    calls.clear()
+    report = ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
+    assert calls == ["gpu"]
+    gpu = next(item for item in report.components if item.id == "gpu")
+    assert gpu.state == "repaired"
+    assert gpu.holders == ("enlarge",)
+    assert removers["gpu"](tmp_path) is None
+
+
+def test_a_version_change_reinstalls_that_component(tmp_path: Path) -> None:
+    calls, probes, installers, _removers = _hooks()
+    ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
+    path = tmp_path / "manifest.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["components"]["python"]["version"] = "3.13"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    calls.clear()
+    report = ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
+    assert calls == ["python"]
+    python = next(item for item in report.components if item.id == "python")
+    assert python.version == PYTHON_VERSION
+    assert python.state == "repaired"
+    assert read_manifest(tmp_path)["components"]["python"]["version"] == PYTHON_VERSION
+
+
+def test_a_failed_install_does_not_take_a_hold(tmp_path: Path) -> None:
+    def fail(_path: Path, _progress) -> None:
+        raise SuiteInstallError("disk full")
+
+    probes = {name: (lambda _path: False) for name in COMPONENTS}
+    installers = {name: fail for name in COMPONENTS}
+    report = ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
+    assert report.ok is False
+    assert all(item.state == "failed" for item in report.components)
+    assert read_manifest(tmp_path)["components"] == {}
+
+
+def test_same_app_is_not_counted_twice_and_bad_ids_are_refused(tmp_path: Path) -> None:
+    _calls, probes, installers, _removers = _hooks()
+    ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
+    with pytest.raises(SuiteInstallError):
+        ensure_runtime("../enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
+    holders = read_manifest(tmp_path)["components"]["model"]["holders"]
+    assert holders == ["enlarge"]
+
+
+def test_python_copy_and_bundle_detection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    bundle = tmp_path / "app" / "python" / "bin"
+    bundle.mkdir(parents=True)
+    exe = bundle / "python3"
+    exe.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setattr("voxprint_engine.suite_runtime.bundled_python_tree", lambda: bundle.parent)
+    monkeypatch.setattr(
+        "voxprint_engine.suite_runtime._python_ready",
+        lambda path: (path / "python" / "bin" / "python3").is_file(),
+    )
+    root = tmp_path / "shared"
+
+    def ready_gpu(_path: Path) -> bool:
+        return True
+
+    def ready_model() -> bool:
+        return True
+
+    def skip_gpu(_path: Path, _progress) -> None:
+        return None
+
+    def skip_model(_progress) -> None:
+        return None
+
+    monkeypatch.setattr("voxprint_engine.suite_runtime._install_gpu", skip_gpu)
+    monkeypatch.setattr("voxprint_engine.suite_runtime._install_model", skip_model)
+    monkeypatch.setattr("voxprint_engine.suite_runtime._gpu_ready", ready_gpu)
+    monkeypatch.setattr("voxprint_engine.suite_runtime._model_ready", ready_model)
+    report = ensure_runtime("enlarge", root=root, allow_skip=False)
+    assert report.ok is True
+    copied = root / "python" / "bin" / "python3"
+    assert copied.is_file()
+    assert copied.read_text(encoding="utf-8").startswith("#!/bin/sh")
+    if sys.platform != "win32":
+        monkeypatch.setattr("sys.executable", str(exe))
+        assert bundled_python_tree() == bundle.parent
+
+
+def test_release_keeps_an_unknown_component_another_app_holds(tmp_path: Path) -> None:
+    _calls, probes, installers, removers = _hooks()
+    ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
+    path = tmp_path / "manifest.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["components"]["future"] = {"holders": ["enlarge", "clarity"], "version": "1"}
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    release_runtime("enlarge", root=tmp_path, removers=removers)
+    future = read_manifest(tmp_path)["components"]["future"]
+    assert future["holders"] == ["clarity"]
+
+
+def test_selftest_json_and_uninstall_command(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["--selftest", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["skipped"] is True
+    assert {item["id"] for item in payload["components"]} == set(COMPONENTS)
+    assert main(["--install-suite"]) == 0
+    assert "shared suite: skipped" in capsys.readouterr().out
+    assert main(["--uninstall-suite"]) == 0
+    assert main(["--selftest"]) == 0
+
+
+def test_selftest_failure_is_nonzero(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+
+    def broken(_app: str, **_kwargs) -> RuntimeReport:
+        return RuntimeReport(False, False, (ComponentStatus("gpu", "cu130", "failed", (), "pip failed"),))
+
+    monkeypatch.setattr("main.ensure_runtime", broken)
+    assert main(["--selftest", "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["components"][0]["detail"] == "pip failed"
+
+
+def test_default_model_id_is_the_manifest_version() -> None:
+    assert DEFAULT_MODEL_ID == "4x-nomos2-realplksr-dysample"
+
+
+def test_weight_file_is_removed_only_when_the_last_app_releases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    models = tmp_path / "models"
+    monkeypatch.setenv("VOXPRINT_MODELS_DIR", str(models))
+    model = load_builtin(release=True).get(DEFAULT_MODEL_ID)
+    assert model is not None
+    target = models / model.filename
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"weight")
+    register("enlarge")
+    register("clarity")
+    root = tmp_path / "shared"
+    root.mkdir()
+    payload = {
+        "schema": 1,
+        "components": {"model": {"holders": ["enlarge", "clarity"], "version": DEFAULT_MODEL_ID}},
+    }
+    (root / "manifest.json").write_text(json.dumps(payload), encoding="utf-8")
+    assert release_runtime("enlarge", root=root).ok is True
+    assert target.is_file()
+    assert release_runtime("clarity", root=root).ok is True
+    assert not target.exists()
+
+
+def test_windows_bundle_python_is_the_python_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    folder = tmp_path / "python"
+    folder.mkdir()
+    exe = folder / "python.exe"
+    exe.write_text("", encoding="utf-8")
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setattr("sys.executable", str(exe))
+    assert bundled_python_tree() == folder.resolve()

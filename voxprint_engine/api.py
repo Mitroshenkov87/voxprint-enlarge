@@ -9,7 +9,7 @@ from __future__ import annotations
 from voxprint_engine import API, __version__
 from voxprint_engine.gpu_lock import gpu_job
 from voxprint_engine.infer import upscale_file, uses_lanczos
-from voxprint_engine.paths import models_dir, trt_cache_dir
+from voxprint_engine.paths import models_dir, shared_dir, trt_cache_dir
 from voxprint_engine.registry import (
     DEFAULT_MODEL_ID,
     LANCZOS_MODEL_ID,
@@ -21,6 +21,14 @@ from voxprint_engine.registry import (
     validate_manifest,
 )
 from voxprint_engine.store import ensure_weight, register, unregister
+from voxprint_engine.suite_runtime import (
+    ComponentStatus,
+    RuntimeReport,
+    SuiteInstallError,
+    ensure_runtime,
+    read_manifest,
+    release_runtime,
+)
 from voxprint_engine.thermal import decide
 from voxprint_engine.video import (
     RestoreBatchRequest,
@@ -47,16 +55,23 @@ __all__ = [
     "__version__",
     "choose_tile",
     "combined_catalog",
+    "ComponentStatus",
+    "RuntimeReport",
+    "SuiteInstallError",
     "decide",
+    "ensure_runtime",
     "ensure_weight",
     "gpu_job",
     "halve_tile",
     "load_builtin",
     "models_dir",
     "note_spill",
+    "read_manifest",
     "read_shared_usage",
+    "release_runtime",
     "register",
     "restore_frames",
+    "shared_dir",
     "sysmem_spill",
     "temporal_windows",
     "tile_frames",
