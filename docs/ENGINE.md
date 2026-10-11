@@ -4,8 +4,8 @@
 Clarity imports. The installable distribution is `voxprint-engine` 1.1.0. It
 does not import Qt. `API` is 1. The package version and `API` are different
 numbers: the version marks this release, and `API` stays 1 until a breaking
-change. 1.1.0 adds `ensure_onnx` and the optional manifest fields `onnx_url`,
-`onnx_sha256`, and `execution`.
+change. 1.1.0 adds `ensure_onnx`, `iter_tile_frames`, and the optional
+manifest fields `onnx_url`, `onnx_sha256`, and `execution`.
 
 Clarity pins the merge commit of this release:
 
@@ -40,7 +40,7 @@ names below are that addition.
 | `WorkerClient`, `WorkerError`, `UpscaleRequest`, `UpscaleResult` | JSON-line worker process |
 | `RestoreBatchRequest` | Video worker op: NHWC frames in, restored frames out |
 | `upscale_file`, `uses_lanczos` | One image, and whether this job must skip the network |
-| `restore_frames`, `temporal_windows`, `tile_frames` | Temporal windows and per-frame tiles for Clarity |
+| `restore_frames`, `temporal_windows`, `tile_frames`, `iter_tile_frames` | Temporal windows, per-frame tiles, and a one-frame video iterator for Clarity |
 | `ensure_weight`, `register`, `unregister` | Pinned download, and the shared `.users.json` refcount |
 | `ensure_onnx` | Download a prebuilt ONNX file when the manifest pins one, otherwise convert the `.pth` to a checked fp16 ONNX file and cache it by sha256 |
 | `models_dir`, `trt_cache_dir` | Weights folder and the rebuildable TensorRT cache |

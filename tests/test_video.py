@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import tracemalloc
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from voxprint_engine.video import (
     SPILL_BYTES,
     RestoreBatchRequest as VideoRestoreBatchRequest,
     gather_window,
+    iter_tile_frames,
     parse_shared_usage,
     read_shared_usage,
     restore_frames,
@@ -170,6 +172,59 @@ def test_tile_frames_match_the_image_feather_and_batch_on_n() -> None:
     assert out.shape == frames.shape
     once = tile_frames(frames, infer, tile=16, overlap=4, scale=1, batch=1)
     assert np.allclose(out, once, atol=1e-5)
+
+
+def test_iter_tile_frames_matches_one_frame_and_stays_under_the_chunk() -> None:
+    rng = np.random.default_rng(2)
+    small = rng.random((3, 20, 18, 3), dtype=np.float32)
+    got = np.stack(list(iter_tile_frames(small, _scale_nchw(1), tile=16, overlap=4, scale=1, batch=2)), axis=0)
+    want = tile_frames(small, _scale_nchw(1), tile=16, overlap=4, scale=1, batch=2)
+    assert np.allclose(got, want, atol=1e-5)
+    with pytest.raises(ValueError, match="NHWC"):
+        list(iter_tile_frames(small[0], _scale_nchw(1), tile=8, overlap=0))
+
+    count, height, width, channels = 8, 180, 320, 3
+    scale = 2
+    frames = np.zeros((count, height, width, channels), dtype=np.float32)
+    full = count * height * scale * width * scale * channels * 4
+
+    def consume() -> None:
+        produced = 0
+        for frame in iter_tile_frames(frames, _scale_nchw(scale), tile=64, overlap=0, scale=scale, batch=1):
+            assert frame.shape == (height * scale, width * scale, channels)
+            produced += 1
+        assert produced == count
+
+    def chunk() -> None:
+        tiled = tile_frames(frames, _scale_nchw(scale), tile=64, overlap=0, scale=scale, batch=1)
+        assert tiled.shape[0] == count
+
+    def peak(fn) -> int:
+        tracemalloc.start()
+        fn()
+        _current, high = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        return high
+
+    streamed = peak(consume)
+    whole = peak(chunk)
+    assert streamed < whole
+    assert streamed < full
+
+
+def test_restore_frames_streams_each_frame(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[int] = []
+    real = tile_frames
+
+    def wrapped(frames: np.ndarray, *args, **kwargs) -> np.ndarray:
+        seen.append(int(frames.shape[0]))
+        return real(frames, *args, **kwargs)
+
+    monkeypatch.setattr("voxprint_engine.video.tile_frames", wrapped)
+    frames = np.zeros((4, 8, 8, 3), dtype=np.float32)
+    out = restore_frames(frames, _scale_nchw(1), tile=8, overlap=0, scale=1, batch=1, length=1)
+    assert seen == [1, 1, 1, 1]
+    assert out.shape == frames.shape
 
 
 def test_restore_frames_keeps_each_source_frame() -> None:
@@ -330,7 +385,7 @@ def test_restore_batch_uses_the_session_lock_and_trt_cache(tmp_path: Path, monke
             assert lock is not None
             assert lock["owner"] == "clarity"
             assert lock["job"] == "clarity:restore"
-            assert feeds["input"].shape[0] == 2
+            assert feeds["input"].shape[0] == 1
             return [feeds["input"]]
 
         def close(self) -> None:
