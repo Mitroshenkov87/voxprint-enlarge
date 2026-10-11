@@ -182,6 +182,15 @@ def done_message(job_id: str, output: str, width: int, height: int, image_format
     }
 
 
+def warning_message(job_id: str, code: str, message: str) -> dict[str, Any]:
+    """A job continued, but a GPU provider was not the one that ran.
+
+    ``code`` is ``gpu_provider_unavailable`` when ONNX Runtime fell back to CPU.
+    Readers that do not know ``warning`` ignore the line. It is not an error.
+    """
+    return {**_kind("warning"), "id": job_id, "code": code, "message": message}
+
+
 def error_message(job_id: str, code: ErrorCode, message: str) -> dict[str, Any]:
     """An error object. retryable is true only for gpu_busy and model_missing."""
     return {

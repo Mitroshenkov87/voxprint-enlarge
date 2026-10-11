@@ -6,7 +6,8 @@ from typing import Any
 from enlarge.appinfo import product_version
 from enlarge.ipc.protocol import PROTOCOL
 from enlarge.paths import voxprint_home, voxprint_home_source
-from voxprint_common.gpu_probe import MIN_DRIVER_MAJOR, capability_warning, driver_major, query_gpus
+from voxprint_common.gpu_probe import MIN_DRIVER_MAJOR, capability_warning, driver_major
+from voxprint_engine.nvidia_smi import query_gpus
 from voxprint_engine.formats import DEFAULT_FORMAT, heic_backend
 from voxprint_engine.registry import load_builtin
 from voxprint_engine.store import weight_report

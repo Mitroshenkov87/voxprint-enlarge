@@ -26,7 +26,7 @@ from enlarge.appinfo import APP_DISPLAY_NAME, status_label, version_label
 from enlarge.credits import credit_sections
 from enlarge.suite import gpu, resolved_models_dir, set_gpu, set_models_dir
 from enlarge.ui.icons import apply_suite_icon
-from voxprint_common.gpu_probe import assess
+from voxprint_engine.nvidia_smi import assess
 from voxprint_common.ui.theme import build_style
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY, choices, normalize_format
 from voxprint_engine.providers import ci_lanczos

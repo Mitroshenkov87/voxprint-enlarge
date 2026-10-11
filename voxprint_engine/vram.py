@@ -11,6 +11,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Callable
 
+from voxprint_engine.nvidia_smi import smi_command
 from voxprint_engine.video import sysmem_spill as _video_sysmem_spill
 
 GB = 1024 ** 3
@@ -117,7 +118,7 @@ def parse_nvidia_smi(text: str, index: int = 0) -> tuple[float, float] | None:
 def query_nvidia_smi(index: int = 0, runner: Callable[..., subprocess.CompletedProcess[str]] | None = None) -> tuple[float, float] | None:
     """Ask nvidia-smi. ``None`` when the tool is missing or returns nothing useful."""
     run = runner or subprocess.run
-    command = ["nvidia-smi", "--query-gpu=memory.total,memory.free", "--format=csv,noheader,nounits"]
+    command = smi_command(["nvidia-smi", "--query-gpu=memory.total,memory.free", "--format=csv,noheader,nounits"])
     try:
         if os.name == "nt":
             proc = run(

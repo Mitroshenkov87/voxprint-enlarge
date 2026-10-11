@@ -23,7 +23,7 @@ from enlarge.ipc.protocol import (
 )
 from enlarge.appinfo import APP_DISPLAY_NAME, product_version
 from enlarge.ui.window import MainWindow
-from voxprint_common.gpu_probe import assess
+from voxprint_engine.nvidia_smi import assess
 from voxprint_engine.providers import ci_lanczos
 
 

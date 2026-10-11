@@ -36,11 +36,13 @@ voxprint-enlarge upscale --input samples/sample.png --scale 2 --format avif --js
 
 `--version` exits 0, prints `0.2.0-rc.6` and `Emunah`, and says `installed build`. It does not say `run from source`.
 
-`--selftest --json` exits 0. `ok` is true. `tensorrt_ep.detail` and `cuda_ep.detail` are both `loaded`. `voxprint_home` is the resolved folder and `voxprint_home_source` is `default` on a stock install. A line on stderr that starts with `warning: VOXPRINT_HOME` means the variable points away from a default home that already has `shared/manifest.json`. Unset `VOXPRINT_HOME` and install again so the apps share one runtime.
+`--selftest --json` exits 0. `ok` is true. `tensorrt_ep.detail` and `cuda_ep.detail` are both `loaded`, and each `providers` list is what `session.get_providers()` returned from the worker, not the names the wheel was built with. `fallback` is an empty string. A GPU provider that fell back to CPU sets `ok` to false and explains it in `fallback`. `voxprint_home` is the resolved folder and `voxprint_home_source` is `default` on a stock install. A line on stderr that starts with `warning: VOXPRINT_HOME` means the variable points away from a default home that already has `shared/manifest.json`. Unset `VOXPRINT_HOME` and install again so the apps share one runtime.
+
+The Windows launcher writes which interpreter it chose, and why, to `%LOCALAPPDATA%\Voxprint\logs\enlarge-launcher.log`. Setup runs `Enlarge\python\python.exe main.py --install-suite` and `--register` with that bundled interpreter. If either exits non-zero, Setup shows a message and exits non-zero. In PowerShell, `& "$env:LOCALAPPDATA\Voxprint\Enlarge\VoxprintEnlarge.exe" --version` prints the version and sets `$LASTEXITCODE`. `nvidia-smi` is called as `%SystemRoot%\System32\nvidia-smi.exe` when that file exists, so a scheduled task without a console still sees the GPU.
 
 `--capabilities --json` exits 0. On this machine `gpu.status` is `ok` and `gpu.reason` is null. `version` matches `--version`. The default model is `installed` true. It carries the same `voxprint_home` and `voxprint_home_source` fields.
 
-The upscale exits 0 and writes an AVIF file next to the sample. Nobody has to produce an ONNX file first. The first run reports `building_engine`, and `eta_s` starts near 90. Run the same command again. It reports `loading_cached_engine` and finishes sooner.
+The upscale exits 0 and writes an AVIF file next to the sample. Nobody has to produce an ONNX file first. The first stock run reports `building_engine`, and `eta_s` starts near 90. `bash scripts/vm_test.sh --smoke` requires that stage on the first stock run only. The same command again reports `loading_cached_engine` as its first engine stage. Anime 6B and the long-side chain only have to keep stages in order: a warm cache on those jobs is allowed.
 
 ## 2. A bad scale is one JSON line
 

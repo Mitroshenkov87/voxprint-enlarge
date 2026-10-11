@@ -306,6 +306,10 @@ TRT_META_SPEC = "tensorrt-cu13==10.14.1.48"
 NVIDIA_INDEX = "https://pypi.nvidia.com"
 SPANDREL_SPEC = "spandrel>=0.4,<0.5"
 ONNX_SPEC = "onnx>=1.17,<2"
+COMMON_SPEC = (
+    "voxprint-common[ui] @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/"
+    "v0.1.1/voxprint_common-0.1.1-py3-none-any.whl"
+)
 
 ComponentId = Literal["python", "gpu", "model"]
 Progress = Callable[[str], None]
@@ -318,7 +322,14 @@ _GPU_PROBE = """
 import importlib.metadata as meta
 import importlib.util as util
 import sys
-missing = [name for name in ("torch", "onnxruntime", "spandrel", "onnx") if util.find_spec(name) is None]
+missing = [name for name in ("torch", "onnxruntime", "spandrel", "onnx", "voxprint_common") if util.find_spec(name) is None]
+try:
+    common_version = meta.version("voxprint-common")
+except meta.PackageNotFoundError:
+    missing.append("voxprint-common")
+else:
+    if not str(common_version).startswith("0.1.1"):
+        missing.append("voxprint-common")
 names = {
     dist.metadata["Name"].lower()
     for dist in meta.distributions()
@@ -326,6 +337,13 @@ names = {
 }
 if "onnxruntime" in names:
     missing.append("cpu-onnxruntime")
+try:
+    ort_gpu = meta.version("onnxruntime-gpu")
+except meta.PackageNotFoundError:
+    missing.append("onnxruntime-gpu")
+else:
+    if not str(ort_gpu).startswith("1.31.0"):
+        missing.append("onnxruntime-gpu")
 try:
     libs = meta.version("tensorrt-cu13-libs")
 except meta.PackageNotFoundError:
@@ -769,6 +787,13 @@ def install_gpu_wheels(python: str, progress: Progress | None = None) -> None:
         raise SuiteInstallError("install the app directory, then run voxprint-enlarge --install-gpu")
     if not python:
         raise SuiteInstallError("a Python executable is required")
+    _pip(
+        python,
+        ["install", COMMON_SPEC],
+        "Installing voxprint-common 0.1.1",
+        progress,
+        required=True,
+    )
     _pip(python, ["install", "torch", "--index-url", TORCH_INDEX], "Installing torch for CUDA 13", progress, required=True)
     _pip(
         python,

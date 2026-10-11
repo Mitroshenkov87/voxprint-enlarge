@@ -29,11 +29,12 @@ from enlarge.ipc.protocol import (
     error_message,
     exit_code,
     progress_message,
+    warning_message,
 )
 from enlarge.ipc.scale import choose_scale, planned_size
 from enlarge.suite import gpu
 from voxprint_common.gpu_lock import GpuLockTimeout, gpu_job, read_holder
-from voxprint_common.gpu_probe import assess
+from voxprint_engine.nvidia_smi import assess
 from voxprint_engine.formats import (
     DEFAULT_FORMAT,
     open_rgb,
@@ -361,7 +362,10 @@ def run_job(
                             seen = nxt
                             _emit_progress(emit, job_id, nxt[1], nxt[0], started)
 
-                        result = client.upscale(upscale, on_progress=_progress)
+                        def _warning(code: str, text: str) -> None:
+                            emit(warning_message(job_id, code, text))
+
+                        result = client.upscale(upscale, on_progress=_progress, on_warning=_warning)
                 finally:
                     control.client = None
     except GpuLockTimeout as exc:

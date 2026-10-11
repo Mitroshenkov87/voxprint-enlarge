@@ -62,6 +62,7 @@ def test_stage_app_leaves_weights_out(tmp_path: Path) -> None:
     assert "--unregister" in uninstall
     launcher = (dest / "voxprint-enlarge").read_text(encoding="utf-8")
     assert "voxprint/shared/python/bin/python3" in launcher
+    assert "import voxprint_common, voxprint_engine, onnxruntime" in launcher
     weights = [path for path in dest.rglob("*") if path.suffix.lower() in {".pth", ".onnx"}]
     assert weights == []
     iss = Path("installer/windows/enlarge.iss").read_text(encoding="utf-8")
@@ -73,6 +74,13 @@ def test_stage_app_leaves_weights_out(tmp_path: Path) -> None:
     assert "--register" in iss
     launcher = Path("tools/launcher/Program.cs").read_text(encoding="utf-8")
     assert 'Path.Combine(local, "Voxprint", "shared", "python")' in launcher
+    assert "import voxprint_common, voxprint_engine, onnxruntime" in launcher
+    assert "GetConsoleMode" in launcher
+    assert "StdioRedirected" in launcher
+    assert ".enlarge-import-probe" in launcher
+    assert "--install-suite" in launcher
+    assert "python.exe" in iss
+    assert "Abort" in iss
 
 
 def test_unregister_removes_the_linux_discovery_files(tmp_path: Path) -> None:

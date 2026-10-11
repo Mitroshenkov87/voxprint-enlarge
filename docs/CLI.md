@@ -59,7 +59,7 @@ One JSON object per line. These are the IPC-ENLARGE shapes. `type` is the name. 
 {"protocol":1,"type":"error","id":"cli","code":"bad_input","message":"...","retryable":false}
 ```
 
-`stage` is `queued`, `waiting_gpu`, `loading`, `building_engine`, `loading_cached_engine`, `tiles`, or `encoding`. The two engine stages are additive: a reader that does not know them can ignore the string. `building_engine` is the first TensorRT build and reports `eta_s` as the time left in a 90 second build. `loading_cached_engine` is a warm cache. `eta_s` is a number, or `null` when there is no estimate yet. `lock_holder` is present on `waiting_gpu` and is read from the suite lock file: `owner`, `pid`, `job`.
+`stage` is `queued`, `waiting_gpu`, `loading`, `building_engine`, `loading_cached_engine`, `tiles`, or `encoding`. The two engine stages are additive: a reader that does not know them can ignore the string. `building_engine` is the first TensorRT build and reports `eta_s` as the time left in a 90 second build. It is emitted only when the TensorRT provider is actually active. `loading_cached_engine` is a warm cache. `eta_s` is a number, or `null` when there is no estimate yet. `lock_holder` is present on `waiting_gpu` and is read from the suite lock file: `owner`, `pid`, `job`. A `warning` line with `code` `gpu_provider_unavailable` means the job fell back to CPU. The job still finishes when a later path can.
 
 An argument error on a job that passed `--json-progress` is one JSON object on stdout, `code` `bad_input`, and the process exits 2. The usage text stays on stderr when `--json-progress` was not passed.
 

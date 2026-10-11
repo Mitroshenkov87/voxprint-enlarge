@@ -146,10 +146,10 @@ PY
 
   check_progress() {
     local file="$1"
-    local cached="${2:-0}"
-    "${PYTHON[@]}" - "$file" "$cached" <<'PY' || return 1
+    local mode="${2:-order}"
+    "${PYTHON[@]}" - "$file" "$mode" <<'PY' || return 1
 import json, sys
-path, cached = sys.argv[1], sys.argv[2] == "1"
+path, mode = sys.argv[1], sys.argv[2]
 order = ["queued", "waiting_gpu", "loading", "building_engine", "loading_cached_engine", "tiles", "encoding"]
 rank = {name: index for index, name in enumerate(order)}
 last = -1
@@ -169,8 +169,12 @@ for line in open(path, encoding="utf-8"):
     last = rank[stage]
     if stage in {"building_engine", "loading_cached_engine"}:
         engine.append(stage)
-if cached and engine and engine[0] != "loading_cached_engine":
-    raise SystemExit(f"cached run reported {engine[0]}")
+if mode == "cached" and (not engine or engine[0] != "loading_cached_engine"):
+    raise SystemExit(f"cached run reported {engine[0] if engine else 'no engine stage'}")
+if mode == "build" and "building_engine" not in engine:
+    raise SystemExit("first run did not report building_engine")
+if mode not in {"order", "cached", "build"}:
+    raise SystemExit(f"unknown progress check {mode}")
 PY
   }
 
@@ -181,14 +185,14 @@ PY
     fi
     fail "stock upscale exited $stock"
   fi
-  check_progress "$OUT/stock.out" 0 || fail "stock progress went backwards"
+  check_progress "$OUT/stock.out" build || fail "stock run did not report building_engine"
   find "$OUT" -maxdepth 1 -name '*.enlarged-2x.avif' | grep -q . || fail "stock upscale wrote no avif"
 
   cached="$(run_json stock-cached upscale --input "$SAMPLE" --output-dir "$OUT" --scale 2 --format avif --json-progress)"
   if [[ "$cached" -ne 0 ]]; then
     fail "cached upscale exited $cached"
   fi
-  check_progress "$OUT/stock-cached.out" 1 || fail "cached run did not report loading_cached_engine"
+  check_progress "$OUT/stock-cached.out" cached || fail "cached run did not report loading_cached_engine"
 
   anime="$(run_json anime upscale --input "$LINE" --output-dir "$OUT" --scale 4 --preset art --format avif --json-progress)"
   if [[ "$anime" -ne 0 ]]; then
@@ -197,7 +201,7 @@ PY
     fi
     fail "anime6b upscale exited $anime"
   fi
-  check_progress "$OUT/anime.out" 0 || fail "anime progress went backwards"
+  check_progress "$OUT/anime.out" order || fail "anime progress went backwards"
 
   LOCK="$OUT/voxprint-gpu.lock"
   export VOXPRINT_GPU_LOCK="$LOCK"
@@ -231,7 +235,7 @@ PY
     fail "parent lock pid changed from $holder to $still"
   fi
   [[ -f "$OUT/chain.avif" ]] || fail "chain wrote no file"
-  check_progress "$OUT/chain.out" 0 || fail "chain progress went backwards"
+  check_progress "$OUT/chain.out" order || fail "chain progress went backwards"
 
   echo "smoke passed ($OUT)"
   exit 0
