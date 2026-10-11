@@ -110,7 +110,25 @@ jobs:
           name=$(python -c "import sys; sys.path.insert(0, '${{ github.workspace }}'); from tools.build_number import codename; print(codename())")
           tag="${GITHUB_REF_NAME}"
           title="Voxprint AI Enlarge ${tag#v} · build ${build} \"${name}\""
-          notes="Pre-release. No model weights are included. On a GPU machine run \`voxprint-enlarge --install-gpu\` once, then follow docs/TESTING-GPU.md. Build number is the release workflow run plus BUILD.json offset. Codename: ${name}."
+          raw="https://github.com/${GITHUB_REPOSITORY}/raw/${tag}/docs/images"
+          notes="$(cat <<EOF
+          Offline image upscaling for the Voxprint suite. Nothing is uploaded.
+
+          ![The Images step of Voxprint AI Enlarge](${raw}/enlarge-main.webp)
+
+          Illustrated picture, RealESRGAN anime 6B at 4×:
+
+          ![Before](${raw}/anime-before.webp) ![After, 4×](${raw}/anime-after.webp)
+
+          Photograph, long side from 2048 to 3840:
+
+          ![Before](${raw}/photo-before.webp) ![After, long side 3840](${raw}/photo-after.webp)
+
+          No model weights are included. The installer fills the shared suite folder: Python 3.14, the CUDA wheels, and the default model. Check SHA256SUMS, then follow docs/TESTING-GPU.md.
+
+          Build number is the release workflow run plus the offset in BUILD.json. Codename: ${name}.
+          EOF
+          )"
           if gh release view "$tag" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release upload "$tag" --repo "${GITHUB_REPOSITORY}" --clobber \
               VoxprintEnlarge-Setup.exe \

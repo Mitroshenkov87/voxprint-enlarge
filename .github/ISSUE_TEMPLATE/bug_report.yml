@@ -1,0 +1,34 @@
+name: Bug report
+description: Something in Enlarge does not work as described.
+title: ""
+labels: []
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The line from `voxprint-enlarge --version`.
+      placeholder: 0.2.0-rc.3
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Operating system, GPU, and NVIDIA driver version.
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: A short log excerpt helps. Do not paste private pictures.
+    validations:
+      required: false
