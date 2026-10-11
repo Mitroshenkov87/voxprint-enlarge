@@ -74,6 +74,36 @@ def test_tiny_export_passes_the_checker(tmp_path: Path) -> None:
     assert TensorProto.FLOAT16 in {item.data_type for item in model.graph.initializer}
 
 
+def test_resize_export_stays_sorted_and_loads_on_cpu(tmp_path: Path) -> None:
+    torch = pytest.importorskip("torch")
+    ort = pytest.importorskip("onnxruntime")
+
+    class _Up(torch.nn.Module):
+        def forward(self, tensor: torch.Tensor) -> torch.Tensor:
+            return torch.nn.functional.interpolate(tensor, scale_factor=2.0, mode="bilinear", align_corners=False)
+
+    dest = tmp_path / "resize.onnx"
+    export_module(_Up(), dest, height=8, width=8)
+    model = onnx.load(dest)
+    onnx.checker.check_model(model)
+    assert any(node.op_type == "Resize" for node in model.graph.node)
+    session = ort.InferenceSession(str(dest), providers=["CPUExecutionProvider"])
+    assert session.get_inputs()[0].name == "input"
+
+
+def test_conversion_child_reports_a_killed_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    from voxprint_engine.onnx_export import ensure_onnx_in_child
+
+    class _Dead:
+        returncode = -9
+        stderr = ""
+        stdout = ""
+
+    monkeypatch.setattr("voxprint_engine.onnx_export.subprocess.run", lambda *_args, **_kwargs: _Dead())
+    with pytest.raises(OnnxExportError, match="out of memory"):
+        ensure_onnx_in_child(_manifest())
+
+
 def test_four_channel_export_sets_the_graph_depth(tmp_path: Path) -> None:
     torch = pytest.importorskip("torch")
     dest = tmp_path / "four.onnx"

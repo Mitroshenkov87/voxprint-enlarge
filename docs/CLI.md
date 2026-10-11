@@ -9,7 +9,7 @@ Every JSON object has `"protocol": 1`. Unknown fields are ignored.
 ## Invocation
 
 ```text
-voxprint-enlarge --input <file> --output <file> (--scale 2|4 | --long-side <px>) [--format avif|jxl|webp|jpeg|heic] [--lossless] [--quality 1-100] [--preset photo|art] [--model <id>] [--quality-tier fast|max] [--lock-timeout <s>] [--parent-lock-pid <pid>] [--dry-run] --json-progress
+voxprint-enlarge --input <file> [--output <file>] [--output-dir <dir>] (--scale 2|4 | --long-side <px>) [--format avif|jxl|webp|jpeg|heic] [--lossless] [--quality 1-100] [--preset photo|art] [--model <id>] [--quality-tier fast|max] [--lock-timeout <s>] [--parent-lock-pid <pid>] [--dry-run] --json-progress
 voxprint-enlarge upscale ...
 ```
 
@@ -21,6 +21,7 @@ The flag list and the defaults below are generated from `enlarge/cli_parser.py` 
 |---|---|
 | `--input` | Source image. Required |
 | `--output` | Destination file. Optional. `--out` is the same flag |
+| `--output-dir` | Directory for the default name. Used only when `--output` is omitted |
 | `--scale` | `2` or `4`. Omit both scale and long-side and the scale is 4 |
 | `--long-side` | Target long side in pixels. Not together with `--scale` |
 | `--format` | `avif` (default), `jxl`, `webp`, `jpeg`, or `heic` when a system HEIC encoder is present. Never PNG |
@@ -44,7 +45,7 @@ If `4 * max(width, height) < N`, the result is `bad_input` and the process exits
 
 ## Output name
 
-With no `--output`, the file is `<name>.enlarged-<scale>x.<ext>` next to the input. `<ext>` is `avif`, `jxl`, `webp`, `jpg`, or `heic`. If that file exists, the next name is `<name>.enlarged-<scale>x-2.<ext>`, then `-3`, and so on. An explicit `--output` that already exists becomes `<stem>-2<suffix>`, then `-3`. Nothing is overwritten. A failed or cancelled job deletes the file it reserved.
+With no `--output`, the file is `<name>.enlarged-<scale>x.<ext>` next to the input. `<ext>` is `avif`, `jxl`, `webp`, `jpg`, or `heic`. `--output-dir DIR` puts that same name in `DIR` instead, and creates `DIR` when it is missing. If that file exists, the next name is `<name>.enlarged-<scale>x-2.<ext>`, then `-3`, and so on. An explicit `--output` that already exists becomes `<stem>-2<suffix>`, then `-3`. `--output` wins over `--output-dir`. Nothing is overwritten. A failed or cancelled job deletes the file it reserved.
 
 ## Stdout
 
@@ -94,7 +95,7 @@ Prints one JSON object and exits 0. It does not need a GPU, a network, or a wind
 {
   "protocol": 1,
   "app": "enlarge",
-  "version": "0.2.0-rc.3",
+  "version": "0.2.0-rc.4",
   "gpu": {"name": null, "cc": null, "status": "none", "reason": "no_nvidia"},
   "models": [
     {"id": "4x-nomos2-realplksr-dysample", "preset": "photo", "quality": "fast", "scales": [2, 4], "installed": false}

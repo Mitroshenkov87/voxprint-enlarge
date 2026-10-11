@@ -1,6 +1,6 @@
 # Roadmap
 
-This is what is coming next for Voxprint AI Enlarge. The current install is `v0.2.0-rc.3`.
+This is what is coming next for Voxprint AI Enlarge. The current install is `v0.2.0-rc.4`.
 
 ## Next version
 

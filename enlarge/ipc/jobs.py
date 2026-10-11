@@ -19,6 +19,7 @@ from PIL import Image
 from enlarge.ipc.capabilities import ART, PHOTO_FAST, PHOTO_MAX, gpu_capability
 from enlarge.ipc.naming import peek_default, peek_explicit, reserve_default, reserve_explicit
 from enlarge.ipc.protocol import (
+    STAGES,
     EnlargeRequest,
     ErrorCode,
     Stage,
@@ -90,18 +91,45 @@ def _stage_for(fraction: float, message: str = "") -> Stage:
     """Map a worker fraction and its text onto a protocol stage.
 
     ``building_engine`` and ``loading_cached_engine`` are additive. Older
-    readers ignore stage strings they do not know.
+    readers ignore stage strings they do not know. Conversion text stays in
+    ``loading`` even when its fraction is high, so a cached ONNX file does
+    not report ``encoding`` before the tiles start.
     """
     text = message.lower()
     if "building the tensorrt engine" in text:
         return "building_engine"
     if "loading the cached tensorrt engine" in text or "tensorrt engine is cached" in text:
         return "loading_cached_engine"
+    if (
+        "onnx file is cached" in text
+        or "checked the onnx" in text
+        or "converting" in text
+        or "loading the weight" in text
+        or "checking the model" in text
+    ):
+        return "loading"
     if fraction < 0.15:
         return "loading"
     if fraction < 0.9:
         return "tiles"
     return "encoding"
+
+
+def _stage_rank(stage: Stage) -> int:
+    """Protocol order. A later line must not name an earlier stage."""
+    return STAGES.index(stage)
+
+
+def _advance(previous: tuple[Stage, float] | None, stage: Stage, pct: float) -> tuple[Stage, float] | None:
+    """The next progress point, or None when the stage or the percent would move backwards."""
+    if previous is None:
+        return stage, pct
+    old_stage, old_pct = previous
+    if _stage_rank(stage) < _stage_rank(old_stage):
+        return None
+    if _stage_rank(stage) == _stage_rank(old_stage) and pct + 1e-6 < old_pct:
+        return None
+    return stage, pct
 
 
 def _eta_s(pct: float, stage: Stage, started: float, now: float | None = None) -> float | None:
@@ -122,6 +150,8 @@ def _classify(message: str) -> ErrorCode:
         return "cancelled"
     if "nvidia gpu" in text or "600 series" in text:
         return "gpu_unsupported"
+    if "onnx conversion failed" in text or "onnx export failed" in text or text.startswith("worker closed the pipe"):
+        return "model_missing"
     if "out of memory" in text:
         return "oom"
     if "unsupported" in text or "png is an input" in text or "lossless output" in text:
@@ -320,8 +350,16 @@ def run_job(
                         if control.is_cancelled():
                             return _fail(emit, job_id, "cancelled", "cancelled", destination)
 
+                        seen: tuple[Stage, float] | None = None
+
                         def _progress(fraction: float, message: str) -> None:
-                            _emit_progress(emit, job_id, fraction * 100.0, _stage_for(fraction, message), started)
+                            nonlocal seen
+                            stage = _stage_for(fraction, message)
+                            nxt = _advance(seen, stage, fraction * 100.0)
+                            if nxt is None:
+                                return
+                            seen = nxt
+                            _emit_progress(emit, job_id, nxt[1], nxt[0], started)
 
                         result = client.upscale(upscale, on_progress=_progress)
                 finally:

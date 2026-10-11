@@ -9,16 +9,17 @@ import pytest
 
 pytest.importorskip("PySide6")
 from PIL import Image
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QLabel, QStackedWidget
 
 from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
 from main import main
 from voxprint_engine.hardware import NO_GPU_MESSAGE, OLD_DRIVER_MESSAGE, GpuInfo
 
-from enlarge.appinfo import build_info, format_version, version_line
+from enlarge.appinfo import APP_DISPLAY_NAME, build_info, format_version, version_line
 from enlarge.images import collect, plan_outputs
+from enlarge.platform_win import MIN_BUILD, START_MENU_FOLDER, backdrop_allowed, check_os
 from enlarge.queue_state import dump_queue
-from enlarge.platform_win import MIN_BUILD, START_MENU_FOLDER, check_os
 from enlarge.ui.splash import BAR
 from enlarge.ui.theme import CARD_GLASS, CONTRAST_PAIRS, MENU_BG, PRIMARY, ROOT_GLASS, TEXT, TEXT_FAINT, TEXT_MUTED, build_style
 from enlarge.ui.window import STEPS, MainWindow
@@ -80,7 +81,7 @@ def test_platform_names() -> None:
     assert MIN_BUILD == 26100
     assert check_os(build=26100, is_windows=True).ok
     assert not check_os(build=22000, is_windows=True).ok
-    assert "0.2.0-rc.3" in version_line()
+    assert "0.2.0-rc.4" in version_line()
     assert "run from source" in version_line()
     assert "pre-alpha" in format_version("0.1.0-pre")
     source = Path("enlarge/platform_win.py").read_text(encoding="utf-8")
@@ -131,6 +132,28 @@ def test_collect_skips_video(tmp_path: Path) -> None:
     assert planned[0].name == "a_x4.avif"
     with pytest.raises(ValueError, match="PNG"):
         plan_outputs([image], None, 4, "png", False)
+
+
+def test_server_and_remote_sessions_stay_opaque() -> None:
+    assert not backdrop_allowed(product="Windows Server 2025 Standard", remote=False, composition=True)
+    assert not backdrop_allowed(product="Windows 11 Pro", remote=True, composition=True)
+    assert not backdrop_allowed(product="Windows 11 Pro", remote=False, composition=False)
+    assert backdrop_allowed(product="Windows 11 Pro", remote=False, composition=True)
+    assert backdrop_allowed(product="Windows 11 Pro", remote=False, composition=None)
+
+
+def test_window_title_and_central_widget_are_set() -> None:
+    app = _app()
+    window = MainWindow()
+    assert window.windowTitle() == APP_DISPLAY_NAME
+    window.show()
+    app.processEvents()
+    assert window.windowTitle() == APP_DISPLAY_NAME
+    central = window.findChild(QStackedWidget, "central")
+    assert central is not None
+    assert central.count() == 4
+    assert not window.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    window.close()
 
 
 def test_window_starts_and_runs_a_sample(tmp_path: Path) -> None:

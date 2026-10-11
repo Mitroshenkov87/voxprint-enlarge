@@ -9,7 +9,13 @@ manifest fields `onnx_url`, `onnx_sha256`, and `execution`. 1.2.0 adds
 `in_channels` (default 3) so a 4-channel network such as DRUNet exports and
 runs with RGB plus a noise-level map.
 
-The 1.1.0 pin is:
+The 1.2.0 pin is:
+
+```text
+voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.2.0
+```
+
+The 1.1.0 pin stays valid for the surface before `in_channels`:
 
 ```text
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0
@@ -348,7 +354,10 @@ weight is copied into that cache when `onnx.checker` accepts it.
 Torch 2.14's default dynamo exporter writes two nodes with the same name.
 `ensure_onnx` calls the legacy exporter (`dynamo=False`, opset 17, dynamic
 height and width), converts the graph to fp16, and runs `onnx.checker`
-before the cache file is kept. The example tensor is `1 x in_channels x H x W`.
+before the cache file is kept. Resize stays in fp32, including the constants
+that feed its scale or size, and the graph is topologically sorted after the
+conversion. A job converts in a child process, so a crash reports the reason
+instead of closing the worker pipe. The example tensor is `1 x in_channels x H x W`.
 `in_channels` defaults to 3. A manifest that sets it to 4 exports a
 4-channel graph. The TensorRT profile uses that same count (`input:1x4x…`),
 and the session rejects a tile whose channel count does not match the graph.

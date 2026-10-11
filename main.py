@@ -268,8 +268,30 @@ def _uninstall_suite() -> int:
     return 0 if report.ok else 1
 
 
+def _prepare_qt() -> None:
+    """Point Qt at the plugins shipped beside PySide6.
+
+    ``pythonw`` from the shared runtime does not inherit a plugin path. Without
+    it the platform style is missing and the window has nothing to paint.
+    """
+    import PySide6
+
+    plugins = Path(PySide6.__file__).resolve().parent / "plugins"
+    if not plugins.is_dir():
+        return
+    current = os.environ.get("QT_PLUGIN_PATH", "")
+    parts = [str(plugins)]
+    if current:
+        parts.append(current)
+    os.environ["QT_PLUGIN_PATH"] = os.pathsep.join(parts)
+    platforms = plugins / "platforms"
+    if platforms.is_dir() and not os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH"):
+        os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(platforms)
+
+
 def _gui(_argv: list[str]) -> int:
     # Qt is imported on the window path only. Headless commands must not load libEGL.
+    _prepare_qt()
     from PySide6.QtWidgets import QApplication, QMessageBox
 
     from enlarge.ui import splash as splash_mod
@@ -332,6 +354,7 @@ def _install_gpu() -> int:
 
 def _serve() -> int:
     # Qt is imported here so --capabilities and --dry-run never load libEGL.
+    _prepare_qt()
     from PySide6.QtWidgets import QApplication
 
     from enlarge.ipc.server import IpcServer

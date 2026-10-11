@@ -330,9 +330,6 @@ def upscale_file(
             network = ensure_onnx(model, models_root, on_progress, weight=weight)
         except (StoreError, OnnxExportError) as exc:
             raise ImageJobError(str(exc)) from exc
-    if on_progress is not None:
-        on_progress(0.35, f"tile {tile}, overlap {overlap_for(tile)}")
-
     image = _load(src)
     gpu, driver, trt = _gpu_label()
     installed = available_providers()
@@ -372,8 +369,8 @@ def upscale_file(
                     cache = Path(choices[0].options.get("trt_engine_cache_path") or "")
                     on_progress(0.4, trt_build_message(cache))
                 session, provider = open_session(network, choices)
-                if on_progress is not None and provider == TRT:
-                    on_progress(0.45, "TensorRT engine is cached")
+                if on_progress is not None:
+                    on_progress(0.5, f"tile {tile}, overlap {overlap_for(tile)}")
             except EngineBuildError:
                 continue
             try:
