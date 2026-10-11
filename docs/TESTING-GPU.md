@@ -2,7 +2,7 @@
 
 Use this on the RTX 4090 machine (Windows 11, Windows Server 2025, or Linux, NVIDIA driver from the 600 series or newer). CI does not run these steps. The installer contains no model weights.
 
-Install `v0.2.0-rc.5` (codename Chayil). Check `SHA256SUMS` before you install. A stock machine can run the short set with `bash scripts/vm_test.sh --smoke` before anything else. The script prints `python: ...` for the interpreter it chose: the shared runtime (`%LOCALAPPDATA%\Voxprint\shared\python\python.exe`, or `~/.local/share/voxprint/shared/python/bin/python3`), then `py -3`, then `python3`. `python3` on Windows is often the Microsoft Store alias, so it is last. Exit 0 is pass, 1 is a failed test, 2 is setup, and 3 means no usable GPU.
+Install `v0.2.0-rc.5` (codename Chayil). Check `SHA256SUMS` before you install. A stock machine can run the short set with `bash scripts/vm_test.sh --smoke` before anything else. The script prints `python: ...` for the interpreter it chose: the shared runtime (`%LOCALAPPDATA%\Voxprint\shared\python\python.exe`, or `~/.local/share/voxprint/shared/python/bin/python3`), then `py -3`, then `python3`. `python3` on Windows is often the Microsoft Store alias, so it is last. A `VOXPRINT_HOME` or `LOCALAPPDATA` value with backslashes is accepted. Exit 0 is pass, 1 is a failed test, 2 is setup, and 3 means no usable GPU.
 
 * Windows: run `VoxprintEnlarge-Setup.exe`. It installs for the current user under `%LOCALAPPDATA%\Voxprint\Enlarge`.
 * Linux: unpack `voxprint-enlarge-linux-x64.tar.gz` and run `./install.sh`. The command is then `voxprint-enlarge`.

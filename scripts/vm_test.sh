@@ -9,11 +9,18 @@
 # is last. The chosen command is printed as `python: ...`.
 set -u
 
+# Git bash does not open C:\Windows paths. Forward slashes do.
+_to_unix() {
+  local value="$1"
+  printf '%s' "${value//\\//}"
+}
+
 # Print one interpreter command. A path is one line. `py -3` is the launcher.
 resolve_vm_python() {
-  local candidate data
+  local candidate data home
   if [[ -n "${VOXPRINT_HOME:-}" ]]; then
-    for candidate in "$VOXPRINT_HOME/shared/python/python.exe" "$VOXPRINT_HOME/shared/python/bin/python3"; do
+    home="$(_to_unix "$VOXPRINT_HOME")"
+    for candidate in "$home/shared/python/python.exe" "$home/shared/python/bin/python3"; do
       if [[ -f "$candidate" ]]; then
         printf '%s\n' "$candidate"
         return 0
@@ -21,23 +28,27 @@ resolve_vm_python() {
     done
   fi
   if [[ -n "${LOCALAPPDATA:-}" ]]; then
-    candidate="$LOCALAPPDATA/Voxprint/shared/python/python.exe"
+    candidate="$(_to_unix "$LOCALAPPDATA")/Voxprint/shared/python/python.exe"
     if [[ -f "$candidate" ]]; then
       printf '%s\n' "$candidate"
       return 0
     fi
   fi
-  data="${XDG_DATA_HOME:-${HOME:-}/.local/share}"
+  data="$(_to_unix "${XDG_DATA_HOME:-${HOME:-}/.local/share}")"
   candidate="$data/voxprint/shared/python/bin/python3"
   if [[ -f "$candidate" ]]; then
     printf '%s\n' "$candidate"
     return 0
   fi
-  if command -v py >/dev/null 2>&1 && py -3 -c "import sys" >/dev/null 2>&1; then
-    printf '%s\n' "py -3"
-    return 0
+  # A dead `py -3` exits 1. The subshell keeps `set -e` from stopping the script.
+  if command -v py >/dev/null 2>&1; then
+    if ( py -3 -c "import sys" ) >/dev/null 2>&1; then
+      printf '%s\n' "py -3"
+      return 0
+    fi
   fi
   printf '%s\n' "python3"
+  return 0
 }
 
 vm_test_main() {
@@ -226,6 +237,7 @@ PY
   exit 0
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+# `return` succeeds only while this file is sourced. Executing it runs the smoke test.
+if ! (return 0 2>/dev/null); then
   vm_test_main "$@"
 fi

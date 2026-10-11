@@ -10,25 +10,34 @@ SCRIPT = ROOT / "scripts" / "vm_test.sh"
 PS1 = ROOT / "installer" / "windows" / "start-menu.ps1"
 
 
+def _bash_path(path: Path) -> str:
+    """Path Git bash can open. Drive letters stay colon-free (`/c/Users`)."""
+    text = path.as_posix()
+    if os.name == "nt" and len(text) >= 3 and text[1] == ":":
+        return f"/{text[0].lower()}{text[2:]}"
+    return text
+
+
 def _resolve(env: dict[str, str]) -> str:
     merged = os.environ.copy()
-    merged.update(env)
-    merged.pop("VOXPRINT_HOME", None)
-    merged.pop("LOCALAPPDATA", None)
-    merged.pop("XDG_DATA_HOME", None)
+    for key in ("VOXPRINT_HOME", "LOCALAPPDATA", "XDG_DATA_HOME", "BASH_ENV", "SHELLOPTS", "BASHOPTS"):
+        merged.pop(key, None)
     for key, value in env.items():
         if value == "":
             merged.pop(key, None)
         else:
             merged[key] = value
+    # Windows keeps `Path` and `PATH` as one variable. Set both spellings.
+    if "PATH" in env and os.name == "nt":
+        merged["Path"] = env["PATH"]
     completed = subprocess.run(
-        ["bash", "-c", 'source "$1"; resolve_vm_python', "bash", str(SCRIPT)],
+        ["bash", "--noprofile", "--norc", "-c", 'source "$1"; resolve_vm_python', "vosource", str(SCRIPT)],
         check=False,
         capture_output=True,
         text=True,
         env=merged,
     )
-    assert completed.returncode == 0, completed.stderr
+    assert completed.returncode == 0, (completed.returncode, completed.stdout, completed.stderr)
     return completed.stdout.strip()
 
 
@@ -39,8 +48,9 @@ def test_shared_runtime_wins_over_py_and_python3(tmp_path: Path) -> None:
     chosen = runtime / "python3"
     chosen.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     chosen.chmod(0o755)
-    found = _resolve({"VOXPRINT_HOME": str(home), "PATH": "/usr/bin"})
-    assert found == str(chosen)
+    windows_home = str(home).replace("/", "\\")
+    found = _resolve({"VOXPRINT_HOME": windows_home, "PATH": "/usr/bin", "HOME": _bash_path(tmp_path / "empty-home")})
+    assert found.replace("\\", "/") == str(chosen).replace("\\", "/")
 
 
 def test_py_launcher_is_before_python3(tmp_path: Path) -> None:
@@ -52,12 +62,17 @@ def test_py_launcher_is_before_python3(tmp_path: Path) -> None:
     python3 = bindir / "python3"
     python3.write_text("#!/bin/sh\necho store >&2\nexit 1\n", encoding="utf-8")
     python3.chmod(0o755)
-    found = _resolve({"PATH": f"{bindir}:/usr/bin", "HOME": str(tmp_path / "empty")})
+    bash_bin = _bash_path(bindir)
+    subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c", 'chmod +x "$1" "$2"', "chmod", f"{bash_bin}/py", f"{bash_bin}/python3"],
+        check=True,
+    )
+    found = _resolve({"PATH": f"{bash_bin}:/usr/bin", "HOME": _bash_path(tmp_path / "empty")})
     assert found == "py -3"
 
 
 def test_python3_is_the_last_resort(tmp_path: Path) -> None:
-    found = _resolve({"PATH": "/usr/bin", "HOME": str(tmp_path / "empty")})
+    found = _resolve({"PATH": "/usr/bin", "HOME": _bash_path(tmp_path / "empty")})
     assert found == "python3"
 
 
