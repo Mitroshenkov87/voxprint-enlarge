@@ -11,36 +11,289 @@ skipped, so tests stay offline. Pass ``allow_skip=False`` to force the check.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.metadata as importlib_metadata
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, assert_never
+from typing import Any, Literal, assert_never
 
-from enlarge._vendor.voxprint_common.manifest import (
-    ORT_LOCK,
-    PYTHON_LOCK,
-    TRT_LOCK,
-    TORCH_LOCK,
-    SharedManifest,
-    SharedManifestError,
-    find_reusable,
-    load,
-    lock_hash,
-    remove_ref,
-    reserve,
-    update,
+from voxprint_common.atomic import LockTimeout, exclusive_lock, write_json
+from voxprint_common.paths import home, models_dir, shared_dir
+from voxprint_common.runtime_manifest import (
+    ManifestError,
+    load as load_manifest,
+    lock_path as manifest_lock_path,
 )
-from voxprint_engine.hardware import ci_lanczos
+from enlarge.paths import voxprint_home_source, voxprint_home_warning
 from voxprint_engine.onnx_export import OnnxExportError, cached_onnx, ensure_onnx
-from voxprint_engine.paths import models_dir, shared_dir, voxprint_home, voxprint_home_source, voxprint_home_warning
+from voxprint_engine.providers import ci_lanczos
 from voxprint_engine.registry import DEFAULT_MODEL_ID, ModelManifest, load_builtin
 from voxprint_engine.store import StoreError, register, unregister, weight_report
+
+# Pin text whose sha256 is the lock hash Enlarge writes for these components.
+# voxprint-common 0.1 records a component digest; it does not ship these pins.
+PYTHON_LOCK = "python==3.14"
+TORCH_LOCK = "torch@cu130"
+ORT_LOCK = "onnxruntime-gpu==1.31.0"
+TRT_LOCK = "tensorrt-cu13-libs==10.14.1.48"
+_KIND_OK = frozenset({"runtime", "wheels", "model", "tool"})
+_COMPONENT_ID = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+_APP_REF = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+_RECORD_FIELDS = frozenset({"kind", "version", "path", "sha256", "installed_at", "refs"})
+
+
+class _ManifestTxError(RuntimeError):
+    """The shared manifest could not be read, locked, or written."""
+
+
+@dataclass
+class _ManifestView:
+    """Mutable schema 1 document used for one installer transaction."""
+
+    components: dict[str, dict[str, Any]] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        """JSON object. Unknown top-level keys from ``extra`` are included."""
+        body = dict(self.extra)
+        body["schema"] = 1
+        body["components"] = self.components
+        return body
+
+
+def _lock_hash(text: str) -> str:
+    """SHA-256 hex of a pin string, used as a component's lock hash."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _manifest_path(root: Path | None) -> Path:
+    folder = root or shared_dir()
+    return folder / "manifest.json"
+
+
+def _view_from_common(path: Path) -> _ManifestView:
+    """Read a schema 1 file that :func:`voxprint_common.runtime_manifest.load` already migrated."""
+    if not path.is_file():
+        return _ManifestView()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise _ManifestTxError(f"{path.name} could not be read") from exc
+    if not isinstance(payload, dict):
+        raise _ManifestTxError(f"{path.name} must be a JSON object")
+    raw = payload.get("components")
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise _ManifestTxError("manifest components must be an object")
+    components = {str(key): dict(value) for key, value in raw.items() if isinstance(value, dict)}
+    extra = {key: value for key, value in payload.items() if key not in {"schema", "components"}}
+    return _ManifestView(components, extra)
+
+
+def _view_load(root: Path | None = None, *, timeout: float = 30.0) -> _ManifestView:
+    """Load ``manifest.json``, migrating an older shape through ``voxprint_common``."""
+    path = _manifest_path(root)
+    if not path.is_file():
+        return _ManifestView()
+    try:
+        load_manifest(path, timeout=timeout)
+    except ManifestError as exc:
+        raise _ManifestTxError(str(exc)) from exc
+    except LockTimeout as exc:
+        raise _ManifestTxError(str(exc)) from exc
+    return _view_from_common(path)
+
+
+@contextmanager
+def _view_update(root: Path | None = None, *, timeout: float = 30.0) -> Iterator[_ManifestView]:
+    """Hold ``manifest.lock``, yield the manifest, and save it when the body returns.
+
+    Migration runs first, through :func:`voxprint_common.runtime_manifest.load`.
+    The lock is not re-entrant, so the write takes it only after that call returns.
+    """
+    folder = root or shared_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "manifest.json"
+    if path.is_file():
+        try:
+            load_manifest(path, timeout=timeout)
+        except ManifestError as exc:
+            raise _ManifestTxError(str(exc)) from exc
+        except LockTimeout as exc:
+            raise _ManifestTxError(str(exc)) from exc
+    try:
+        with exclusive_lock(manifest_lock_path(path), timeout=timeout):
+            view = _view_from_common(path)
+            try:
+                yield view
+            except BaseException:
+                raise
+            else:
+                write_json(path, view.as_dict())
+    except LockTimeout as exc:
+        raise _ManifestTxError(str(exc)) from exc
+
+
+def _find_reusable(manifest: _ManifestView, component_id: str, version: str, sha256: str) -> dict[str, Any] | None:
+    """The component when id, version, and sha256 all match, else None."""
+    entry = manifest.components.get(component_id)
+    if not isinstance(entry, dict):
+        return None
+    if str(entry.get("version") or "") != version:
+        return None
+    if str(entry.get("sha256") or "") != sha256:
+        return None
+    return entry
+
+
+def _ref_names(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    seen: list[str] = []
+    for item in value:
+        name = item.strip() if isinstance(item, str) else str(item).strip()
+        if name and name not in seen:
+            seen.append(name)
+    return seen
+
+
+def _check_component_id(component_id: str) -> None:
+    if _COMPONENT_ID.fullmatch(component_id) is None:
+        raise _ManifestTxError(f"component id {component_id!r} is not allowed")
+
+
+def _check_ref_app(app: str) -> None:
+    if _APP_REF.fullmatch(app) is None:
+        raise _ManifestTxError("app id must be a short lowercase name")
+
+
+def _add_ref(manifest: _ManifestView, component_id: str, app: str) -> dict[str, Any]:
+    _check_component_id(component_id)
+    _check_ref_app(app)
+    entry = manifest.components.get(component_id)
+    if not isinstance(entry, dict):
+        raise _ManifestTxError(f"{component_id} is not in the manifest")
+    refs = _ref_names(entry.get("refs"))
+    if app not in refs:
+        refs.append(app)
+    entry["refs"] = refs
+    return entry
+
+
+def _drop_ref(manifest: _ManifestView, component_id: str, app: str) -> bool:
+    """Drop ``app``. Return True when the component's ref list is now empty."""
+    _check_component_id(component_id)
+    _check_ref_app(app)
+    entry = manifest.components.get(component_id)
+    if not isinstance(entry, dict):
+        return False
+    refs = [name for name in _ref_names(entry.get("refs")) if name != app]
+    entry["refs"] = refs
+    return not refs
+
+
+def _stamp(
+    kind: str,
+    version: str,
+    path: str,
+    sha256: str,
+    installed_at: str | None,
+    refs: list[str],
+    previous: dict[str, Any] | None,
+) -> dict[str, Any]:
+    unknown: dict[str, Any] = {}
+    if previous:
+        unknown = {key: value for key, value in previous.items() if key not in _RECORD_FIELDS}
+    record: dict[str, Any] = dict(unknown)
+    record.update(
+        {
+            "installed_at": installed_at or datetime.now(UTC).isoformat(timespec="seconds"),
+            "kind": kind,
+            "path": path,
+            "refs": list(refs),
+            "sha256": sha256,
+            "version": version,
+        }
+    )
+    return record
+
+
+def _side_path(path: str, sha256: str) -> str:
+    suffix = (sha256 or "unset")[:12]
+    base = path or "runtime"
+    return f"{base}-{suffix}"
+
+
+def _foreign(entry: dict[str, Any], app: str) -> bool:
+    return any(name != app for name in _ref_names(entry.get("refs")))
+
+
+def _reserve(
+    manifest: _ManifestView,
+    *,
+    component_id: str,
+    kind: str,
+    version: str,
+    path: str,
+    sha256: str,
+    app: str,
+    installed_at: str | None = None,
+) -> tuple[dict[str, Any], bool]:
+    """Reuse a matching component, or record ``app`` on a side-by-side path.
+
+    ``voxprint_common.runtime_manifest.add_ref`` refuses a different digest
+    while another app still refs the id. The installer keeps the occupied
+    record and writes the new copy under ``{id}-{sha256[:12]}``.
+    """
+    _check_component_id(component_id)
+    if kind not in _KIND_OK:
+        raise _ManifestTxError(f"component kind {kind!r} is not allowed")
+    _check_ref_app(app)
+    if not _path_allowed(path, kind):
+        raise _ManifestTxError("component path must stay inside the shared directory or the shared models directory")
+    found = _find_reusable(manifest, component_id, version, sha256)
+    if found is not None:
+        _add_ref(manifest, component_id, app)
+        return found, True
+    current = manifest.components.get(component_id)
+    if isinstance(current, dict) and _foreign(current, app):
+        suffix = (sha256 or "unset")[:12]
+        side_id = f"{component_id}-{suffix}"
+        _check_component_id(side_id)
+        side = _find_reusable(manifest, side_id, version, sha256)
+        if side is not None:
+            _add_ref(manifest, side_id, app)
+            return side, True
+        existing = manifest.components.get(side_id)
+        if isinstance(existing, dict) and _foreign(existing, app):
+            raise _ManifestTxError(f"{component_id} is in use under another app")
+        occupied = str(current.get("path") or "")
+        side_path = path if path and path != occupied else _side_path(occupied or path, sha256)
+        if not _path_allowed(side_path, kind):
+            raise _ManifestTxError("component path must stay inside the shared directory or the shared models directory")
+        if app in _ref_names(current.get("refs")):
+            _drop_ref(manifest, component_id, app)
+        record = _stamp(kind, version, side_path, sha256, installed_at, [app], existing if isinstance(existing, dict) else None)
+        manifest.components[side_id] = record
+        return record, False
+    previous = current if isinstance(current, dict) else None
+    refs = _ref_names(previous.get("refs")) if previous else []
+    if app not in refs:
+        refs.append(app)
+    record = _stamp(kind, version, path, sha256, installed_at, refs, previous)
+    manifest.components[component_id] = record
+    return record, False
+
 
 PYTHON_VERSION = "3.14"
 GPU_VERSION = "cu130"
@@ -149,10 +402,49 @@ class _Pin:
     unit: ComponentId
 
 
+def _model_roots() -> tuple[Path, ...]:
+    """Directories a model component path may use, matching ``voxprint_common`` 0.1.1."""
+    roots = [models_dir(), shared_dir()]
+    cache = os.environ.get("VOXPRINT_MODEL_CACHE", "").strip()
+    if cache:
+        folder = Path(os.path.expandvars(os.path.expanduser(cache)))
+        if folder.is_absolute():
+            roots.append(folder)
+    return tuple(roots)
+
+
+def _inside_model_root(candidate: Path) -> bool:
+    cand = os.path.normcase(str(candidate.absolute()))
+    for root in _model_roots():
+        base = os.path.normcase(str(root.absolute()))
+        if cand == base or cand.startswith(base + os.sep):
+            return True
+    return False
+
+
+def _path_allowed(path: str, kind: str) -> bool:
+    """Relative paths stay in the shared tree. A model may be absolute under the models root."""
+    if not path or ".." in Path(path).parts:
+        return False
+    candidate = Path(path)
+    if candidate.is_absolute() or path.startswith(("/", "\\")):
+        return kind == "model" and _inside_model_root(candidate)
+    return True
+
+
+def _model_payload_path() -> str:
+    """Absolute path of the default weight under the shared models directory."""
+    model = _default_model()
+    filename = model.filename.strip()
+    if filename and "/" not in filename and "\\" not in filename:
+        return str((models_dir() / filename).absolute())
+    return str(models_dir().absolute())
+
+
 def _model_pin() -> _Pin:
     digest = _default_model().sha256.lower()
     prefix = digest[:12]
-    return _Pin(f"model-{prefix}", "model", DEFAULT_MODEL_ID, f"model/{prefix}", digest, "model")
+    return _Pin(f"model-{prefix}", "model", DEFAULT_MODEL_ID, _model_payload_path(), digest, "model")
 
 
 def default_model_component_id() -> str:
@@ -162,10 +454,10 @@ def default_model_component_id() -> str:
 
 def _pins() -> tuple[_Pin, ...]:
     return (
-        _Pin("python-3.14", "runtime", PYTHON_VERSION, "python", lock_hash(PYTHON_LOCK), "python"),
-        _Pin("torch-cu130", "wheels", GPU_VERSION, "python", lock_hash(TORCH_LOCK), "gpu"),
-        _Pin("onnxruntime-gpu-1.31", "wheels", "1.31.0", "python", lock_hash(ORT_LOCK), "gpu"),
-        _Pin("tensorrt-10", "wheels", "10.14.1.48", "python", lock_hash(TRT_LOCK), "gpu"),
+        _Pin("python-3.14", "runtime", PYTHON_VERSION, "python", _lock_hash(PYTHON_LOCK), "python"),
+        _Pin("torch-cu130", "wheels", GPU_VERSION, "python", _lock_hash(TORCH_LOCK), "gpu"),
+        _Pin("onnxruntime-gpu-1.31", "wheels", "1.31.0", "python", _lock_hash(ORT_LOCK), "gpu"),
+        _Pin("tensorrt-10", "wheels", "10.14.1.48", "python", _lock_hash(TRT_LOCK), "gpu"),
     )
 
 
@@ -180,8 +472,8 @@ def read_manifest(root: Path | None = None) -> dict[str, object]:
     An old Canvas or Enlarge file is migrated to schema 1 before it is returned.
     """
     try:
-        return load(root).as_dict()
-    except SharedManifestError as exc:
+        return _view_load(root).as_dict()
+    except _ManifestTxError as exc:
         raise SuiteInstallError(str(exc)) from exc
 
 
@@ -207,7 +499,7 @@ def ensure_runtime(
     """
     app = app_id
     _check_app(app)
-    _emit(progress, f"Voxprint home: {voxprint_home()} ({voxprint_home_source()})")
+    _emit(progress, f"Voxprint home: {home()} ({voxprint_home_source()})")
     warning = voxprint_home_warning()
     if warning:
         _emit(progress, warning)
@@ -217,8 +509,8 @@ def ensure_runtime(
     folder.mkdir(parents=True, exist_ok=True)
     pins = _pins()
     try:
-        snapshot = load(folder)
-    except SharedManifestError as exc:
+        snapshot = _view_load(folder)
+    except _ManifestTxError as exc:
         raise SuiteInstallError(str(exc)) from exc
     assignments = _assign(snapshot, app, pins)
     outcomes: dict[str, tuple[str, str]] = {}
@@ -239,7 +531,7 @@ def ensure_runtime(
                 _emit(progress, f"Installing {component_id} {pin.version}")
         try:
             _call_installer(unit, folder, progress, installers, rel)
-        except (SuiteInstallError, StoreError, OSError, SharedManifestError) as exc:
+        except (SuiteInstallError, StoreError, OSError, _ManifestTxError) as exc:
             outcomes[unit] = ("failed", str(exc))
             continue
         if _call_probe(unit, folder, probes, rel):
@@ -249,12 +541,12 @@ def ensure_runtime(
     records: dict[str, dict[str, object]] = {}
     if any(state in {"ok", "repaired"} for state, _detail in outcomes.values()):
         try:
-            with update(folder) as manifest:
+            with _view_update(folder) as manifest:
                 for pin, component_id, path in assignments:
                     state, _detail = outcomes[pin.unit]
                     if state not in {"ok", "repaired"}:
                         continue
-                    record, _reused = reserve(
+                    record, _reused = _reserve(
                         manifest,
                         component_id=component_id,
                         kind=pin.kind,
@@ -264,7 +556,7 @@ def ensure_runtime(
                         app=app,
                     )
                     records[component_id] = record
-        except SharedManifestError as exc:
+        except _ManifestTxError as exc:
             raise SuiteInstallError(str(exc)) from exc
     statuses: list[ComponentStatus] = []
     for pin, component_id, _path in assignments:
@@ -301,8 +593,8 @@ def ensure_default_model(
     folder = root or shared_dir()
     folder.mkdir(parents=True, exist_ok=True)
     try:
-        snapshot = load(folder)
-    except SharedManifestError as exc:
+        snapshot = _view_load(folder)
+    except _ManifestTxError as exc:
         raise SuiteInstallError(str(exc)) from exc
     _pin, component_id, rel = _model_assignment(snapshot, app_id, pin)
     assignments = [(pin, component_id, rel)]
@@ -315,7 +607,7 @@ def ensure_default_model(
         _emit(progress, f"Installing {component_id} {pin.version}")
         try:
             _call_installer("model", folder, progress, installers, rel)
-        except (SuiteInstallError, StoreError, OSError, SharedManifestError) as exc:
+        except (SuiteInstallError, StoreError, OSError, _ManifestTxError) as exc:
             return RuntimeReport(False, False, (ComponentStatus(component_id, pin.version, "failed", (), str(exc)),))
         if _call_probe("model", folder, probes, rel):
             state, detail = "repaired", "repaired"
@@ -324,8 +616,8 @@ def ensure_default_model(
     holders: tuple[str, ...] = ()
     if state in {"ok", "repaired"}:
         try:
-            with update(folder) as manifest:
-                record, _reused = reserve(
+            with _view_update(folder) as manifest:
+                record, _reused = _reserve(
                     manifest,
                     component_id=component_id,
                     kind=pin.kind,
@@ -335,7 +627,7 @@ def ensure_default_model(
                     app=app_id,
                 )
                 holders = tuple(_entry_refs(record))
-        except SharedManifestError as exc:
+        except _ManifestTxError as exc:
             raise SuiteInstallError(str(exc)) from exc
         _register_model_user(app_id)
         if state == "ok":
@@ -367,7 +659,7 @@ def release_runtime(
     removed: set[str] = set()
     failed_detail: dict[str, str] = {}
     try:
-        with update(folder) as manifest:
+        with _view_update(folder) as manifest:
             pending: list[tuple[_Pin, str, dict[str, object]]] = []
             for pin in pins:
                 entry = manifest.components.get(pin.id)
@@ -375,7 +667,7 @@ def release_runtime(
                     continue
                 others = [name for name in _entry_refs(entry) if name != app]
                 if others:
-                    remove_ref(manifest, pin.id, app)
+                    _drop_ref(manifest, pin.id, app)
                     if pin.unit == "model":
                         _unregister_quietly(app)
                     _emit(progress, f"{pin.id} {pin.version} still used by {', '.join(others)}")
@@ -383,7 +675,7 @@ def release_runtime(
                 saved = dict(entry)
                 saved["refs"] = list(_entry_refs(entry))
                 rel = str(entry.get("path") or pin.path)
-                remove_ref(manifest, pin.id, app)
+                _drop_ref(manifest, pin.id, app)
                 del manifest.components[pin.id]
                 pending.append((pin, rel, saved))
             extras: list[tuple[str, str, dict[str, object]]] = []
@@ -392,14 +684,14 @@ def release_runtime(
                     continue
                 others = [name for name in _entry_refs(entry) if name != app]
                 if others:
-                    remove_ref(manifest, key, app)
+                    _drop_ref(manifest, key, app)
                     if entry.get("kind") == "model":
                         _unregister_quietly(app)
                     continue
                 saved = dict(entry)
                 saved["refs"] = list(_entry_refs(entry))
                 rel = str(entry.get("path") or "")
-                remove_ref(manifest, key, app)
+                _drop_ref(manifest, key, app)
                 del manifest.components[key]
                 extras.append((key, rel, saved))
             by_unit: dict[str, list[tuple[_Pin, str, dict[str, object]]]] = {"gpu": [], "python": [], "model": []}
@@ -437,7 +729,7 @@ def release_runtime(
                     failed = True
                     manifest.components[key] = saved
             statuses = _release_statuses(manifest, pins, removed, failed_detail)
-    except SharedManifestError as exc:
+    except _ManifestTxError as exc:
         raise SuiteInstallError(str(exc)) from exc
     return RuntimeReport(not failed, False, tuple(statuses))
 
@@ -557,11 +849,11 @@ def _entry_refs(entry: dict[str, object] | None) -> list[str]:
     return seen
 
 
-def _foreign_id(manifest: SharedManifest, component_id: str, app: str) -> bool:
+def _foreign_id(manifest: _ManifestView, component_id: str, app: str) -> bool:
     return any(name != app for name in _entry_refs(manifest.components.get(component_id)))
 
 
-def _assign(manifest: SharedManifest, app: str, pins: tuple[_Pin, ...]) -> list[tuple[_Pin, str, str]]:
+def _assign(manifest: _ManifestView, app: str, pins: tuple[_Pin, ...]) -> list[tuple[_Pin, str, str]]:
     python_pin = next(pin for pin in pins if pin.unit == "python")
     wheels = [pin for pin in pins if pin.unit == "gpu"]
     conflict = _python_conflict(manifest, app, python_pin, wheels)
@@ -574,7 +866,7 @@ def _assign(manifest: SharedManifest, app: str, pins: tuple[_Pin, ...]) -> list[
             else:
                 assigned.append((pin, f"{pin.id}-{python_pin.sha256[:12]}", rel))
         return assigned
-    matched = find_reusable(manifest, python_pin.id, python_pin.version, python_pin.sha256)
+    matched = _find_reusable(manifest, python_pin.id, python_pin.version, python_pin.sha256)
     py_path = str(matched.get("path") or "python") if matched is not None else "python"
     for pin in pins:
         if pin.unit == "model":
@@ -584,20 +876,20 @@ def _assign(manifest: SharedManifest, app: str, pins: tuple[_Pin, ...]) -> list[
     return assigned
 
 
-def _python_conflict(manifest: SharedManifest, app: str, python_pin: _Pin, wheels: list[_Pin]) -> bool:
-    matched = find_reusable(manifest, python_pin.id, python_pin.version, python_pin.sha256)
+def _python_conflict(manifest: _ManifestView, app: str, python_pin: _Pin, wheels: list[_Pin]) -> bool:
+    matched = _find_reusable(manifest, python_pin.id, python_pin.version, python_pin.sha256)
     if matched is None and _foreign_id(manifest, python_pin.id, app):
         return True
     for pin in wheels:
-        if find_reusable(manifest, pin.id, pin.version, pin.sha256) is not None:
+        if _find_reusable(manifest, pin.id, pin.version, pin.sha256) is not None:
             continue
         if _foreign_id(manifest, pin.id, app):
             return True
     return False
 
 
-def _model_assignment(manifest: SharedManifest, app: str, pin: _Pin) -> tuple[_Pin, str, str]:
-    found = find_reusable(manifest, pin.id, pin.version, pin.sha256)
+def _model_assignment(manifest: _ManifestView, app: str, pin: _Pin) -> tuple[_Pin, str, str]:
+    found = _find_reusable(manifest, pin.id, pin.version, pin.sha256)
     if found is not None:
         return pin, pin.id, str(found.get("path") or pin.path)
     if _foreign_id(manifest, pin.id, app):
@@ -614,7 +906,7 @@ def _unit_path(assignments: list[tuple[_Pin, str, str]], unit: str) -> str:
 
 
 def _unit_ready(
-    manifest: SharedManifest,
+    manifest: _ManifestView,
     assignments: list[tuple[_Pin, str, str]],
     unit: ComponentId,
     folder: Path,
@@ -626,12 +918,12 @@ def _unit_ready(
     for pin, component_id, _path in assignments:
         if pin.unit != unit:
             continue
-        if find_reusable(manifest, component_id, pin.version, pin.sha256) is None:
+        if _find_reusable(manifest, component_id, pin.version, pin.sha256) is None:
             return False
     return True
 
 
-def _path_used(manifest: SharedManifest, rel: str) -> bool:
+def _path_used(manifest: _ManifestView, rel: str) -> bool:
     if not rel:
         return True
     for entry in manifest.components.values():
@@ -640,7 +932,7 @@ def _path_used(manifest: SharedManifest, rel: str) -> bool:
     return False
 
 
-def _model_still_held(manifest: SharedManifest) -> bool:
+def _model_still_held(manifest: _ManifestView) -> bool:
     for entry in manifest.components.values():
         if isinstance(entry, dict) and entry.get("kind") == "model" and _entry_refs(entry):
             return True
@@ -671,7 +963,7 @@ def _delete_rel(root: Path, rel: str) -> None:
 
 
 def _release_statuses(
-    manifest: SharedManifest,
+    manifest: _ManifestView,
     pins: tuple[_Pin, ...],
     removed: set[str],
     failed_detail: dict[str, str],

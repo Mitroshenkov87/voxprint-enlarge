@@ -9,7 +9,7 @@ from pathlib import Path
 
 import voxprint_engine
 import voxprint_engine.api as api
-from voxprint_engine.suite_runtime import GPU_EXTRA
+from enlarge.suite_runtime import GPU_EXTRA
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,30 +29,18 @@ CONTRACT = (
     "__version__",
     "choose_tile",
     "combined_catalog",
-    "ComponentStatus",
-    "RuntimeReport",
-    "SuiteInstallError",
-    "decide",
     "ensure_onnx",
-    "ensure_default_model",
-    "ensure_runtime",
     "ensure_weight",
-    "gpu_job",
     "halve_tile",
     "iter_tile_frames",
     "load_builtin",
-    "models_dir",
     "note_spill",
-    "read_manifest",
     "read_shared_usage",
-    "release_runtime",
     "register",
     "restore_frames",
-    "shared_dir",
     "sysmem_spill",
     "temporal_windows",
     "tile_frames",
-    "trt_cache_dir",
     "unregister",
     "upscale_file",
     "uses_lanczos",
@@ -64,8 +52,8 @@ CONTRACT = (
 def test_api_number_and_version() -> None:
     assert voxprint_engine.API == 1
     assert api.API == 1
-    assert voxprint_engine.__version__ == "1.3.0"
-    assert api.__version__ == "1.3.0"
+    assert voxprint_engine.__version__ == "1.4.0"
+    assert api.__version__ == "1.4.0"
 
 
 def test_public_names_match_the_contract() -> None:
@@ -77,22 +65,24 @@ def test_public_names_match_the_contract() -> None:
 def test_suite_modules_are_not_in_the_engine() -> None:
     assert importlib.util.find_spec("voxprint_engine.shared_manifest") is None
     assert importlib.util.find_spec("voxprint_engine.ui") is None
-    header = "# vendored, to be replaced by the voxprint-common dependency\n"
-    for name in ("manifest.py", "splash.py"):
-        handoff = (ROOT / "handoff" / "voxprint_common" / name).read_text(encoding="utf-8")
-        vendor = (ROOT / "enlarge" / "_vendor" / "voxprint_common" / name).read_text(encoding="utf-8")
-        assert vendor == header + handoff
-    runtime = (ROOT / "voxprint_engine" / "suite_runtime.py").read_text(encoding="utf-8")
-    assert "handoff" not in runtime
-    assert "enlarge._vendor.voxprint_common.manifest" in runtime
+    assert importlib.util.find_spec("voxprint_engine.paths") is None
+    assert importlib.util.find_spec("voxprint_engine.gpu_lock") is None
+    assert importlib.util.find_spec("voxprint_engine.hardware") is None
+    assert importlib.util.find_spec("voxprint_engine.suite_runtime") is None
+    assert not (ROOT / "handoff").exists()
+    assert not (ROOT / "enlarge" / "_vendor").exists()
+    runtime = (ROOT / "enlarge" / "suite_runtime.py").read_text(encoding="utf-8")
+    assert "voxprint_common.runtime_manifest" in runtime
+    assert "enlarge._vendor" not in runtime
 
 
 def test_distribution_is_the_engine_only() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["project"]["name"] == "voxprint-engine"
-    assert project["project"]["version"] == "1.3.0"
+    assert project["project"]["version"] == "1.4.0"
     assert project["project"]["requires-python"] == ">=3.14,<3.15"
-    assert "psutil>=5.9,<8" in project["project"]["dependencies"]
+    assert any(spec.startswith("voxprint-common") for spec in project["project"]["dependencies"])
+    assert "psutil" not in " ".join(project["project"]["dependencies"])
     include = project["tool"]["setuptools"]["packages"]["find"]["include"]
     assert include == ["voxprint_engine*"]
     text = (ROOT / "docs" / "ENGINE.md").read_text(encoding="utf-8")

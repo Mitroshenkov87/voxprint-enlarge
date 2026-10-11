@@ -20,7 +20,7 @@ from enlarge.ipc.discovery import resolve_exe
 from enlarge.ipc.jobs import JobControl, run_job
 from enlarge.ipc.protocol import ERROR_CODES, EnlargeRequest, dumps, error_message, exit_code, message_kind
 from voxprint_engine.formats import DEFAULT_QUALITY
-from voxprint_engine.paths import voxprint_home_warning
+from enlarge.paths import voxprint_home_warning
 
 _USAGE = (
     "usage: voxprint-enlarge --input FILE --output FILE (--scale 2|4 | --long-side PX) "

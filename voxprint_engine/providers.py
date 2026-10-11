@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass
 from typing import Literal, assert_never
 
-from voxprint_engine.paths import trt_cache_dir
+from voxprint_common.paths import trt_cache_dir
 from voxprint_engine.registry.schema import checked_in_channels
 from voxprint_engine.vram import device_index
 
@@ -32,6 +32,11 @@ class ProviderChoice:
 def cpu_ep_requested() -> bool:
     """The smoke test and a local CPU benchmark set ``VOXPRINT_ORT_DEVICE=cpu``."""
     return os.environ.get("VOXPRINT_ORT_DEVICE", "").strip().lower() == "cpu"
+
+
+def ci_lanczos() -> bool:
+    """True only for the internal test flag. Users cannot turn this on from the app."""
+    return os.environ.get("VOXPRINT_CI_LANCZOS", "").strip() == "1"
 
 
 def _clean_device(device: str) -> str:
@@ -73,7 +78,8 @@ def provider_options(
     index = str(device_index(device))
     if name == TRT:
         channels = checked_in_channels(in_channels)
-        folder = trt_cache_dir(gpu, driver, trt)
+        del gpu, driver, trt
+        folder = trt_cache_dir()
         folder.mkdir(parents=True, exist_ok=True)
         return {
             "device_id": index,

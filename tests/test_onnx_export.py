@@ -10,7 +10,7 @@ from onnx import TensorProto, helper
 
 from voxprint_engine.onnx_export import OnnxExportError, ensure_onnx, export_module, onnx_cache_path
 from voxprint_engine.registry.schema import ModelManifest
-from voxprint_engine.suite_runtime import _GPU_PROBE, _model_ready, install_gpu_wheels
+from enlarge.suite_runtime import _GPU_PROBE, _model_ready, install_gpu_wheels
 
 
 def _manifest(**overrides: object) -> ModelManifest:
@@ -218,7 +218,7 @@ def test_gpu_install_includes_the_converter(monkeypatch: pytest.MonkeyPatch) -> 
         del required
         calls.append(args)
 
-    monkeypatch.setattr("voxprint_engine.suite_runtime._pip", fake_pip)
+    monkeypatch.setattr("enlarge.suite_runtime._pip", fake_pip)
     install_gpu_wheels("python")
     flat = " ".join(" ".join(args) for args in calls)
     assert "spandrel>=0.4,<0.5" in flat
@@ -233,8 +233,8 @@ def test_gpu_install_includes_the_converter(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_model_probe_requires_the_onnx_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     digest = "ab" * 32
-    monkeypatch.setattr("voxprint_engine.suite_runtime.weight_report", lambda _model: ("ready", "ok"))
-    monkeypatch.setattr("voxprint_engine.suite_runtime._default_model", lambda: _manifest(sha256=digest))
+    monkeypatch.setattr("enlarge.suite_runtime.weight_report", lambda _model: ("ready", "ok"))
+    monkeypatch.setattr("enlarge.suite_runtime._default_model", lambda: _manifest(sha256=digest))
     monkeypatch.setattr("voxprint_engine.onnx_export.models_dir", lambda: tmp_path)
     assert _model_ready() is False
     (tmp_path / f"{digest}.onnx").write_bytes(b"cached")

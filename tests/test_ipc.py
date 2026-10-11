@@ -21,7 +21,7 @@ from enlarge.ipc.register import write_linux
 from enlarge.ipc.server import IpcServer
 from main import main
 from voxprint_engine.formats import heic_backend
-from voxprint_engine.hardware import GpuInfo
+from voxprint_common.gpu_probe import GpuDevice
 
 
 def _app() -> QApplication:
@@ -129,7 +129,7 @@ def test_capabilities_report_an_old_driver_and_a_warning(
 ) -> None:
     monkeypatch.setattr(
         "enlarge.ipc.capabilities.query_gpus",
-        lambda runner=None: [GpuInfo("NVIDIA GeForce RTX 4090", "560.35.03", (8, 9))],
+        lambda runner=None: [GpuDevice(0, "NVIDIA GeForce RTX 4090", "560.35.03", (8, 9), 24564)],
     )
     assert main(["--capabilities", "--json"]) == 0
     old = json.loads(capsys.readouterr().out)
@@ -141,7 +141,7 @@ def test_capabilities_report_an_old_driver_and_a_warning(
     }
     monkeypatch.setattr(
         "enlarge.ipc.capabilities.query_gpus",
-        lambda runner=None: [GpuInfo("NVIDIA GeForce RTX 3090", "610.73.01", (8, 6))],
+        lambda runner=None: [GpuDevice(0, "NVIDIA GeForce RTX 3090", "610.73.01", (8, 6), 24564)],
     )
     assert main(["--capabilities", "--json"]) == 0
     warn = json.loads(capsys.readouterr().out)
@@ -153,7 +153,7 @@ def test_capabilities_report_an_old_driver_and_a_warning(
     }
     monkeypatch.setattr(
         "enlarge.ipc.capabilities.query_gpus",
-        lambda runner=None: [GpuInfo("NVIDIA GeForce RTX 4090", "610.73.01", (8, 9))],
+        lambda runner=None: [GpuDevice(0, "NVIDIA GeForce RTX 4090", "610.73.01", (8, 9), 24564)],
     )
     assert main(["--capabilities", "--json"]) == 0
     ok = json.loads(capsys.readouterr().out)
@@ -174,7 +174,7 @@ def test_linux_discovery_files(tmp_path: Path) -> None:
     assert "X-Voxprint-Ipc=/run/user/1/voxprint/enlarge.sock" in text
     assert "X-Voxprint-Protocol=1" in text
     assert "X-Voxprint-Ipc-Base=voxprint-enlarge" in text
-    assert "X-Voxprint-Version=0.2.0-rc.5" in text
+    assert "X-Voxprint-Version=0.2.0-rc.6" in text
     assert f"X-Voxprint-Exe={exe}" in text
     launcher = tmp_path / "bin" / "voxprint-enlarge"
     assert os.access(launcher, os.X_OK)

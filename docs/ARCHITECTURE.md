@@ -17,13 +17,10 @@ voxprint_engine/         importable by Clarity (no Qt)
   tile.py                overlapping feathered tiles
   video.py               temporal windows, per-frame tiles, NCHW batch
   providers.py           TensorRT, CUDA after a failed engine build
-  hardware.py            startup gate; compute-capability warning
   store.py               shared models folder and .users.json
-  suite_runtime.py       shared Python, CUDA wheels, default model, refcounted manifest
-  paths.py               models dir, shared runtime dir, and TensorRT cache
-  gpu_lock.py            %TEMP%/voxprint-gpu.lock
   vram.py                budget = free_now - max(2 GB, 8% total)
-  thermal.py             suite pause rule
+enlarge/suite_runtime.py shared Python, CUDA wheels, default model; refs go through voxprint_common
+voxprint_common          paths, GPU lock, thermal rule, GPU probe, licence, manifest, splash
 ```
 
 Import from Clarity:
@@ -33,8 +30,8 @@ from voxprint_engine import API
 from voxprint_engine.registry import combined_catalog, validate_manifest
 from voxprint_engine.worker import WorkerClient, UpscaleRequest
 from voxprint_engine.vram import vram_budget_gb, choose_tile, note_spill
-from voxprint_engine.gpu_lock import gpu_job
-from voxprint_engine.thermal import decide
+from voxprint_common.gpu_lock import gpu_job
+from voxprint_common.thermal import decide
 from voxprint_engine.video import temporal_windows, restore_frames
 ```
 
@@ -82,7 +79,9 @@ Weights are not in the installer or the tarball.
 | Linux | `$XDG_DATA_HOME/voxprint/enlarge/voxprint-enlarge` (`~/.local/share` when unset) |
 
 `BUILD.json` holds `version`, the build-number `offset`, and the codename.
-The release workflow adds `GITHUB_RUN_NUMBER` to the offset. The installer
+`voxprint_common.buildinfo` adds `GITHUB_RUN_NUMBER` to the offset. Without that
+variable, a missing recorded build stays null and the label says `dev`, not
+build 0. The installer
 runs `--install-suite`, which copies Python 3.14 into the shared suite folder,
 installs torch plus the CUDA 13 ONNX Runtime and TensorRT wheels, and downloads
 the default model. `--uninstall-suite` drops this app's hold and deletes a

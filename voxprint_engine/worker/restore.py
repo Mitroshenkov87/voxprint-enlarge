@@ -10,7 +10,7 @@ from typing import Any
 
 import numpy as np
 
-from voxprint_engine.gpu_lock import gpu_job
+from voxprint_common.gpu_lock import gpu_job
 from voxprint_engine.providers import ProviderChoice, choices_for, cuda_fallback_choices
 from voxprint_engine.registry.schema import checked_in_channels
 from voxprint_engine.session import EngineBuildError, available_providers, open_session
@@ -103,7 +103,7 @@ def handle_restore(message: dict[str, Any]) -> dict[str, Any]:
     if fallback:
         attempts.append(fallback)
 
-    with gpu_job(f"{owner}:restore", eta_s=600.0, timeout=30.0, owner=owner):
+    with gpu_job(owner, "restore", eta=600.0, timeout=30.0):
         restored, provider = _restore_with_fallback(
             attempts,
             onnx,

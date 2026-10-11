@@ -24,7 +24,7 @@ from enlarge.ipc.scale import choose_scale, fit_long_side, planned_size
 from enlarge.ipc.server import IpcServer
 from enlarge.ui.icons import suite_icon
 from main import main
-from voxprint_engine.gpu_lock import lock_path, read_lock
+from voxprint_common.gpu_lock import lock_path, read_holder
 from voxprint_engine.worker import WorkerError
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -226,7 +226,11 @@ def test_gpu_busy_reports_the_lock_holder(tmp_path: Path, capsys: pytest.Capture
     assert code == 5, captured.err
     messages = _lines(captured.out)
     waiting = next(message for message in messages if message.get("stage") == "waiting_gpu")
-    assert waiting["lock_holder"] == {"owner": "canvas", "pid": os.getpid(), "job": "canvas:export"}
+    assert waiting["lock_holder"]["app"] == "canvas"
+    assert waiting["lock_holder"]["stage"] == "canvas:export"
+    assert waiting["lock_holder"]["owner"] == "canvas"
+    assert waiting["lock_holder"]["job"] == "canvas:export"
+    assert waiting["lock_holder"]["pid"] == os.getpid()
     assert messages[-1]["code"] == "gpu_busy"
     assert messages[-1]["retryable"] is True
     assert not (tmp_path / "hill.enlarged-2x.avif").exists()
@@ -247,14 +251,15 @@ def test_parent_lock_is_shared_and_not_released(tmp_path: Path, capsys: pytest.C
     captured = capsys.readouterr()
     assert code == 0, captured.err
     assert dest.is_file()
-    held = read_lock()
+    held = read_holder()
     assert held is not None
-    assert held["owner"] == "canvas"
-    assert held["pid"] == os.getpid()
+    assert held.app == "canvas"
+    assert held.pid == os.getpid()
     mismatch = main(_job(source, "--scale", "2", "--dry-run", "--parent-lock-pid", "424242"))
     assert mismatch == 2
     assert _lines(capsys.readouterr().out)[-1]["code"] == "bad_input"
-    assert read_lock() is not None and read_lock()["owner"] == "canvas"
+    again = read_holder()
+    assert again is not None and again.app == "canvas"
 
 
 def test_upscale_subcommand_and_legacy_quality(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

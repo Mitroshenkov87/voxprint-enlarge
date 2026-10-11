@@ -4,10 +4,12 @@
 # [gpu] extra in pyproject.toml. --install-suite installs that extra from the
 # NVIDIA index. Tests and CI set VOXPRINT_CI_LANCZOS=1.
 # docs/ENGINE.md has the CUDA 13 packages.
-PySide6>=6.7,<7
+PySide6>=6.8,<7
 Pillow>=12.3.0,<13
-psutil>=5.9,<8
 numpy>=2,<3
+# voxprint-common 0.1.1 Menuchah. The wheel is the release asset. The ui extra is PySide6.
+# SHA256 c9361d5d00913faf39497fc55124e682ba15b2098c775068c49582c0520cd4d1
+voxprint-common[ui] @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl
 onnxruntime-gpu==1.31.0
 # 2026.10.10 publishes a cp312-abi3 wheel, which installs on Python 3.14.
 imagecodecs==2026.10.10

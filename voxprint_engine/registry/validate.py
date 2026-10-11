@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping
 
+from voxprint_common.licence import LicenceError, canonical, check
 from voxprint_engine.registry.schema import ModelManifest, checked_in_channels
 
 ROLES = ("upscale", "restore", "face", "generative")
@@ -17,43 +18,6 @@ EXECUTIONS = ("auto", "cuda", "tensorrt")
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,80}$")
 _ARCH = re.compile(r"^[a-z0-9][a-z0-9._+-]{0,40}$")
 _SHA = re.compile(r"^[a-f0-9]{64}$")
-_NC = re.compile(r"(^|[^a-z0-9])nc([^a-z0-9]|$)")
-
-#: SPDX ids allowed when ``release`` is true. Aliases are folded before this check.
-ALLOWED_RELEASE = frozenset({
-    "mit",
-    "apache-2.0",
-    "bsd-2-clause",
-    "bsd-3-clause",
-    "cc-by-2.0",
-    "cc-by-3.0",
-    "cc-by-4.0",
-    "cc0-1.0",
-    "isc",
-})
-
-_UNLICENSED = frozenset({
-    "",
-    "unlicensed",
-    "none",
-    "unknown",
-    "proprietary",
-    "all-rights-reserved",
-    "no-license",
-    "missing",
-    "tbd",
-})
-
-_ALIASES = {
-    "apache-2": "apache-2.0",
-    "apache2": "apache-2.0",
-    "apache2.0": "apache-2.0",
-    "bsd-2": "bsd-2-clause",
-    "bsd-3": "bsd-3-clause",
-    "bsd": "bsd-3-clause",
-    "cc-by": "cc-by-4.0",
-    "cc-by-0.4": "cc-by-4.0",  # typo used on some model cards; Hugging Face stores cc-by-4.0
-}
 
 
 class ManifestError(ValueError):
@@ -63,48 +27,6 @@ class ManifestError(ValueError):
         """Store the list of reasons the manifest was rejected."""
         self.errors = errors
         super().__init__("; ".join(errors))
-
-
-def normalize_licence(value: object) -> str:
-    """Fold case, separators, and a few aliases. Empty stays empty."""
-    if not isinstance(value, str):
-        return ""
-    text = value.strip().lower().replace("_", "-")
-    text = re.sub(r"\s+", "-", text)
-    text = re.sub(r"-+", "-", text).strip("-")
-    return _ALIASES.get(text, text)
-
-
-def is_unlicensed(licence: str) -> bool:
-    """True when the licence string is empty or non-commercial."""
-    return normalize_licence(licence) in _UNLICENSED
-
-
-def is_noncommercial(licence: str) -> bool:
-    """True for CC-BY-NC*, 'non-commercial', and a bare ``nc`` token."""
-    text = normalize_licence(licence)
-    if not text:
-        return False
-    if "non-commercial" in text or "noncommercial" in text:
-        return True
-    return _NC.search(text) is not None
-
-
-def canonical_licence(licence: str) -> str:
-    """Display form stored on the manifest (SPDX-ish, original casing for known ids)."""
-    text = normalize_licence(licence)
-    pretty = {
-        "mit": "MIT",
-        "apache-2.0": "Apache-2.0",
-        "bsd-2-clause": "BSD-2-Clause",
-        "bsd-3-clause": "BSD-3-Clause",
-        "cc-by-2.0": "CC-BY-2.0",
-        "cc-by-3.0": "CC-BY-3.0",
-        "cc-by-4.0": "CC-BY-4.0",
-        "cc0-1.0": "CC0-1.0",
-        "isc": "ISC",
-    }
-    return pretty.get(text, text)
 
 
 def _str(data: Mapping[str, Any], key: str, errors: list[str], *, max_len: int) -> str:
@@ -149,13 +71,11 @@ def validate_manifest(data: Mapping[str, Any], *, release: bool) -> ModelManifes
     if role and role not in ROLES:
         errors.append("role must be upscale, restore, face, or generative")
     raw_licence = data.get("licence", "")
-    folded = normalize_licence(raw_licence)
-    if is_unlicensed(folded):
-        errors.append("licence is missing or unlicensed")
-    elif is_noncommercial(folded):
-        errors.append(f"non-commercial licence {raw_licence!r} is not accepted")
-    elif release and folded not in ALLOWED_RELEASE:
-        errors.append(f"licence {raw_licence!r} is not allowed in a release build")
+    try:
+        folded = check(raw_licence, release=release)
+    except LicenceError as exc:
+        errors.append(str(exc))
+        folded = canonical(raw_licence)
     author = _str(data, "author", errors, max_len=160)
     attribution = _str(data, "attribution", errors, max_len=500)
     source = _str(data, "source_url", errors, max_len=300)
@@ -245,7 +165,7 @@ def validate_manifest(data: Mapping[str, Any], *, release: bool) -> ModelManifes
         arch=arch,
         scale=scale,
         role=role,
-        licence=canonical_licence(folded),
+        licence=folded,
         author=author,
         attribution=attribution,
         source_url=source,

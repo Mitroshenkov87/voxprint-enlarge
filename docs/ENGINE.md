@@ -1,24 +1,55 @@
 # Shared inference engine
 
 `voxprint_engine` is the image upscaler Voxprint AI Enlarge owns and Voxprint AI
-Clarity imports. The installable distribution is `voxprint-engine` 1.3.0. It
+Clarity imports. The installable distribution is `voxprint-engine` 1.4.0. It
 does not import Qt. `API` is 1. The package version and `API` are different
 numbers: the version marks this release, and `API` stays 1 until a breaking
-change. 1.1.0 adds `ensure_onnx`, `iter_tile_frames`, and the optional
-manifest fields `onnx_url`, `onnx_sha256`, and `execution`. 1.2.0 adds
-`in_channels` (default 3) so a 4-channel network such as DRUNet exports and
-runs with RGB plus a noise-level map. 1.2.1 drops the CPU `onnxruntime` wheel.
-The `gpu` extra pins `onnxruntime-gpu==1.31.0` and `tensorrt-cu13-libs==10.14.1.48`.
-1.3.0 adds `app_id` on `ensure_runtime` and `release_runtime`, and `app_name`
-on the GPU refusal. `ensure_runtime(app_id, ...)` and `release_runtime(app_id, ...)`
-take the caller's app id and write it into `refs` on each runtime or wheel
-component that the call installs. `ensure_runtime` does not download Enlarge's
-default model. Enlarge calls `ensure_default_model("enlarge")` from its installer
-and its first-run check. Any other `app_id` skips that download.
-`assess_gpu(..., app_name="")` and `upscale_file(..., app_name="")` place
-`app_name` in the GPU refusal text. Enlarge passes `Voxprint AI Enlarge`.
+change to the inference surface. 1.1.0 adds `ensure_onnx`, `iter_tile_frames`,
+and the optional manifest fields `onnx_url`, `onnx_sha256`, and `execution`.
+1.2.0 adds `in_channels` (default 3) so a 4-channel network such as DRUNet
+exports and runs with RGB plus a noise-level map. 1.2.1 drops the CPU
+`onnxruntime` wheel. The `gpu` extra pins `onnxruntime-gpu==1.31.0` and
+`tensorrt-cu13-libs==10.14.1.48`. 1.3.0 added `app_id` on the runtime installer.
+1.4.0 removes that installer and the other suite helpers from this package.
+They live in `voxprint-common` 0.1.1 Menuchah (`voxprint_common`). `API` stays 1 because
+`voxprint-common` 0.1 does not require an engine API bump and the inference
+names below are unchanged.
 
-The 1.3.0 pin is:
+Clarity, for 1.4.0:
+
+* Import paths, the GPU lock, thermal decisions, the GPU probe, and the
+  licence allow-list from `voxprint_common`, not from `voxprint_engine`.
+* `gpu_job(app, stage, eta=...)` replaces `gpu_job(job, owner=...)`. The lock
+  file records `app` and `stage`. Older files that say `owner` and `job` are
+  still read.
+* `assess(app, ...)` replaces `assess_gpu(..., app_name=...)`. The result is a
+  `Probe`. `VOXPRINT_CI_LANCZOS` does not skip this call; Enlarge checks that
+  flag itself.
+* `ensure_runtime`, `release_runtime`, `ensure_default_model`, `read_manifest`,
+  `ComponentStatus`, `RuntimeReport`, and `SuiteInstallError` are no longer
+  engine imports. Enlarge keeps the installer in `enlarge.suite_runtime` and
+  records refs with `voxprint_common.runtime_manifest`.
+* `models_dir`, `shared_dir`, and `trt_cache_dir` come from
+  `voxprint_common.paths`. `trt_cache_dir()` takes no GPU, driver, or TensorRT
+  arguments. A cache hit reports `loading the cached TensorRT engine`.
+* `.users.json` refcounting stays in `voxprint_engine.store`.
+* `upscale_file(..., app_name="")` still places `app_name` in the GPU refusal.
+
+The 1.4.0 pin is:
+
+```text
+voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.4.0
+```
+
+Install `voxprint-common` 0.1.1 (Menuchah) from the release wheel beside it:
+
+```text
+voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl
+```
+
+The wheel SHA256 is `c9361d5d00913faf39497fc55124e682ba15b2098c775068c49582c0520cd4d1`.
+
+The 1.3.0 pin stays valid for the surface before those removals:
 
 ```text
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.3.0
@@ -72,15 +103,8 @@ names below are that addition.
 | `restore_frames`, `temporal_windows`, `tile_frames`, `iter_tile_frames` | Temporal windows, per-frame tiles, and a one-frame video iterator for Clarity |
 | `ensure_weight`, `register`, `unregister` | Pinned download, and the shared `.users.json` refcount |
 | `ensure_onnx` | Download a prebuilt ONNX file when the manifest pins one, otherwise convert the `.pth` to a checked fp16 ONNX file and cache it by sha256 |
-| `models_dir`, `trt_cache_dir` | Weights folder and the rebuildable TensorRT cache |
 | `vram_budget_gb`, `choose_tile`, `halve_tile`, `note_spill`, `sysmem_spill` | Suite VRAM margin, the tile ladder, and the 256 MB spill check |
 | `read_shared_usage` | Windows shared GPU memory for one pid, or `None` |
-| `gpu_job` | Hold `%TEMP%/voxprint-gpu.lock` for one job. `owner` defaults to `enlarge` |
-| `decide` | Suite thermal pause rule |
-| `shared_dir`, `read_manifest` | `%LOCALAPPDATA%\Voxprint\shared` or `~/.local/share/voxprint/shared`, and its refcounted manifest |
-| `ensure_runtime`, `release_runtime` | Install or repair Python 3.14, torch cu130, ONNX Runtime GPU, and TensorRT 10 for `app_id`, writing that id into `refs`. Drop that id and delete a payload only when `refs` is empty. The default model is not part of this call |
-| `ensure_default_model` | Download Enlarge's default model when `app_id` is `enlarge`, and write that id into the model component's `refs`. Any other `app_id` returns without installing |
-| `ComponentStatus`, `RuntimeReport`, `SuiteInstallError` | One component, the check result (`as_dict` is the `--selftest --json` object), and a failed install |
 
 ```python
 from voxprint_engine.api import (
@@ -88,7 +112,6 @@ from voxprint_engine.api import (
     WorkerClient,
     UpscaleRequest,
     combined_catalog,
-    gpu_job,
     upscale_file,
     validate_manifest,
 )
@@ -233,26 +256,28 @@ Unregister returns the other programs that are still true, so an uninstaller
 can leave the folder alone while someone else uses it.
 
 The suite runtime is a second refcount, in `shared/manifest.json` under
-`shared_dir()`. `ensure_runtime` reads and writes that file through
-`enlarge._vendor.voxprint_common.manifest`. That module is not part of this
-package. Schema 1 has exactly `schema` and `components`. Unknown keys
-are kept. Each component is `kind` (`runtime`, `wheels`, `model`, or `tool`),
-`version`, `path`, `sha256`, `installed_at` (ISO-8601 with a numeric offset),
-and `refs` (app ids such as `enlarge` and `canvas`). Ids look like
+`shared_dir()`. `ensure_runtime` lives in `enlarge.suite_runtime` and reads
+and writes that file through `voxprint_common.runtime_manifest`. That module
+is not part of this package. Schema 1 has `schema` and `components`. Unknown
+keys are kept. Each component is `kind` (`runtime`, `wheels`, `model`, or
+`tool`), `version`, `path`, `sha256`, `installed_at` (ISO-8601 with a numeric
+offset), and `refs` (app ids such as `enlarge` and `canvas`). Ids look like
 `python-3.14`, `torch-cu130`, `onnxruntime-gpu-1.31`, `tensorrt-10`, and
 `model-<sha256 prefix>`.
 
 `load` migrates two older files and writes them back. A Canvas file has
-`version` and `resources`. An Enlarge file has `holders` instead of `refs`,
-or the short ids `python`, `gpu`, and `model`. `update` holds
-`manifest.lock` for at most 30 seconds around the read-modify-write. A lock
-whose recorded pid is gone is taken over. The check uses the process table,
-because on Windows `os.kill(pid, 0)` is Ctrl+C. `save`
-writes `manifest.json.tmp`, fsyncs, and renames it over `manifest.json`.
+`version` and `resources`. An Enlarge file has `holders` instead of `refs`.
+`voxprint-common` 0.1 keeps unknown keys, including `resources`, and it does
+not rename the short ids `python`, `gpu`, and `model`. Enlarge's installer
+still places a conflicting payload beside the one another app refs, because
+`add_ref` raises `ManifestConflict` instead of choosing a new path. The lock
+is `manifest.lock`, held for at most 30 seconds. It is not re-entrant.
+A lock whose recorded pid is gone is taken over. The check uses the process
+table, because on Windows `os.kill(pid, 0)` is Ctrl+C.
 
 A component is reused when id, version, and sha256 all match. Otherwise the
 install goes to a new path. A component another app still refs is never
-overwritten. `remove_ref` returns true when that component can be deleted.
+overwritten. `remove_ref` deletes the component when `refs` is empty.
 
 The runtime holds torch from the CUDA 13 index and `onnxruntime-gpu` only.
 Installing the CPU `onnxruntime` wheel is forbidden. TensorRT 10 libs are the
@@ -277,10 +302,12 @@ home already has `shared/manifest.json`, the install log and stderr warn.
 TensorRT engines are not refcounted and are safe to delete. They are rebuilt
 from the ONNX file.
 
-* Windows: `%LOCALAPPDATA%\Voxprint\trt-cache\<gpu>-<driver>-<trt>\`
-* Linux: `~/.cache/voxprint/trt-cache/<gpu>-<driver>-<trt>\`
-  (`$XDG_CACHE_HOME` is honoured)
+* Windows: `%LOCALAPPDATA%\Voxprint\trt-cache`
+* Linux: `~/.cache/voxprint/trt-cache` (`$XDG_CACHE_HOME` is honoured)
 * Override: `VOXPRINT_TRT_CACHE`
+
+`trt_cache_dir()` takes no GPU, driver, or TensorRT key. It does not follow
+`VOXPRINT_HOME`.
 
 The first TensorRT session reports `building the TensorRT engine`. A later
 session that already finds a file in that folder reports `loading the cached
@@ -309,8 +336,8 @@ NVDEC are not part of this package. Clarity does not call `formats.py` or
 `heic_system.py`.
 
 ```python
-from voxprint_engine.hardware import assess_gpu
-from voxprint_engine.gpu_lock import gpu_job
+from voxprint_common.gpu_lock import gpu_job
+from voxprint_common.gpu_probe import assess
 from voxprint_engine.session import open_session, run_batch
 from voxprint_engine.vram import measure, choose_tile, note_spill, halve_tile, sysmem_spill
 from voxprint_engine.video import temporal_windows, tile_frames, restore_frames
@@ -319,23 +346,23 @@ from voxprint_engine.worker.protocol import RestoreBatchRequest
 
 ### Startup and the GPU lock
 
-`assess_gpu(index=0, runner=None, refuse_below=None, app_name="")` is the
-startup gate. `app_name` is the display name in a refusal or a warning. Omit
-`refuse_below` and a card below compute capability 8.9 still starts, with the
-warning from the section above. Clarity passes `refuse_below=(8, 9)` and its
-own `app_name`. A missing capability, or a card below that pair, then refuses
-to start. The driver check still comes first: a driver below the 600 series
-refuses with the same text, using that `app_name`. `VOXPRINT_CI_LANCZOS=1`
-still skips the gate. Clarity does not honour that flag.
+`voxprint_common.gpu_probe.assess(app, index=0, runner=None, refuse_below=None)`
+is the startup gate. `app` is the display name in a refusal or a warning.
+Omit `refuse_below` and a card below compute capability 8.9 still starts, with
+the warning from the section above. Clarity passes `refuse_below=(8, 9)` and
+its own name. A missing capability, or a card below that pair, then refuses
+to start. The driver check still comes first. `VOXPRINT_CI_LANCZOS` does not
+skip `assess`. Enlarge checks that flag before it calls `assess`. Clarity
+does not honour the flag.
 
-`try_acquire`, `release`, and `gpu_job` take `owner`. The default is
-`enlarge`. Clarity passes `owner="clarity"`. One process has one owner.
-A nested `gpu_job` in that process re-enters the lock the outer block already
-holds and releases it only when the outer block ends. A worker whose parent
-already holds the lock, with the same `owner`, shares that file: it does not
-take a second lock and it does not delete the parent's. `eta` is written at
-acquire as now plus `eta_s` (at least 60 seconds). The lock is stale when the
-pid is gone, or when `eta` (else `started`) is more than two hours in the past.
+`gpu_job(app, stage, eta=600)` holds the suite lock. Clarity passes
+`app="clarity"`. A nested `gpu_job` in that process re-enters the lock the
+outer block already holds and releases it only when the outer block ends. A
+worker whose parent already holds the lock, with the same `app`, shares that
+file: it does not take a second lock and it does not delete the parent's.
+`VOXPRINT_GPU_PARENT_PID` borrows a live lock of any app and does not delete
+it. The lock is stale when the pid is gone, or when `eta` (else `started`) is
+more than two hours in the past.
 
 ### Session and VRAM
 
@@ -353,10 +380,10 @@ true when Windows shared GPU memory grew by more than 256 MB. `None` for
 either sample means there is no spill, which is also what a missing counter
 returns. `voxprint_engine.video.read_shared_usage` reads
 `GPU Process Memory(pid_*)\Shared Usage` with `typeperf` on Windows and
-returns `None` everywhere else. The thermal rule is the existing
-`thermal.decide`: full speed for 2.5 hours, then pause between chunks while
-the 5-minute median is at least 83 C or throttling exceeds 60 seconds, and
-resume at or below 75 C.
+returns `None` everywhere else. The thermal rule is
+`voxprint_common.thermal.decide`: full speed for 2.5 hours, then pause
+between chunks while the 5-minute median is at least 83 C or throttling
+exceeds 60 seconds, and resume at or below 75 C.
 
 ### Windows, tiles, and the worker
 
@@ -382,8 +409,8 @@ The worker accepts `op` `restore_batch` on the same JSON-line stream as
 optional `tile`, `overlap`, `batch`, `scale`, `length`, `window_overlap`,
 `device`, `owner`, `in_channels`) is defined in `voxprint_engine.video` and re-exported from
 `voxprint_engine.worker.protocol`. The handler loads the NHWC float `.npy`
-with `allow_pickle=False`, then holds `gpu_job` for `owner` (default
-`clarity`) across the session build and `restore_frames`. The session is
+with `allow_pickle=False`, then holds `gpu_job(owner, "restore")` while the
+session is open and `restore_frames` runs. `owner` defaults to `clarity`. The session is
 `choices_for` (TensorRT when that provider is installed, fp16, trt-cache) and,
 when that build fails, `cuda_fallback_choices`. The success line is `op`
 `result`, `engine` `onnx`, with `dst` and `frames`. A missing file or a bad

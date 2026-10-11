@@ -106,7 +106,7 @@ jobs:
           mv enlarge-linux/voxprint-enlarge-linux-x64.tar.gz .
           mv enlarge-windows/VoxprintEnlarge-Setup.exe .
           sha256sum VoxprintEnlarge-Setup.exe voxprint-enlarge-linux-x64.tar.gz > SHA256SUMS
-          build=$(python -c "import sys; sys.path.insert(0, '${{ github.workspace }}'); from tools.build_number import build_number, codename; print(build_number())")
+          build=$(python -c "import sys; sys.path.insert(0, '${{ github.workspace }}'); from tools.build_number import build_number; number = build_number(); print('dev' if number is None else number)")
           name=$(python -c "import sys; sys.path.insert(0, '${{ github.workspace }}'); from tools.build_number import codename; print(codename())")
           tag="${GITHUB_REF_NAME}"
           title="Voxprint AI Enlarge ${tag#v} · build ${build} \"${name}\""

@@ -29,9 +29,10 @@ from enlarge.ui import pages
 from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
 from enlarge.ui.jobs import BatchThread
 from enlarge.ui.models import DownloadThread
-from enlarge.ui.theme import build_style
+from voxprint_common.gpu_probe import assess
+from voxprint_common.ui.theme import build_style
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
-from voxprint_engine.hardware import assess_gpu
+from voxprint_engine.providers import ci_lanczos
 from voxprint_engine.registry import DEFAULT_MODEL_ID, combined_catalog
 from voxprint_engine.registry.catalog import Catalog
 from voxprint_engine.registry.schema import ModelManifest
@@ -236,7 +237,8 @@ class MainWindow(QWidget):
             return 0
 
     def _refresh_gpu_warning(self) -> None:
-        self.output_page.gpu_warning.setText(assess_gpu(device_index(suite.gpu()), app_name=APP_DISPLAY_NAME).warning)
+        warning = "" if ci_lanczos() else assess(APP_DISPLAY_NAME, index=device_index(suite.gpu())).warning
+        self.output_page.gpu_warning.setText(warning)
 
     def _update_tile_label(self) -> None:
         model = self.catalog.get(self.model_page.current_id())

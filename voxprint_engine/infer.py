@@ -20,10 +20,17 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from voxprint_common.gpu_probe import no_gpu_message
 from voxprint_engine.formats import open_rgb, require_output_format, save_image
-from voxprint_engine.hardware import NO_GPU_MESSAGE, ci_lanczos
 from voxprint_engine.onnx_export import OnnxExportError, cached_onnx, ensure_onnx
-from voxprint_engine.providers import TRT, choices_for, cpu_ep_requested, cuda_fallback_choices, gpu_provider_names
+from voxprint_engine.providers import (
+    TRT,
+    choices_for,
+    ci_lanczos,
+    cpu_ep_requested,
+    cuda_fallback_choices,
+    gpu_provider_names,
+)
 from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.session import (
     EngineBuildError,
@@ -299,8 +306,7 @@ def upscale_file(
     reason = _lanczos_reason(model, device, engine)
     tile = choose_tile(snapshot.budget_gb, model.tile, user_tile)
     if not reason and not _onnx_cpu(device, engine) and not gpu_provider_names(available_providers(), device=device):
-        name = app_name.strip() or "This program"
-        raise ImageJobError(NO_GPU_MESSAGE.format(app_name=name))
+        raise ImageJobError(no_gpu_message(app_name))
     if reason:
         if on_progress is not None:
             on_progress(0.4, reason)

@@ -8,7 +8,8 @@ import pytest
 
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin, validate_manifest
 from voxprint_engine.registry.catalog import combined_catalog
-from voxprint_engine.registry.validate import ManifestError, is_noncommercial, normalize_licence
+from voxprint_common.licence import is_noncommercial, normalize as normalize_licence
+from voxprint_engine.registry.validate import ManifestError
 
 ALLOWED = ("CC-BY-4.0", "Apache-2.0", "MIT", "BSD-3-Clause", "BSD-2-Clause", "CC0-1.0")
 BLOCKED = ("CC-BY-NC-4.0", "CC-BY-NC-SA-4.0", "UNLICENSED", "", "proprietary", "unknown")
@@ -86,10 +87,14 @@ def test_noncommercial_and_unlicensed_are_rejected(licence: str) -> None:
 
 
 def test_release_rejects_licences_outside_the_allow_list() -> None:
-    with pytest.raises(ManifestError, match="not allowed in a release"):
+    with pytest.raises(ManifestError, match="copyleft licence"):
         validate_manifest(_manifest(licence="GPL-3.0"), release=True)
-    model = validate_manifest(_manifest(licence="GPL-3.0"), release=False)
-    assert model.licence == "gpl-3.0"
+    with pytest.raises(ManifestError, match="copyleft licence"):
+        validate_manifest(_manifest(licence="GPL-3.0"), release=False)
+    with pytest.raises(ManifestError, match="not allowed in a release"):
+        validate_manifest(_manifest(licence="Custom-Terms"), release=True)
+    model = validate_manifest(_manifest(licence="Custom-Terms"), release=False)
+    assert model.licence == "custom-terms"
 
 
 def test_download_url_must_be_https_and_pinned() -> None:

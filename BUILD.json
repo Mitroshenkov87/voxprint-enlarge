@@ -1,6 +1,6 @@
 {
-  "version": "0.2.0-rc.5",
+  "version": "0.2.0-rc.6",
   "offset": 0,
-  "codename": "Chayil",
-  "offset_note": "The release workflow's GITHUB_RUN_NUMBER plus offset. version is what --version and --capabilities report. Chayil names the v0.2.0-rc.5 installer."
+  "codename": "Emunah",
+  "offset_note": "The release workflow's GITHUB_RUN_NUMBER plus offset. version is what --version and --capabilities report. Emunah names the v0.2.0-rc.6 installer."
 }

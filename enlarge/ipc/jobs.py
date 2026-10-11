@@ -32,7 +32,8 @@ from enlarge.ipc.protocol import (
 )
 from enlarge.ipc.scale import choose_scale, planned_size
 from enlarge.suite import gpu
-from voxprint_engine.hardware import assess_gpu
+from voxprint_common.gpu_lock import GpuLockTimeout, gpu_job, read_holder
+from voxprint_common.gpu_probe import assess
 from voxprint_engine.formats import (
     DEFAULT_FORMAT,
     open_rgb,
@@ -40,8 +41,7 @@ from voxprint_engine.formats import (
     require_output_format,
     save_image,
 )
-from voxprint_engine.gpu_lock import GpuLockTimeout, gpu_job, parent_lock_matches
-from voxprint_engine.hardware import ci_lanczos
+from voxprint_engine.providers import ci_lanczos
 from voxprint_engine.registry import load_builtin
 from voxprint_engine.store import weight_report
 from voxprint_engine.worker import UpscaleRequest, WorkerClient, WorkerError
@@ -188,6 +188,14 @@ def _image_size(path: Path) -> tuple[int, int]:
         return frame.size
 
 
+def parent_lock_matches(pid: int) -> bool:
+    """True when the suite lock file exists and its pid is ``pid``."""
+    if pid <= 0:
+        return False
+    holder = read_holder()
+    return holder is not None and holder.pid == pid
+
+
 @contextmanager
 def _parent_env(pid: int) -> Iterator[None]:
     """Publish the caller's lock pid for this process and the worker it spawns."""
@@ -290,7 +298,7 @@ def run_job(
     if dry_run:
         if control.is_cancelled():
             return _fail(emit, job_id, "cancelled", "cancelled", None)
-        reason = assess_gpu(app_name=APP_DISPLAY_NAME).message
+        reason = "" if ci_lanczos() else assess(APP_DISPLAY_NAME).message
         if reason and not ci_lanczos():
             return _fail(emit, job_id, "gpu_unsupported", reason, None)
         emit(done_message(job_id, str(destination), planned[0], planned[1], image_format, 0.0))
@@ -301,20 +309,21 @@ def run_job(
     if control.is_cancelled():
         return _fail(emit, job_id, "cancelled", "cancelled", destination)
 
-    reason = assess_gpu(app_name=APP_DISPLAY_NAME).message
+    reason = "" if ci_lanczos() else assess(APP_DISPLAY_NAME).message
     if reason and not ci_lanczos():
         return _fail(emit, job_id, "gpu_unsupported", reason, destination)
 
     try:
         with _parent_env(request.parent_lock_pid):
             with gpu_job(
-                f"enlarge:ipc:{job_id}",
-                eta_s=max(60.0, request.lock_timeout or 60.0),
+                "enlarge",
+                f"ipc:{job_id}",
+                eta=max(60.0, request.lock_timeout or 60.0),
                 timeout=request.lock_timeout,
                 poll=0.05,
                 cancel=control.is_cancelled,
                 on_wait=lambda holder, _waited: _emit_progress(
-                    emit, job_id, 1, "waiting_gpu", started, lock_holder=holder
+                    emit, job_id, 1, "waiting_gpu", started, lock_holder=holder.as_dict()
                 ),
             ):
                 if control.is_cancelled():

@@ -95,7 +95,7 @@ Prints one JSON object and exits 0. It does not need a GPU, a network, or a wind
 {
   "protocol": 1,
   "app": "enlarge",
-  "version": "0.2.0-rc.5",
+  "version": "0.2.0-rc.6",
   "voxprint_home": "C:\\Users\\me\\AppData\\Local\\Voxprint",
   "voxprint_home_source": "default",
   "gpu": {"name": null, "cc": null, "status": "none", "reason": "no_nvidia"},

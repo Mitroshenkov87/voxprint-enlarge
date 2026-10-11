@@ -2,7 +2,7 @@
 
 Use this on the RTX 4090 machine (Windows 11, Windows Server 2025, or Linux, NVIDIA driver from the 600 series or newer). CI does not run these steps. The installer contains no model weights.
 
-Install `v0.2.0-rc.5` (codename Chayil). Check `SHA256SUMS` before you install. A stock machine can run the short set with `bash scripts/vm_test.sh --smoke` before anything else. The script prints `python: ...` for the interpreter it chose: the shared runtime (`%LOCALAPPDATA%\Voxprint\shared\python\python.exe`, or `~/.local/share/voxprint/shared/python/bin/python3`), then `py -3`, then `python3`. `python3` on Windows is often the Microsoft Store alias, so it is last. A `VOXPRINT_HOME` or `LOCALAPPDATA` value with backslashes is accepted. Exit 0 is pass, 1 is a failed test, 2 is setup, and 3 means no usable GPU.
+Install `v0.2.0-rc.6` (codename Emunah). Check `SHA256SUMS` before you install. A stock machine can run the short set with `bash scripts/vm_test.sh --smoke` before anything else. The script prints `python: ...` for the interpreter it chose: the shared runtime (`%LOCALAPPDATA%\Voxprint\shared\python\python.exe`, or `~/.local/share/voxprint/shared/python/bin/python3`), then `py -3`, then `python3`. `python3` on Windows is often the Microsoft Store alias, so it is last. A `VOXPRINT_HOME` or `LOCALAPPDATA` value with backslashes is accepted. Exit 0 is pass, 1 is a failed test, 2 is setup, and 3 means no usable GPU.
 
 * Windows: run `VoxprintEnlarge-Setup.exe`. It installs for the current user under `%LOCALAPPDATA%\Voxprint\Enlarge`.
 * Linux: unpack `voxprint-enlarge-linux-x64.tar.gz` and run `./install.sh`. The command is then `voxprint-enlarge`.
@@ -34,7 +34,7 @@ voxprint-enlarge --capabilities --json
 voxprint-enlarge upscale --input samples/sample.png --scale 2 --format avif --json-progress
 ```
 
-`--version` exits 0, prints `0.2.0-rc.5` and `Chayil`, and says `installed build`. It does not say `run from source`.
+`--version` exits 0, prints `0.2.0-rc.6` and `Emunah`, and says `installed build`. It does not say `run from source`.
 
 `--selftest --json` exits 0. `ok` is true. `tensorrt_ep.detail` and `cuda_ep.detail` are both `loaded`. `voxprint_home` is the resolved folder and `voxprint_home_source` is `default` on a stock install. A line on stderr that starts with `warning: VOXPRINT_HOME` means the variable points away from a default home that already has `shared/manifest.json`. Unset `VOXPRINT_HOME` and install again so the apps share one runtime.
 

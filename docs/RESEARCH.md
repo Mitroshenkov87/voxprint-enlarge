@@ -42,15 +42,15 @@ ONNX Runtime opens TensorRT. CUDA EP runs when that engine does not build.
 DirectML and Windows ML are not used. A GPU below compute capability 8.9 warns
 and does not block. The offline conversion is spandrel's MIT core (not
 `spandrel_extra_arches`) from `.pth` to ONNX fp16. TensorRT engines are cached
-under `%LOCALAPPDATA%\Voxprint\trt-cache\<gpu>-<driver>-<trt>\` on Windows and
-`~/.cache/voxprint/trt-cache/...` on Linux. They are not refcounted. Tiles
+under `%LOCALAPPDATA%\Voxprint\trt-cache` on Windows and
+`~/.cache/voxprint/trt-cache` on Linux. They are not refcounted. Tiles
 overlap by `overlap_for` and are sized from the VRAM budget. Inference stays
 in the worker process. The implementation notes are `docs/ENGINE.md`.
 
 VRAM budget, measured again before each batch: `free_now - max(2 GB, 8% of total)`.
 If a batch spills into system memory, the next batch is half the size (at least 1).
 
-Thermal rule, implemented in `voxprint_engine.thermal` and not yet applied
+Thermal rule, implemented in `voxprint_common.thermal` and not yet applied
 between batches: full speed for 2.5 hours, then pause between batches while
 the 5-minute GPU median is at least 83 °C or the GPU has been throttling for
 more than 60 seconds. Resume at or below 75 °C.

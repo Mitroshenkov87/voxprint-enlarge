@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 
 from main import main
-from voxprint_engine.api import shared_dir
+from voxprint_common.paths import models_dir, shared_dir
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
 from voxprint_engine.store import register
-from voxprint_engine.suite_runtime import (
+from enlarge.suite_runtime import (
     PYTHON_VERSION,
     ComponentStatus,
     RuntimeReport,
@@ -155,9 +155,9 @@ def test_python_copy_and_bundle_detection(tmp_path: Path, monkeypatch: pytest.Mo
     exe = bundle / "python3"
     exe.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
-    monkeypatch.setattr("voxprint_engine.suite_runtime.bundled_python_tree", lambda: bundle.parent)
+    monkeypatch.setattr("enlarge.suite_runtime.bundled_python_tree", lambda: bundle.parent)
     monkeypatch.setattr(
-        "voxprint_engine.suite_runtime._python_ready",
+        "enlarge.suite_runtime._python_ready",
         lambda path, _rel="python": (path / "python" / "bin" / "python3").is_file(),
     )
     root = tmp_path / "shared"
@@ -174,10 +174,10 @@ def test_python_copy_and_bundle_detection(tmp_path: Path, monkeypatch: pytest.Mo
     def skip_model(_progress) -> None:
         return None
 
-    monkeypatch.setattr("voxprint_engine.suite_runtime._install_gpu", skip_gpu)
-    monkeypatch.setattr("voxprint_engine.suite_runtime._install_model", skip_model)
-    monkeypatch.setattr("voxprint_engine.suite_runtime._gpu_ready", ready_gpu)
-    monkeypatch.setattr("voxprint_engine.suite_runtime._model_ready", ready_model)
+    monkeypatch.setattr("enlarge.suite_runtime._install_gpu", skip_gpu)
+    monkeypatch.setattr("enlarge.suite_runtime._install_model", skip_model)
+    monkeypatch.setattr("enlarge.suite_runtime._gpu_ready", ready_gpu)
+    monkeypatch.setattr("enlarge.suite_runtime._model_ready", ready_model)
     report = ensure_runtime("enlarge", root=root, allow_skip=False)
     assert report.ok is True
     copied = root / "python" / "bin" / "python3"
@@ -280,12 +280,12 @@ def test_cpu_wheel_beside_the_gpu_build_is_reported(monkeypatch: pytest.MonkeyPa
             self.metadata = {"Name": name}
 
     monkeypatch.setattr(
-        "voxprint_engine.suite_runtime.importlib_metadata.distributions",
+        "enlarge.suite_runtime.importlib_metadata.distributions",
         lambda: [_Dist("onnxruntime")],
     )
     assert cpu_onnxruntime_shadows_gpu() is None
     monkeypatch.setattr(
-        "voxprint_engine.suite_runtime.importlib_metadata.distributions",
+        "enlarge.suite_runtime.importlib_metadata.distributions",
         lambda: [_Dist("onnxruntime"), _Dist("onnxruntime-gpu")],
     )
     message = cpu_onnxruntime_shadows_gpu()
@@ -384,6 +384,9 @@ def test_default_model_download_is_enlarge_only(tmp_path: Path) -> None:
     assert list(components) == [default_model_component_id()]
     assert components[default_model_component_id()]["kind"] == "model"
     assert components[default_model_component_id()]["refs"] == ["enlarge"]
+    recorded = Path(str(components[default_model_component_id()]["path"]))
+    assert recorded.is_absolute()
+    assert recorded.is_relative_to(models_dir())
 
 
 def test_windows_bundle_python_is_the_python_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
