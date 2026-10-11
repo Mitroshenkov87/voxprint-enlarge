@@ -108,10 +108,19 @@ def _first_named(root: Path, name: str) -> Path | None:
     nested = root / "tensorrt_libs" / name
     if nested.is_file():
         return nested
+    # One directory level. A full rglob of site-packages walks the torch tree
+    # and delays every worker start.
     try:
-        for path in root.rglob(name):
-            if path.is_file():
-                return path
+        children = list(root.iterdir())
     except OSError:
         return None
+    for child in children:
+        if not child.is_dir():
+            continue
+        candidate = child / name
+        if candidate.is_file():
+            return candidate
+        nested_child = child / "tensorrt_libs" / name
+        if nested_child.is_file():
+            return nested_child
     return None
