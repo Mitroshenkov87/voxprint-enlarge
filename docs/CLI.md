@@ -1,6 +1,6 @@
 # Enlarge CLI
 
-This is the stable command other Voxprint apps call. Canvas and Lucent use this instead of the socket. The process never opens a window.
+This is the stable command other Voxprint apps call. Canvas and Lucent use this instead of the socket. The process never opens a window. Starting Enlarge with no arguments opens the window and shows the shared splash before that window. The commands on this page do not import Qt.
 
 A warm `voxprint-enlarge --serve` for this user receives the job over protocol 1. If nothing is listening, the same process runs the job. Stdout is the same JSON lines either way. Human text goes to stderr.
 

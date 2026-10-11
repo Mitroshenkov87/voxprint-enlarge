@@ -299,27 +299,35 @@ def _prepare_qt() -> None:
 
 
 def _gui(_argv: list[str]) -> int:
-    # Qt is imported on the window path only. Headless commands must not load libEGL.
+    """Open the window.
+
+    Qt stays inside this function so headless commands never import it. The
+    splash is shown before the main window module is imported.
+    """
     _prepare_qt()
     from PySide6.QtWidgets import QApplication, QMessageBox
 
-    from enlarge.ui import splash as splash_mod
-    from enlarge.ui.window import MainWindow
+    from enlarge.appinfo import resource_dir
+    from enlarge.ui.splash import BAR
+    from voxprint_engine.ui.splash import SplashScreen
 
     running = QApplication.instance()
     app = running if isinstance(running, QApplication) else QApplication(sys.argv)
     app.setApplicationName(APP_DISPLAY_NAME)
     app.setOrganizationName("Voxprint")
-    splash = splash_mod.show()
+    root = resource_dir()
+    splash = SplashScreen(APP_DISPLAY_NAME, root / "assets" / "splash.jpg", BAR, root / "BUILD.json")
+    splash.show()
+    splash.set_stage("Loading UI")
+    from enlarge.ui.window import MainWindow
+
     if not ci_lanczos():
-        seen = {"n": 0}
 
         def on_progress(message: str) -> None:
-            seen["n"] += 1
-            splash.status(message, min(0.35, 0.05 * seen["n"]))
+            splash.set_stage(message)
             print(message, file=sys.stderr, flush=True)
 
-        splash.status("Checking the shared install", 0.08)
+        splash.set_stage("Checking GPU")
         message = _ensure_shared(on_progress)
         if message:
             splash.close()
@@ -332,11 +340,9 @@ def _gui(_argv: list[str]) -> int:
         print(blocked, file=sys.stderr)
         QMessageBox.critical(None, APP_DISPLAY_NAME, blocked)
         return 1
+    splash.set_stage("Loading registry")
     register_quietly()
-    splash.status("Loading", 0.45)
     window = MainWindow()
-    splash.status("Opening", 0.9)
-    window.show()
     splash.finish(window)
     return int(app.exec())
 

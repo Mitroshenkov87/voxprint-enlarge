@@ -1,7 +1,7 @@
 """Draw the synthetic sample picture used by the preview.
 
 assets/enlarge.png is the supplied 1024 icon. This script does not write that
-file or the splash. tools/make_icon.py scales the icon and writes the splash.
+file or the splash. tools/make_icon.py scales the icon.
 """
 from __future__ import annotations
 

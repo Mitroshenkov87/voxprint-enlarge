@@ -1,14 +1,17 @@
 # Shared inference engine
 
 `voxprint_engine` is the image upscaler Voxprint AI Enlarge owns and Voxprint AI
-Clarity imports. The installable distribution is `voxprint-engine` 1.3.0. It
-does not import Qt. `API` is 1. The package version and `API` are different
+Clarity imports. The installable distribution is `voxprint-engine` 1.3.0.
+Importing the package or `voxprint_engine.api` does not import Qt.
+`voxprint_engine.ui.splash` imports PySide6 when an app imports that module.
+`API` is 1. The package version and `API` are different
 numbers: the version marks this release, and `API` stays 1 until a breaking
 change. 1.1.0 adds `ensure_onnx`, `iter_tile_frames`, and the optional
 manifest fields `onnx_url`, `onnx_sha256`, and `execution`. 1.2.0 adds
 `in_channels` (default 3) so a 4-channel network such as DRUNet exports and
 runs with RGB plus a noise-level map. 1.3.0 adds `voxprint_engine.shared_manifest`,
-the schema 1 file Canvas and Clarity use for the shared runtime.
+the schema 1 file Canvas and Clarity use for the shared runtime, and
+`voxprint_engine.ui.splash`.
 
 The 1.3.0 pin is:
 
@@ -87,7 +90,51 @@ from voxprint_engine.api import (
 Clarity should keep using the worker for a long job. `upscale_file` is the
 same function the worker calls, for a benchmark or a one-off frame. `tests/test_api.py`
 fails when a name in this table disappears. Clarity's video calls are on this
-list and in the Video API below. `API` stays 1.
+list and in the Video API below. `API` stays 1. `SplashScreen` is not in this
+table: importing `voxprint_engine.api` does not import Qt.
+
+## Splash
+
+```python
+from pathlib import Path
+
+from voxprint_engine.ui.splash import SplashScreen
+
+splash = SplashScreen(
+    "Voxprint AI Enlarge",
+    Path("assets/splash.jpg"),
+    "#ff6b8a",
+    Path("BUILD.json"),
+)
+with splash:
+    splash.set_stage("Loading UI")
+    splash.set_progress(0.2)
+    splash.finish(window)
+```
+
+`SplashScreen(app_id, art_path, identity_color, build_json_path=None)` reads
+the app name from `app_id`. The version line comes from `BUILD.json`:
+`X.Y.Z RC N build B "Codename"` while `version` matches `X.Y.Z-rc.N`, and the
+same line without `RC N` for a final version. `build` in that file wins, then
+a sibling `build_info.json`, then `VOXPRINT_BUILD`, then
+`GITHUB_RUN_NUMBER` plus `offset`.
+
+The window is 960 by 540, borderless, and centred. Corners are rounded to
+12 px, with a drop shadow. The artwork is scaled to cover. When the screen
+device pixel ratio is at least 2 and `<stem>@2x<suffix>` exists beside the 1x
+file, that file is used.
+
+The left third is inset 48 px. The name is semibold 40 px, off-white. The
+version line is 16 px at 70% off-white. The stage line is 14 px. The bar sits
+at the bottom of that column. Its width is the left third minus the padding,
+and it is 4 px tall with rounded ends. The track is 20% off-white. The fill
+is `identity_color`. The bar shimmers until `set_progress` is given a fraction
+from 0 to 1. `None` returns it to the shimmer.
+
+`show` starts the clock. `finish(main_window)` shows that window, waits until
+600 ms have passed since `show`, fades the splash out over 200 ms, and closes
+it. Time already spent counts toward the 600 ms. The context manager calls
+`show` on enter and closes the splash on exit when `finish` has not run.
 
 ## What Run does
 
