@@ -12,9 +12,18 @@ license = "Apache-2.0"
 dependencies = [
     "Pillow>=12.3.0,<13",
     "numpy>=2,<3",
-    "onnxruntime>=1.20,<2",
     "imagecodecs==2026.10.10",
     "psutil>=5.9,<8",
+]
+
+# The CPU distribution named onnxruntime installs the same import as
+# onnxruntime-gpu and leaves only the Azure and CPU providers. The suite
+# installer always installs this extra. tensorrt-cu13-libs is on the NVIDIA
+# index, so it stays out of requirements.txt, which pip-audit resolves from PyPI.
+[project.optional-dependencies]
+gpu = [
+    "onnxruntime-gpu==1.31.0",
+    "tensorrt-cu13-libs==10.14.1.48",
 ]
 
 [tool.setuptools.packages.find]

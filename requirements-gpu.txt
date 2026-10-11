@@ -1,5 +1,6 @@
 # Local GPU extras. This file is comments on purpose.
-# CI audits requirements.txt, which stays on the CPU ONNX Runtime wheel.
+# CI audits requirements.txt, which pins onnxruntime-gpu and omits the CPU wheel.
+# pyproject.toml's [gpu] extra is onnxruntime-gpu==1.31.0 and tensorrt-cu13-libs==10.14.1.48.
 #
 # The NVIDIA driver must be from the 600 series or newer. The wheels are CUDA 13.
 #   python -m pip install torch --index-url https://download.pytorch.org/whl/cu130

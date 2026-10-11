@@ -108,9 +108,11 @@ setting in the app. A user job never takes that path.
 `VOXPRINT_ORT_DEVICE=cpu`, `device` `cpu-onnx`, or `engine` `onnx` runs the
 CPU execution provider. That is the smoke test. It is not a user mode.
 
-`--install-suite` pins `onnxruntime-gpu==1.31.0` and `tensorrt-cu13-libs==10.14.1.48`.
-The CPU `onnxruntime` wheel is uninstalled, because it shadows the GPU wheel
-and leaves only the CPU and Azure providers. ORT 1.31 loads `nvinfer_10`.
+The `gpu` extra pins `onnxruntime-gpu==1.31.0` and `tensorrt-cu13-libs==10.14.1.48`.
+`--install-suite` always installs that extra. The CPU distribution named
+`onnxruntime` is not a dependency: installed beside the GPU wheel, it leaves
+the Azure and CPU providers. `--selftest` exits 1 when both distributions are
+present. ORT 1.31 loads `nvinfer_10`.
 An unpinned `tensorrt-cu13` install is TensorRT 11, and that provider does
 not load. `tensorrt-cu13==10.14.1.48` is recorded with `--no-deps` because
 the TensorRT 10 Python bindings have no cp314 wheel. The worker adds that
@@ -410,9 +412,11 @@ That script calls `export_weight`. The install already has torch, spandrel,
 and onnx. The author's own ONNX files on the Nomos releases are fp32 and, for
 the fast model, a fixed 256 input. This project does not use those files.
 
-`requirements.txt` stays on the CPU ONNX Runtime wheel so CI can import the
-package. The app still refuses to start on that machine. `requirements-gpu.txt`
-is comments only. The NVIDIA driver must be from the 600 series or newer.
+`requirements.txt` pins `onnxruntime-gpu==1.31.0` so CI can import the GPU
+build. `tensorrt-cu13-libs` stays in the `gpu` extra because that wheel is on
+the NVIDIA index and `pip-audit` resolves `requirements.txt` from PyPI.
+`requirements-gpu.txt` is comments only. The NVIDIA driver must be from the
+600 series or newer.
 The wheels above are CUDA 13. The `cu126` index and the R560 driver branch are
 not used.
 
