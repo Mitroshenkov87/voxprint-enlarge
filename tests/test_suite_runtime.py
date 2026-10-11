@@ -229,24 +229,61 @@ def test_selftest_requires_tensorrt_and_cuda(monkeypatch: pytest.MonkeyPatch, ca
 
     monkeypatch.setattr("main.ensure_runtime", ready)
     monkeypatch.setattr("main.ensure_default_model", ready)
-    monkeypatch.setattr("main.available_providers", lambda: ["CUDAExecutionProvider"])
+    monkeypatch.setattr(
+        "main.probe_execution_providers",
+        lambda: {
+            "providers": [
+                {
+                    "name": "CUDAExecutionProvider",
+                    "providers": ["CUDAExecutionProvider", "CPUExecutionProvider"],
+                    "ok": True,
+                    "reason": "",
+                },
+                {
+                    "name": "TensorrtExecutionProvider",
+                    "providers": ["CPUExecutionProvider"],
+                    "ok": False,
+                    "reason": "TensorrtExecutionProvider fell back to ['CPUExecutionProvider']",
+                },
+            ]
+        },
+    )
     assert main(["--selftest", "--json"]) == 1
     failed = capsys.readouterr()
     payload = json.loads(failed.out)
     assert payload["ok"] is False
     assert payload["tensorrt_ep"]["ok"] is False
+    assert payload["tensorrt_ep"]["providers"] == ["CPUExecutionProvider"]
     assert payload["cuda_ep"]["ok"] is True
-    assert "TensorrtExecutionProvider did not load" in failed.err
+    assert "fell back" in payload["fallback"]
+    assert "TensorrtExecutionProvider fell back" in failed.err
 
     monkeypatch.setattr(
-        "main.available_providers",
-        lambda: ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
+        "main.probe_execution_providers",
+        lambda: {
+            "providers": [
+                {
+                    "name": "CUDAExecutionProvider",
+                    "providers": ["CUDAExecutionProvider", "CPUExecutionProvider"],
+                    "ok": True,
+                    "reason": "",
+                },
+                {
+                    "name": "TensorrtExecutionProvider",
+                    "providers": ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"],
+                    "ok": True,
+                    "reason": "",
+                },
+            ]
+        },
     )
     assert main(["--selftest", "--json"]) == 0
     loaded = json.loads(capsys.readouterr().out)
     assert loaded["ok"] is True
     assert loaded["tensorrt_ep"]["detail"] == "loaded"
     assert loaded["cuda_ep"]["detail"] == "loaded"
+    assert "TensorrtExecutionProvider" in loaded["providers"]
+    assert loaded["fallback"] == ""
 
 
 def test_selftest_fails_when_the_cpu_wheel_shadows_the_gpu_build(
@@ -261,8 +298,23 @@ def test_selftest_fails_when_the_cpu_wheel_shadows_the_gpu_build(
     monkeypatch.setattr("main.ensure_runtime", ready)
     monkeypatch.setattr("main.ensure_default_model", ready)
     monkeypatch.setattr(
-        "main.available_providers",
-        lambda: ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
+        "main.probe_execution_providers",
+        lambda: {
+            "providers": [
+                {
+                    "name": "CUDAExecutionProvider",
+                    "providers": ["CUDAExecutionProvider"],
+                    "ok": True,
+                    "reason": "",
+                },
+                {
+                    "name": "TensorrtExecutionProvider",
+                    "providers": ["TensorrtExecutionProvider"],
+                    "ok": True,
+                    "reason": "",
+                },
+            ]
+        },
     )
     monkeypatch.setattr(
         "main.cpu_onnxruntime_shadows_gpu",

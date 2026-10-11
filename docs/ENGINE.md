@@ -148,11 +148,24 @@ the Azure and CPU providers. `--selftest` exits 1 when both distributions are
 present. ORT 1.31 loads `nvinfer_10`.
 An unpinned `tensorrt-cu13` install is TensorRT 11, and that provider does
 not load. `tensorrt-cu13==10.14.1.48` is recorded with `--no-deps` because
-the TensorRT 10 Python bindings have no cp314 wheel. The worker adds that
-library directory with `os.add_dll_directory` on Windows and
-`LD_LIBRARY_PATH` plus `RTLD_GLOBAL` on Linux before ONNX Runtime is
-imported. `--selftest` checks that `TensorrtExecutionProvider` and
-`CUDAExecutionProvider` both load. The CI stand-in skips that check.
+the TensorRT 10 Python bindings have no cp314 wheel. Every process resolves
+those directories with `prepare_native_runtime()` before ONNX Runtime is imported
+in every process (the worker, the CLI, and `--selftest`). That function finds
+the `nvidia-*-cu13` wheel `bin` and `lib` directories (cuBLAS, cuDNN, the CUDA
+runtime, nvJitLink, and the rest) plus `tensorrt-cu13-libs`, calls
+`os.add_dll_directory` on Windows and keeps those handles, prepends the same
+directories to `PATH` for child processes, and on Linux prepends
+`LD_LIBRARY_PATH` and preloads the shared objects. An inherited environment is
+not consulted. `--selftest` starts the worker the way a job does, opens a tiny
+session, and reports `session.get_providers()`. `ok` is false when the GPU
+provider is not the one that stayed active. A job that falls back to CPU emits
+a JSON `warning` with code `gpu_provider_unavailable` and does not label the
+stage `building_engine`. The CI stand-in skips that check.
+
+Canvas's 4K chain into Enlarge uses this same worker. A missing
+`cublasLt64_13.dll` (Error 126) made that chain fail the same way: ONNX Runtime
+fell back to `CPUExecutionProvider` while `--selftest` still said the providers
+had loaded. `prepare_native_runtime()` is the fix for that chain as well.
 
 Native `EP Error` text from ONNX Runtime is not protocol traffic. The worker
 keeps JSON on a duplicated stdout and sends those prints to

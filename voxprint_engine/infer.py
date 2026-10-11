@@ -24,6 +24,7 @@ from voxprint_common.gpu_probe import no_gpu_message
 from voxprint_engine.formats import open_rgb, require_output_format, save_image
 from voxprint_engine.onnx_export import OnnxExportError, cached_onnx, ensure_onnx
 from voxprint_engine.providers import (
+    CPU,
     TRT,
     choices_for,
     ci_lanczos,
@@ -32,10 +33,12 @@ from voxprint_engine.providers import (
     gpu_provider_names,
 )
 from voxprint_engine.registry.schema import ModelManifest
+from voxprint_engine.nvidia_smi import smi_command
 from voxprint_engine.session import (
     EngineBuildError,
     InferenceError,
     available_providers,
+    execution_provider_active,
     open_session,
     run_tile,
     trt_build_message,
@@ -166,7 +169,7 @@ def _gpu_label() -> tuple[str, str, str]:
 
 
 def _nvidia_identity() -> tuple[str, str] | None:
-    command = ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"]
+    command = smi_command(["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"])
     try:
         if os.name == "nt":
             proc = subprocess.run(
@@ -291,6 +294,7 @@ def upscale_file(
     engine: str = "auto",
     lossless: bool = False,
     on_progress: Progress | None = None,
+    on_warning: Callable[[str, str], None] | None = None,
     models_root: Path | None = None,
     onnx_path: Path | None = None,
     weight: Path | None = None,
@@ -366,18 +370,22 @@ def upscale_file(
     used = ""
     spilled = False
     runtime_error: InferenceError | None = None
+    failures: list[str] = []
     if network is not None:
         for choices in attempts:
             if not choices:
                 continue
             try:
-                if on_progress is not None and choices[0].name == TRT:
+                # The build label is only true when this process kept the TensorRT
+                # provider. A DLL miss falls back to CPU and must not say otherwise.
+                if on_progress is not None and choices[0].name == TRT and execution_provider_active(TRT):
                     cache = Path(choices[0].options.get("trt_engine_cache_path") or "")
                     on_progress(0.4, trt_build_message(cache))
                 session, provider = open_session(network, choices)
                 if on_progress is not None:
                     on_progress(0.5, f"tile {tile}, overlap {overlap_for(tile)}")
-            except EngineBuildError:
+            except EngineBuildError as exc:
+                failures.append(str(exc))
                 continue
             try:
 
@@ -397,6 +405,11 @@ def upscale_file(
             finally:
                 _close_session(session)
             break
+    gpu_wanted = not _onnx_cpu(device, engine)
+    if gpu_wanted and (not used.startswith("onnx ") or CPU in used.split()):
+        if on_warning is not None and (failures or not used.startswith("onnx ")):
+            reason = "; ".join(failures) or "ONNX Runtime did not keep a GPU execution provider"
+            on_warning("gpu_provider_unavailable", reason)
     if ran is None:
         if weight is None or not torch_available():
             if runtime_error is not None:

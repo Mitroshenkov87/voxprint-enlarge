@@ -12,6 +12,8 @@ from voxprint_common.paths import home as suite_home
 from voxprint_common.paths import models_dir
 from voxprint_engine.formats import DEFAULT_FORMAT
 from voxprint_engine.infer import JobOutcome, preflight, upscale_file, uses_lanczos
+from voxprint_engine.providers import CUDA, TRT
+from voxprint_engine.session import session_providers
 from voxprint_engine.onnx_export import OnnxExportError, ensure_onnx_in_child
 from voxprint_engine.registry import combined_catalog
 from voxprint_engine.registry.schema import ModelManifest
@@ -90,6 +92,9 @@ def _job(message: dict[str, Any]) -> dict[str, Any]:
     def progress(fraction: float, text: str) -> None:
         emit({"op": "progress", "id": job_id, "fraction": fraction, "message": text})
 
+    def warning(code: str, text: str) -> None:
+        emit({"op": "warning", "id": job_id, "code": code, "message": text})
+
     # Reject a bad image before a download, and download before the GPU lock.
     preflight(src, dst, scale, image_format, quality, double, lossless)
     weight: Path | None = None
@@ -123,12 +128,29 @@ def _job(message: dict[str, Any]) -> dict[str, Any]:
             batch=batch,
             engine=engine,
             on_progress=progress,
+            on_warning=warning,
             weight=weight,
             onnx_path=network,
             lossless=lossless,
             app_name=str(message.get("app_name") or ""),
         )
     return _result(job_id, model.id, dst, outcome)
+
+
+def _probe_providers(message: dict[str, Any]) -> dict[str, Any]:
+    """Open a tiny session the same way a job does and report the providers it kept."""
+    requested = message.get("providers")
+    names = [str(name) for name in requested] if isinstance(requested, list) and requested else [TRT, CUDA]
+    rows: list[dict[str, object]] = []
+    for name in names:
+        active, reason = session_providers(name)
+        rows.append({"name": name, "providers": active, "ok": name in active, "reason": reason})
+    return {
+        "op": "result",
+        "id": str(message.get("id") or ""),
+        "ok": all(bool(row["ok"]) for row in rows),
+        "providers": rows,
+    }
 
 
 def handle(message: dict[str, Any]) -> dict[str, Any] | None:
@@ -138,6 +160,8 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
         return None
     if op == "ping":
         return {"op": "result", "id": str(message.get("id") or ""), "ok": True, "message": "pong", "engine": "voxprint"}
+    if op == "probe_providers":
+        return _probe_providers(message)
     if op == "restore_batch":
         try:
             return handle_restore(message)

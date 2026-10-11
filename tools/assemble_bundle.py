@@ -83,10 +83,13 @@ def _linux_launcher() -> str:
     return """#!/bin/sh
 ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 SHARED="${XDG_DATA_HOME:-$HOME/.local/share}/voxprint/shared/python/bin/python3"
-if [ -x "$SHARED" ]; then
+BUNDLED="$ROOT/python/bin/python3"
+# A shared interpreter left by an older suite install can exist and still
+# lack voxprint_common or onnxruntime. Fall back to the bundle.
+if [ -x "$SHARED" ] && "$SHARED" -c "import voxprint_common, voxprint_engine, onnxruntime" >/dev/null 2>&1; then
   exec "$SHARED" "$ROOT/main.py" "$@"
 fi
-exec "$ROOT/python/bin/python3" "$ROOT/main.py" "$@"
+exec "$BUNDLED" "$ROOT/main.py" "$@"
 """
 
 

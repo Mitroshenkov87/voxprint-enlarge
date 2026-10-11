@@ -29,7 +29,7 @@ from enlarge.ui import pages
 from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
 from enlarge.ui.jobs import BatchThread
 from enlarge.ui.models import DownloadThread
-from voxprint_common.gpu_probe import assess
+from voxprint_engine.nvidia_smi import assess
 from voxprint_common.ui.theme import build_style
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
 from voxprint_engine.providers import ci_lanczos

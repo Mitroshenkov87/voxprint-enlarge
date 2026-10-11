@@ -208,6 +208,9 @@ def test_gpu_probe_rejects_the_cpu_wheel_and_requires_tensorrt_10_14() -> None:
     assert "10.14.1.48" in _GPU_PROBE
     assert 'if "onnxruntime" in names' in _GPU_PROBE
     assert "cpu-onnxruntime" in _GPU_PROBE
+    assert "voxprint-common" in _GPU_PROBE
+    assert 'meta.version("onnxruntime-gpu")' in _GPU_PROBE
+    assert 'startswith("1.31.0")' in _GPU_PROBE
     compile(_GPU_PROBE, "<gpu-probe>", "exec")
 
 
@@ -228,6 +231,7 @@ def test_gpu_install_includes_the_converter(monkeypatch: pytest.MonkeyPatch) -> 
     assert "tensorrt-cu13-libs==10.14.1.48" in flat
     assert "--no-deps tensorrt-cu13==10.14.1.48" in flat
     assert "uninstall -y onnxruntime " in flat
+    assert "voxprint_common-0.1.1-py3-none-any.whl" in flat
     assert "torch" in flat
 
 

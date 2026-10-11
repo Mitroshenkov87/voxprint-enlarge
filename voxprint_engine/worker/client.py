@@ -92,6 +92,7 @@ class WorkerClient:
         self,
         request: UpscaleRequest,
         on_progress: Callable[[float, str], None] | None = None,
+        on_warning: Callable[[str, str], None] | None = None,
         timeout: float = 120.0,
     ) -> UpscaleResult:
         """Send one upscale and call on_progress for each progress line."""
@@ -99,6 +100,10 @@ class WorkerClient:
         while True:
             message = self._read(timeout)
             op = message.get("op")
+            if op == "warning":
+                if on_warning is not None:
+                    on_warning(str(message.get("code") or ""), str(message.get("message") or ""))
+                continue
             if op == "progress":
                 if on_progress is not None:
                     raw_fraction = message.get("fraction")
@@ -111,6 +116,14 @@ class WorkerClient:
                     raise WorkerError(result.message or "worker error")
                 return result
             raise WorkerError(f"unexpected worker message: {message}")
+
+    def probe(self, timeout: float = 60.0) -> dict[str, Any]:
+        """Ask this worker, started like a job, which providers a tiny session keeps."""
+        self._send({"op": "probe_providers", "id": "selftest"})
+        message = self._read(timeout)
+        if message.get("op") != "result":
+            raise WorkerError(f"worker probe failed: {message}")
+        return message
 
     def interrupt(self) -> None:
         """Stop a job that is already running. The blocked read then returns."""

@@ -42,11 +42,11 @@ from enlarge.suite_runtime import (
     install_gpu_wheels,
     release_runtime,
 )
-from voxprint_common.gpu_probe import assess
+from voxprint_engine.nvidia_smi import assess
+from voxprint_engine.worker.client import WorkerClient, WorkerError
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
-from voxprint_engine.providers import ci_lanczos
+from voxprint_engine.providers import CUDA, TRT, ci_lanczos
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
-from voxprint_engine.session import available_providers
 from voxprint_engine.store import register_quietly
 from voxprint_engine.worker import UpscaleRequest
 from voxprint_engine.worker.server import serve
@@ -217,23 +217,73 @@ def _print_suite(
             print(f"{item.id}: {item.detail}", file=sys.stderr)
 
 
-def _provider_status(report: RuntimeReport) -> dict[str, dict[str, object]]:
-    """Skip the provider check in CI. A real install must load TensorRT and CUDA."""
+def probe_execution_providers() -> dict[str, object]:
+    """Spawn the worker the way a job does and read the providers a tiny session keeps."""
+    with WorkerClient() as client:
+        return client.probe()
+
+
+def _ep_ok(payload: dict[str, object], key: str) -> bool:
+    """True when one selftest provider row says the session kept that provider."""
+    row = payload.get(key)
+    if not isinstance(row, dict):
+        return False
+    return bool(row.get("ok"))
+
+
+def _provider_status(report: RuntimeReport) -> dict[str, object]:
+    """Skip the provider check in CI. A real install must keep TensorRT and CUDA active.
+
+    ``get_available_providers`` is not enough: it lists CUDA when ``cublasLt64_13.dll``
+    is missing. The worker opens a tiny session and reports ``session.get_providers()``.
+    """
     if report.skipped or not report.ok:
         return {
             "cuda_ep": {"detail": "skipped", "ok": True},
             "tensorrt_ep": {"detail": "skipped", "ok": True},
         }
-    found = set(available_providers())
+    try:
+        probed = probe_execution_providers()
+    except (OSError, WorkerError) as exc:
+        reason = str(exc)
+        return {
+            "cuda_ep": {"detail": reason, "ok": False, "providers": []},
+            "tensorrt_ep": {"detail": reason, "ok": False, "providers": []},
+            "providers": [],
+            "fallback": reason,
+        }
+    rows = probed.get("providers")
+    by_name: dict[str, dict[str, object]] = {}
+    if isinstance(rows, list):
+        for row in rows:
+            if isinstance(row, dict) and isinstance(row.get("name"), str):
+                by_name[str(row["name"])] = row
     required = (
-        ("cuda_ep", "CUDAExecutionProvider"),
-        ("tensorrt_ep", "TensorrtExecutionProvider"),
+        ("cuda_ep", CUDA),
+        ("tensorrt_ep", TRT),
     )
-    status: dict[str, dict[str, object]] = {}
+    status: dict[str, object] = {}
+    reasons: list[str] = []
+    trt_providers: list[str] = []
     for key, name in required:
-        loaded = name in found
-        detail = "loaded" if loaded else f"{name} did not load"
-        status[key] = {"detail": detail, "ok": loaded}
+        row = by_name.get(name, {})
+        active = row.get("providers")
+        providers = [str(item) for item in active] if isinstance(active, list) else []
+        ok = bool(row.get("ok")) and name in providers
+        reason = str(row.get("reason") or "")
+        if ok:
+            detail = "loaded"
+        elif reason:
+            detail = reason
+            reasons.append(reason)
+        else:
+            detail = f"{name} did not load"
+            reasons.append(detail)
+        status[key] = {"detail": detail, "ok": ok, "providers": providers}
+        if key == "tensorrt_ep":
+            trt_providers = providers
+    status["providers"] = trt_providers
+    status["fallback"] = "; ".join(reasons)
     return status
 
 
@@ -246,7 +296,7 @@ def _selftest(as_json: bool) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     providers = _provider_status(report)
-    ready = all(bool(item["ok"]) for item in providers.values())
+    ready = _ep_ok(providers, "cuda_ep") and _ep_ok(providers, "tensorrt_ep")
     shadow = cpu_onnxruntime_shadows_gpu()
     if shadow:
         ready = False
@@ -265,9 +315,10 @@ def _selftest(as_json: bool) -> int:
     if shadow:
         print(shadow, file=sys.stderr)
     if not ready:
-        for item in providers.values():
-            if not item["ok"]:
-                print(str(item["detail"]), file=sys.stderr)
+        for key in ("cuda_ep", "tensorrt_ep"):
+            item = providers.get(key)
+            if isinstance(item, dict) and not item.get("ok"):
+                print(str(item.get("detail") or ""), file=sys.stderr)
     return 0 if report.ok and ready and not shadow else 1
 
 

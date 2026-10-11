@@ -6,10 +6,10 @@ from pathlib import Path
 import numpy as np
 
 from voxprint_engine.providers import CPU, ProviderChoice
-from voxprint_engine.trt_libs import register_tensorrt_libraries
+from voxprint_engine.trt_libs import prepare_native_runtime
 
-# TensorRT 10 has to be on the DLL path before this import. ORT 1.31 loads nvinfer_10.
-register_tensorrt_libraries()
+# CUDA 13 and TensorRT 10 have to be on the DLL path before this import.
+prepare_native_runtime()
 
 import onnxruntime as ort  # noqa: E402
 
@@ -32,6 +32,49 @@ def available_providers() -> list[str]:
 def tensorrt_ep_loaded() -> bool:
     """True when this process can open the TensorRT execution provider."""
     return "TensorrtExecutionProvider" in available_providers()
+
+
+# Identity network, 1x3x8x8. Small enough that a missing CUDA DLL fails at load
+# instead of building an engine. Used to see which provider a session keeps.
+_TINY_ONNX = bytes.fromhex(
+    "08083a640a190a05696e70757412066f757470757422084964656e74697479120474696e795a1f"
+    "0a05696e70757412160a14080112100a0208010a0208030a0208080a02080862200a066f757470"
+    "757412160a14080112100a0208010a0208030a0208080a02080842040a00100d"
+)
+_session_probe: dict[str, tuple[list[str], str]] = {}
+
+
+def session_providers(requested: str) -> tuple[list[str], str]:
+    """Providers a real session kept, and why ``requested`` is absent.
+
+    ``get_available_providers`` reports what the wheel was built with. A missing
+    ``cublasLt64_13.dll`` still lists CUDA there, then the session falls back to
+    CPU. This opens a tiny graph and reads ``session.get_providers()``.
+    """
+    cached = _session_probe.get(requested)
+    if cached is not None:
+        return cached
+    try:
+        options = ort.SessionOptions()
+        options.log_severity_level = 3
+        session = ort.InferenceSession(_TINY_ONNX, sess_options=options, providers=[requested])
+        active = [str(name) for name in session.get_providers()]
+    except (OSError, RuntimeError, ValueError) as exc:
+        result: tuple[list[str], str] = ([], str(exc))
+        _session_probe[requested] = result
+        return result
+    reason = ""
+    if requested not in active:
+        reason = f"{requested} fell back to {active}"
+    result = (active, reason)
+    _session_probe[requested] = result
+    return result
+
+
+def execution_provider_active(name: str) -> bool:
+    """True when a tiny session actually keeps ``name``."""
+    active, _reason = session_providers(name)
+    return name in active
 
 
 def cache_is_warm(folder: Path) -> bool:
