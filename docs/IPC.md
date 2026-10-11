@@ -97,7 +97,7 @@ Jobs run one at a time. Each job holds the suite GPU lock (`owner` `enlarge`) un
 
 `accepted` — `id`, `queue_pos` (how many jobs were already ahead when this one was queued).
 
-`progress` — `id`, `pct` (0–100), `stage`, `eta_s` (a number, or `null` when there is no estimate). Stages are `queued`, `waiting_gpu`, `loading`, `tiles`, `encoding`. A `waiting_gpu` line also carries `lock_holder` with `owner`, `pid`, and `job` from the suite lock file.
+`progress` — `id`, `pct` (0–100), `stage`, `eta_s` (a number, or `null` when there is no estimate). Stages are `queued`, `waiting_gpu`, `loading`, `building_engine`, `loading_cached_engine`, `tiles`, `encoding`. `building_engine` is the first TensorRT build. Its `eta_s` is the time left in a 90 second build, not a linear guess from the first fraction. `loading_cached_engine` is a warm engine cache. Both names are additive; unknown stage strings are ignored. A `waiting_gpu` line also carries `lock_holder` with `owner`, `pid`, and `job` from the suite lock file.
 
 `done` — `id`, `output` (path), `width`, `height`, `format`, `ms`.
 

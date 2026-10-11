@@ -81,12 +81,39 @@ def resolve_model_id(preset: str, quality: str, model: str) -> str:
     return ""
 
 
-def _stage_for(fraction: float) -> Stage:
+# A first TensorRT build on the 4090 took about 90 seconds. A linear ETA from
+# the first progress fraction reported a few seconds and then sat there.
+_FIRST_BUILD_S = 90.0
+
+
+def _stage_for(fraction: float, message: str = "") -> Stage:
+    """Map a worker fraction and its text onto a protocol stage.
+
+    ``building_engine`` and ``loading_cached_engine`` are additive. Older
+    readers ignore stage strings they do not know.
+    """
+    text = message.lower()
+    if "building the tensorrt engine" in text:
+        return "building_engine"
+    if "loading the cached tensorrt engine" in text or "tensorrt engine is cached" in text:
+        return "loading_cached_engine"
     if fraction < 0.15:
         return "loading"
     if fraction < 0.9:
         return "tiles"
     return "encoding"
+
+
+def _eta_s(pct: float, stage: Stage, started: float, now: float | None = None) -> float | None:
+    """Seconds remaining. The first engine build uses a 90 second floor."""
+    if pct >= 100.0:
+        return 0.0
+    if pct < 1.0:
+        return None
+    elapsed = (time.perf_counter() if now is None else now) - started
+    if stage == "building_engine":
+        return max(0.0, _FIRST_BUILD_S - elapsed)
+    return elapsed * (100.0 - pct) / pct
 
 
 def _classify(message: str) -> ErrorCode:
@@ -165,11 +192,7 @@ def _emit_progress(
     started: float,
     lock_holder: dict[str, Any] | None = None,
 ) -> None:
-    eta_s = None
-    if pct >= 1.0:
-        elapsed = time.perf_counter() - started
-        eta_s = elapsed * (100.0 - pct) / pct
-    emit(progress_message(job_id, pct, stage, eta_s=eta_s, lock_holder=lock_holder))
+    emit(progress_message(job_id, pct, stage, eta_s=_eta_s(pct, stage, started), lock_holder=lock_holder))
 
 
 def run_job(
@@ -297,8 +320,8 @@ def run_job(
                         if control.is_cancelled():
                             return _fail(emit, job_id, "cancelled", "cancelled", destination)
 
-                        def _progress(fraction: float, _message: str) -> None:
-                            _emit_progress(emit, job_id, fraction * 100.0, _stage_for(fraction), started)
+                        def _progress(fraction: float, message: str) -> None:
+                            _emit_progress(emit, job_id, fraction * 100.0, _stage_for(fraction, message), started)
 
                         result = client.upscale(upscale, on_progress=_progress)
                 finally:
