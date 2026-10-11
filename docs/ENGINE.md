@@ -231,7 +231,9 @@ and `refs` (app ids such as `enlarge` and `canvas`). Ids look like
 `load` migrates two older files and writes them back. A Canvas file has
 `version` and `resources`. An Enlarge file has `holders` instead of `refs`,
 or the short ids `python`, `gpu`, and `model`. `update` holds
-`manifest.lock` for at most 30 seconds around the read-modify-write. `save`
+`manifest.lock` for at most 30 seconds around the read-modify-write. A lock
+whose recorded pid is gone is taken over. The check uses the process table,
+because on Windows `os.kill(pid, 0)` is Ctrl+C. `save`
 writes `manifest.json.tmp`, fsyncs, and renames it over `manifest.json`.
 
 A component is reused when id, version, and sha256 all match. Otherwise the

@@ -10,6 +10,7 @@ import pytest
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
 from voxprint_engine.shared_manifest import (
     SharedManifestError,
+    _pid_alive,
     add_ref,
     find_reusable,
     load,
@@ -111,6 +112,12 @@ def test_lock_times_out_while_another_holder_is_alive(tmp_path: Path) -> None:
     finally:
         os.close(fd)
         lock.unlink()
+
+
+def test_a_live_pid_is_detected_without_signalling_it() -> None:
+    assert _pid_alive(os.getpid()) is True
+    assert _pid_alive(0) is False
+    assert _pid_alive(-1) is False
 
 
 def test_failed_rename_keeps_the_previous_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

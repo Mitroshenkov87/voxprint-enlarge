@@ -30,6 +30,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import psutil
+
 from voxprint_engine.paths import shared_dir
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
 
@@ -580,13 +582,14 @@ def _lock_busy(path: Path) -> bool:
 
 
 def _pid_alive(pid: int) -> bool:
+    """True when ``pid`` is still running.
+
+    ``os.kill(pid, 0)`` is a POSIX existence check. On Windows signal 0 is
+    ``CTRL_C_EVENT``, so that call raises KeyboardInterrupt in this process.
+    """
     if pid <= 0:
         return False
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
+    return bool(psutil.pid_exists(pid))
 
 
 def _release(fd: int, path: Path) -> None:
