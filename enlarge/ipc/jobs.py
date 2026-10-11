@@ -16,7 +16,8 @@ from typing import Any
 
 from PIL import Image
 
-from enlarge.ipc.capabilities import ART, PHOTO_FAST, PHOTO_MAX, gpu_capability
+from enlarge.appinfo import APP_DISPLAY_NAME
+from enlarge.ipc.capabilities import ART, PHOTO_FAST, PHOTO_MAX
 from enlarge.ipc.naming import peek_default, peek_explicit, reserve_default, reserve_explicit
 from enlarge.ipc.protocol import (
     STAGES,
@@ -31,6 +32,7 @@ from enlarge.ipc.protocol import (
 )
 from enlarge.ipc.scale import choose_scale, planned_size
 from enlarge.suite import gpu
+from voxprint_engine.hardware import assess_gpu
 from voxprint_engine.formats import (
     DEFAULT_FORMAT,
     open_rgb,
@@ -288,15 +290,9 @@ def run_job(
     if dry_run:
         if control.is_cancelled():
             return _fail(emit, job_id, "cancelled", "cancelled", None)
-        report = gpu_capability()
-        if report["status"] == "none" and not ci_lanczos():
-            return _fail(
-                emit,
-                job_id,
-                "gpu_unsupported",
-                "Enlarge needs an NVIDIA GPU that CUDA can use, on a driver from the 600 series or newer.",
-                None,
-            )
+        reason = assess_gpu(app_name=APP_DISPLAY_NAME).message
+        if reason and not ci_lanczos():
+            return _fail(emit, job_id, "gpu_unsupported", reason, None)
         emit(done_message(job_id, str(destination), planned[0], planned[1], image_format, 0.0))
         return 0
 
@@ -305,15 +301,9 @@ def run_job(
     if control.is_cancelled():
         return _fail(emit, job_id, "cancelled", "cancelled", destination)
 
-    report = gpu_capability()
-    if report["status"] == "none" and not ci_lanczos():
-        return _fail(
-            emit,
-            job_id,
-            "gpu_unsupported",
-            "Enlarge needs an NVIDIA GPU that CUDA can use, on a driver from the 600 series or newer.",
-            destination,
-        )
+    reason = assess_gpu(app_name=APP_DISPLAY_NAME).message
+    if reason and not ci_lanczos():
+        return _fail(emit, job_id, "gpu_unsupported", reason, destination)
 
     try:
         with _parent_env(request.parent_lock_pid):
@@ -342,6 +332,7 @@ def run_job(
                     model_tile=model.tile,
                     device=gpu(),
                     lossless=request.lossless,
+                    app_name=APP_DISPLAY_NAME,
                 )
                 client = WorkerClient()
                 control.client = client

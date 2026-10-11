@@ -20,12 +20,12 @@ from typing import Callable
 MIN_COMPUTE = (8, 9)
 MIN_DRIVER_MAJOR = 600
 NO_GPU_MESSAGE = (
-    "Enlarge needs an NVIDIA GPU that CUDA can use. "
-    "This computer does not have one, so Enlarge will not start."
+    "{app_name} needs an NVIDIA GPU that CUDA can use. "
+    "This computer does not have one, so {app_name} will not start."
 )
 OLD_DRIVER_MESSAGE = (
-    "Enlarge needs an NVIDIA driver from the 600 series or newer. "
-    "This computer has driver {driver}. Update the driver, then start Enlarge again."
+    "{app_name} needs an NVIDIA driver from the 600 series or newer. "
+    "This computer has driver {driver}. Update the driver, then start {app_name} again."
 )
 
 
@@ -48,15 +48,21 @@ def parse_compute_capability(text: str, index: int = 0) -> tuple[int, int] | Non
     return rows[index]
 
 
-def capability_warning(cap: tuple[int, int] | None) -> str:
+def _shown_name(app_name: str) -> str:
+    name = app_name.strip()
+    return name or "This program"
+
+
+def capability_warning(cap: tuple[int, int] | None, app_name: str = "") -> str:
     """A short warning when the card is below 8.9. An unknown card returns an empty string."""
     if cap is None or cap >= MIN_COMPUTE:
         return ""
     major, minor = cap
-    return (
-        f"GPU compute capability {major}.{minor} is below 8.9 (RTX 40 / Ada). "
-        "Enlarge is built for RTX 40 and newer."
-    )
+    sentence = f"GPU compute capability {major}.{minor} is below 8.9 (RTX 40 / Ada)."
+    name = app_name.strip()
+    if name:
+        return f"{sentence} {name} is built for RTX 40 and newer."
+    return f"{sentence} This build targets RTX 40 and newer."
 
 
 def ci_lanczos() -> bool:
@@ -137,41 +143,43 @@ def assess_gpu(
     index: int = 0,
     runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
     refuse_below: tuple[int, int] | None = None,
+    app_name: str = "",
 ) -> LaunchGate:
-    """Whether Enlarge may start, plus the compute-capability warning when it may.
+    """Whether the caller may start, plus the compute-capability warning when it may.
 
-    ``refuse_below`` is optional. Omit it and a card below 8.9 still starts
-    with a warning, which is Enlarge's behaviour. When it is set, a missing
-    capability or a card below that pair refuses to start. ``VOXPRINT_CI_LANCZOS``
-    is unchanged and still skips this gate.
+    ``app_name`` is the display name placed in a refusal. ``refuse_below`` is
+    optional. Omit it and a card below 8.9 still starts with a warning. When
+    it is set, a missing capability or a card below that pair refuses to start.
+    ``VOXPRINT_CI_LANCZOS`` is unchanged and still skips this gate.
     """
     if ci_lanczos():
         return LaunchGate(True, "", "")
+    name = _shown_name(app_name)
     gpus = query_gpus(runner)
     if not gpus:
-        return LaunchGate(False, NO_GPU_MESSAGE, "")
+        return LaunchGate(False, NO_GPU_MESSAGE.format(app_name=name), "")
     if index < 0 or index >= len(gpus):
         index = 0
     gpu = gpus[index]
     major = driver_major(gpu.driver)
     if major is None or major < MIN_DRIVER_MAJOR:
         shown = gpu.driver or "unknown"
-        return LaunchGate(False, OLD_DRIVER_MESSAGE.format(driver=shown), "")
+        return LaunchGate(False, OLD_DRIVER_MESSAGE.format(app_name=name, driver=shown), "")
     if refuse_below is not None and (gpu.compute is None or gpu.compute < refuse_below):
         floor = f"{refuse_below[0]}.{refuse_below[1]}"
         if gpu.compute is None:
             message = (
                 f"This GPU did not report a compute capability. "
-                f"This program starts only on compute capability {floor} (RTX 40 / Ada) or newer."
+                f"{name} starts only on compute capability {floor} (RTX 40 / Ada) or newer."
             )
         else:
             got = f"{gpu.compute[0]}.{gpu.compute[1]}"
             message = (
                 f"GPU compute capability {got} is below {floor} (RTX 40 / Ada). "
-                "This program starts only on RTX 40 series or newer."
+                f"{name} starts only on RTX 40 series or newer."
             )
         return LaunchGate(False, message, "")
-    return LaunchGate(True, "", capability_warning(gpu.compute))
+    return LaunchGate(True, "", capability_warning(gpu.compute, app_name))
 
 
 def query_compute_capability(

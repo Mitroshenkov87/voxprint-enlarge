@@ -171,7 +171,7 @@ class SettingsDialog(QDialog):
         root.addLayout(buttons)
 
     def _capability_warning(self, device: str) -> str:
-        return assess_gpu(device_index(device)).warning
+        return assess_gpu(device_index(device), app_name=APP_DISPLAY_NAME).warning
 
     def _on_gpu_choice(self) -> None:
         choice = str(self.gpu_box.currentData() or "auto")

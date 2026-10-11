@@ -22,11 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, assert_never
 
-from voxprint_engine.hardware import ci_lanczos
-from voxprint_engine.onnx_export import OnnxExportError, cached_onnx, ensure_onnx
-from voxprint_engine.paths import models_dir, shared_dir, voxprint_home, voxprint_home_source, voxprint_home_warning
-from voxprint_engine.registry import DEFAULT_MODEL_ID, ModelManifest, load_builtin
-from voxprint_engine.shared_manifest import (
+from enlarge._vendor.voxprint_common.manifest import (
     ORT_LOCK,
     PYTHON_LOCK,
     TRT_LOCK,
@@ -40,6 +36,10 @@ from voxprint_engine.shared_manifest import (
     reserve,
     update,
 )
+from voxprint_engine.hardware import ci_lanczos
+from voxprint_engine.onnx_export import OnnxExportError, cached_onnx, ensure_onnx
+from voxprint_engine.paths import models_dir, shared_dir, voxprint_home, voxprint_home_source, voxprint_home_warning
+from voxprint_engine.registry import DEFAULT_MODEL_ID, ModelManifest, load_builtin
 from voxprint_engine.store import StoreError, register, unregister, weight_report
 
 PYTHON_VERSION = "3.14"
@@ -149,15 +149,23 @@ class _Pin:
     unit: ComponentId
 
 
-def _pins() -> tuple[_Pin, ...]:
+def _model_pin() -> _Pin:
     digest = _default_model().sha256.lower()
     prefix = digest[:12]
+    return _Pin(f"model-{prefix}", "model", DEFAULT_MODEL_ID, f"model/{prefix}", digest, "model")
+
+
+def default_model_component_id() -> str:
+    """Manifest id Enlarge uses for its default upscale model."""
+    return _model_pin().id
+
+
+def _pins() -> tuple[_Pin, ...]:
     return (
         _Pin("python-3.14", "runtime", PYTHON_VERSION, "python", lock_hash(PYTHON_LOCK), "python"),
         _Pin("torch-cu130", "wheels", GPU_VERSION, "python", lock_hash(TORCH_LOCK), "gpu"),
         _Pin("onnxruntime-gpu-1.31", "wheels", "1.31.0", "python", lock_hash(ORT_LOCK), "gpu"),
         _Pin("tensorrt-10", "wheels", "10.14.1.48", "python", lock_hash(TRT_LOCK), "gpu"),
-        _Pin(f"model-{prefix}", "model", DEFAULT_MODEL_ID, f"model/{prefix}", digest, "model"),
     )
 
 
@@ -178,7 +186,7 @@ def read_manifest(root: Path | None = None) -> dict[str, object]:
 
 
 def ensure_runtime(
-    app: str,
+    app_id: str,
     *,
     repair: bool = True,
     progress: Progress | None = None,
@@ -187,14 +195,17 @@ def ensure_runtime(
     installers: Mapping[str, Installer] | None = None,
     allow_skip: bool = True,
 ) -> RuntimeReport:
-    """Hold ``app`` on each shared component, installing anything that is missing.
+    """Hold ``app_id`` on the shared runtime and wheels, installing anything missing.
 
-    The same app a second time does not add a second ref. ``probes`` and
-    ``installers`` replace the real checks for tests. The real steps copy or
-    record Python 3.14, install the CUDA 13 wheels (torch cu130, ONNX Runtime
-    GPU, TensorRT 10), and download the default model. A component another app
-    refs is left in place and the new copy is recorded beside it.
+    ``app_id`` is written into ``refs`` on every runtime and wheel component
+    this call installs or reuses. The same id a second time does not add a
+    second ref. This function does not download Enlarge's default model.
+    ``probes`` and ``installers`` replace the real checks for tests. The real
+    steps copy or record Python 3.14 and install the CUDA 13 wheels (torch
+    cu130, ONNX Runtime GPU, TensorRT 10). A component another app refs is
+    left in place and the new copy is recorded beside it.
     """
+    app = app_id
     _check_app(app)
     _emit(progress, f"Voxprint home: {voxprint_home()} ({voxprint_home_source()})")
     warning = voxprint_home_warning()
@@ -211,7 +222,7 @@ def ensure_runtime(
         raise SuiteInstallError(str(exc)) from exc
     assignments = _assign(snapshot, app, pins)
     outcomes: dict[str, tuple[str, str]] = {}
-    units: tuple[ComponentId, ...] = ("python", "gpu", "model")
+    units: tuple[ComponentId, ...] = tuple(dict.fromkeys(pin.unit for pin in pins))
     for unit in units:
         rel = _unit_path(assignments, unit)
         for pin, component_id, _path in assignments:
@@ -261,21 +272,87 @@ def ensure_runtime(
         holders = tuple(_entry_refs(records.get(component_id)))
         if state == "ok":
             _emit(progress, f"{component_id} {pin.version} is ready")
-        if pin.unit == "model" and state in {"ok", "repaired"}:
-            _register_model_user(app)
         statuses.append(ComponentStatus(component_id, pin.version, state, holders, detail))
     ok = all(item.state in {"ok", "repaired"} for item in statuses)
     return RuntimeReport(ok, False, tuple(statuses))
 
 
+def ensure_default_model(
+    app_id: str,
+    *,
+    repair: bool = True,
+    progress: Progress | None = None,
+    root: Path | None = None,
+    probes: Mapping[str, Probe] | None = None,
+    installers: Mapping[str, Installer] | None = None,
+    allow_skip: bool = True,
+) -> RuntimeReport:
+    """Download Enlarge's default model and record ``app_id`` in its refs.
+
+    Any ``app_id`` other than ``enlarge`` returns without installing. The
+    shared runtime call does not download this model.
+    """
+    _check_app(app_id)
+    pin = _model_pin()
+    if app_id != "enlarge":
+        return RuntimeReport(True, True, (ComponentStatus(pin.id, pin.version, "skipped", (), "not this app"),))
+    if allow_skip and ci_lanczos():
+        return RuntimeReport(True, True, (ComponentStatus(pin.id, pin.version, "skipped", (), "CI stand-in"),))
+    folder = root or shared_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        snapshot = load(folder)
+    except SharedManifestError as exc:
+        raise SuiteInstallError(str(exc)) from exc
+    _pin, component_id, rel = _model_assignment(snapshot, app_id, pin)
+    assignments = [(pin, component_id, rel)]
+    _emit(progress, f"Checking {component_id} {pin.version}")
+    if _unit_ready(snapshot, assignments, "model", folder, probes):
+        state, detail = "ok", "ready"
+    elif not repair:
+        state, detail = "missing", "not installed"
+    else:
+        _emit(progress, f"Installing {component_id} {pin.version}")
+        try:
+            _call_installer("model", folder, progress, installers, rel)
+        except (SuiteInstallError, StoreError, OSError, SharedManifestError) as exc:
+            return RuntimeReport(False, False, (ComponentStatus(component_id, pin.version, "failed", (), str(exc)),))
+        if _call_probe("model", folder, probes, rel):
+            state, detail = "repaired", "repaired"
+        else:
+            state, detail = "failed", "still missing after install"
+    holders: tuple[str, ...] = ()
+    if state in {"ok", "repaired"}:
+        try:
+            with update(folder) as manifest:
+                record, _reused = reserve(
+                    manifest,
+                    component_id=component_id,
+                    kind=pin.kind,
+                    version=pin.version,
+                    path=rel,
+                    sha256=pin.sha256,
+                    app=app_id,
+                )
+                holders = tuple(_entry_refs(record))
+        except SharedManifestError as exc:
+            raise SuiteInstallError(str(exc)) from exc
+        _register_model_user(app_id)
+        if state == "ok":
+            _emit(progress, f"{component_id} {pin.version} is ready")
+    ready = state in {"ok", "repaired"}
+    return RuntimeReport(ready, False, (ComponentStatus(component_id, pin.version, state, holders, detail),))
+
+
 def release_runtime(
-    app: str,
+    app_id: str,
     *,
     progress: Progress | None = None,
     root: Path | None = None,
     removers: Mapping[str, Remover] | None = None,
 ) -> RuntimeReport:
-    """Drop ``app`` from the manifest. Delete a payload only when its ref list is empty."""
+    """Drop ``app_id`` from the manifest. Delete a payload only when its ref list is empty."""
+    app = app_id
     _check_app(app)
     folder = root or shared_dir()
     pins = _pins()
@@ -316,6 +393,8 @@ def release_runtime(
                 others = [name for name in _entry_refs(entry) if name != app]
                 if others:
                     remove_ref(manifest, key, app)
+                    if entry.get("kind") == "model":
+                        _unregister_quietly(app)
                     continue
                 saved = dict(entry)
                 saved["refs"] = list(_entry_refs(entry))

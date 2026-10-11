@@ -1,6 +1,6 @@
 # Enlarge CLI
 
-This is the stable command other Voxprint apps call. Canvas and Lucent use this instead of the socket. The process never opens a window.
+This is the stable command other Voxprint apps call. Canvas and Lucent use this instead of the socket. The process never opens a window. Starting Enlarge with no arguments opens the window and shows the shared splash before that window. The commands on this page do not import Qt.
 
 A warm `voxprint-enlarge --serve` for this user receives the job over protocol 1. If nothing is listening, the same process runs the job. Stdout is the same JSON lines either way. Human text goes to stderr.
 
@@ -112,7 +112,7 @@ Prints one JSON object and exits 0. It does not need a GPU, a network, or a wind
 
 `gpu.status` is `ok`, `warn`, or `none`. `gpu.reason` is `null` unless `status` is `none`, where it is `no_nvidia` or `driver_too_old`. `installed` is true only when the pinned weight file is on disk. Model ids come from the registry. `VOXPRINT_CI_LANCZOS` does not change this object.
 
-`voxprint_home` is the folder Enlarge resolved. `voxprint_home_source` is `env` when `VOXPRINT_HOME` is set, and `default` otherwise. The default is `%LOCALAPPDATA%\Voxprint` on Windows and `~/.local/share/voxprint` on Linux. `--selftest` prints the same pair, and both commands warn on stderr when `VOXPRINT_HOME` points away from a default home that already has `shared/manifest.json`. Unset the variable in that case so the install does not provision a second runtime.
+`voxprint_home` is the folder Enlarge resolved. `voxprint_home_source` is `env` when `VOXPRINT_HOME` is set, and `default` otherwise. The default is `%LOCALAPPDATA%\Voxprint` on Windows and `~/.local/share/voxprint` on Linux. `--selftest` prints the same pair, and both commands warn on stderr when `VOXPRINT_HOME` points away from a default home that already has `shared/manifest.json`. Unset the variable in that case so the install does not provision a second runtime. `--selftest` exits 1 when the CPU `onnxruntime` distribution is installed beside `onnxruntime-gpu`. Uninstall the CPU wheel with `python -m pip uninstall -y onnxruntime`.
 
 ## Dry run
 

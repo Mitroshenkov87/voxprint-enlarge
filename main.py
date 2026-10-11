@@ -37,6 +37,7 @@ from voxprint_engine.suite_runtime import (
     RuntimeReport,
     SuiteInstallError,
     cpu_onnxruntime_shadows_gpu,
+    ensure_default_model,
     ensure_runtime,
     install_gpu_wheels,
     release_runtime,
@@ -89,7 +90,7 @@ def _setup_logging() -> None:
 
 def _gpu_block() -> str:
     """Empty when the machine may run. Otherwise the sentence to show and exit on."""
-    return assess_gpu().message
+    return assess_gpu(app_name=APP_DISPLAY_NAME).message
 
 
 def _upscale(argv: list[str]) -> int:
@@ -125,6 +126,7 @@ def _upscale(argv: list[str]) -> int:
         double="--double" in argv,
         device=gpu(),
         lossless="--lossless" in argv,
+        app_name=APP_DISPLAY_NAME,
     )
     failed: list[str] = []
 
@@ -145,13 +147,24 @@ def _failure_text(report: RuntimeReport) -> str:
     return "; ".join(parts) or "shared suite install is incomplete"
 
 
+def _suite_report(progress: Callable[[str], None] | None) -> RuntimeReport:
+    """Shared runtime, then Enlarge's default model."""
+    runtime = ensure_runtime("enlarge", progress=progress)
+    model = ensure_default_model("enlarge", progress=progress)
+    return RuntimeReport(
+        runtime.ok and model.ok,
+        runtime.skipped and model.skipped,
+        tuple(runtime.components) + tuple(model.components),
+    )
+
+
 def _ensure_shared(progress: Callable[[str], None] | None = None) -> str:
     """Empty when the shared install is ready. CI skips the check."""
     if ci_lanczos():
         return ""
     sink = progress or (lambda message: print(message, file=sys.stderr, flush=True))
     try:
-        report = ensure_runtime("enlarge", progress=sink)
+        report = _suite_report(sink)
     except SuiteInstallError as exc:
         return str(exc)
     if report.ok:
@@ -223,7 +236,7 @@ def _selftest(as_json: bool) -> int:
     """Re-check the shared install without opening a window."""
     lines: list[str] = []
     try:
-        report = ensure_runtime("enlarge", progress=lines.append)
+        report = _suite_report(lines.append)
     except SuiteInstallError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -254,10 +267,10 @@ def _selftest(as_json: bool) -> int:
 
 
 def _install_suite() -> int:
-    """Install shared Python, the CUDA wheels, and the default model."""
+    """Install shared Python, the CUDA wheels, and Enlarge's default model."""
     lines: list[str] = []
     try:
-        report = ensure_runtime("enlarge", progress=lines.append)
+        report = _suite_report(lines.append)
     except SuiteInstallError as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -299,27 +312,35 @@ def _prepare_qt() -> None:
 
 
 def _gui(_argv: list[str]) -> int:
-    # Qt is imported on the window path only. Headless commands must not load libEGL.
+    """Open the window.
+
+    Qt stays inside this function so headless commands never import it. The
+    splash is shown before the main window module is imported.
+    """
     _prepare_qt()
     from PySide6.QtWidgets import QApplication, QMessageBox
 
-    from enlarge.ui import splash as splash_mod
-    from enlarge.ui.window import MainWindow
+    from enlarge.appinfo import resource_dir
+    from enlarge.ui.splash import BAR
+    from enlarge._vendor.voxprint_common.splash import SplashScreen
 
     running = QApplication.instance()
     app = running if isinstance(running, QApplication) else QApplication(sys.argv)
     app.setApplicationName(APP_DISPLAY_NAME)
     app.setOrganizationName("Voxprint")
-    splash = splash_mod.show()
+    root = resource_dir()
+    splash = SplashScreen(APP_DISPLAY_NAME, root / "assets" / "splash.jpg", BAR, root / "BUILD.json")
+    splash.show()
+    splash.set_stage("Loading UI")
+    from enlarge.ui.window import MainWindow
+
     if not ci_lanczos():
-        seen = {"n": 0}
 
         def on_progress(message: str) -> None:
-            seen["n"] += 1
-            splash.status(message, min(0.35, 0.05 * seen["n"]))
+            splash.set_stage(message)
             print(message, file=sys.stderr, flush=True)
 
-        splash.status("Checking the shared install", 0.08)
+        splash.set_stage("Checking GPU")
         message = _ensure_shared(on_progress)
         if message:
             splash.close()
@@ -332,11 +353,9 @@ def _gui(_argv: list[str]) -> int:
         print(blocked, file=sys.stderr)
         QMessageBox.critical(None, APP_DISPLAY_NAME, blocked)
         return 1
+    splash.set_stage("Loading registry")
     register_quietly()
-    splash.status("Loading", 0.45)
     window = MainWindow()
-    splash.status("Opening", 0.9)
-    window.show()
     splash.finish(window)
     return int(app.exec())
 

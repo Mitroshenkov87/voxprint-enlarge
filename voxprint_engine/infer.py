@@ -21,7 +21,7 @@ import numpy as np
 from PIL import Image
 
 from voxprint_engine.formats import open_rgb, require_output_format, save_image
-from voxprint_engine.hardware import ci_lanczos
+from voxprint_engine.hardware import NO_GPU_MESSAGE, ci_lanczos
 from voxprint_engine.onnx_export import OnnxExportError, cached_onnx, ensure_onnx
 from voxprint_engine.providers import TRT, choices_for, cpu_ep_requested, cuda_fallback_choices, gpu_provider_names
 from voxprint_engine.registry.schema import ModelManifest
@@ -287,6 +287,7 @@ def upscale_file(
     models_root: Path | None = None,
     onnx_path: Path | None = None,
     weight: Path | None = None,
+    app_name: str = "",
 ) -> JobOutcome:
     """Write ``dst``.
 
@@ -298,9 +299,8 @@ def upscale_file(
     reason = _lanczos_reason(model, device, engine)
     tile = choose_tile(snapshot.budget_gb, model.tile, user_tile)
     if not reason and not _onnx_cpu(device, engine) and not gpu_provider_names(available_providers(), device=device):
-        raise ImageJobError(
-            "Enlarge needs an NVIDIA GPU that CUDA can use. This computer does not have one."
-        )
+        name = app_name.strip() or "This program"
+        raise ImageJobError(NO_GPU_MESSAGE.format(app_name=name))
     if reason:
         if on_progress is not None:
             on_progress(0.4, reason)

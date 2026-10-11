@@ -318,7 +318,7 @@ def test_refuse_below_is_optional(monkeypatch: pytest.MonkeyPatch) -> None:
     assert allowed.warning == ""
     old = assess_gpu(runner=_smi("NVIDIA GeForce RTX 4090, 580.88, 8.9\n"), refuse_below=(8, 9))
     assert old.ok is False
-    assert old.message == OLD_DRIVER_MESSAGE.format(driver="580.88")
+    assert old.message == OLD_DRIVER_MESSAGE.format(app_name="This program", driver="580.88")
 
 
 def test_ci_flag_skips_refuse_below(monkeypatch: pytest.MonkeyPatch) -> None:

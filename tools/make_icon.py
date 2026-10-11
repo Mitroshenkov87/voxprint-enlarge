@@ -1,4 +1,4 @@
-"""Scale assets/enlarge.png into the icon set and the splash. Does not redraw the mark.
+"""Scale assets/enlarge.png into the icon set. Does not redraw the mark or the splash.
 
     python tools/make_icon.py
 
@@ -19,15 +19,6 @@ def _frame(size: int, source: Image.Image) -> Image.Image:
     return source.resize((size, size), Image.Resampling.LANCZOS).convert("RGBA")
 
 
-def _splash(source: Image.Image) -> Image.Image:
-    if source.mode == "RGB":
-        return source
-    flat = Image.new("RGB", source.size, (0, 0, 0))
-    rgba = source.convert("RGBA")
-    flat.paste(rgba, mask=rgba.getchannel("A"))
-    return flat
-
-
 def write_icons() -> None:
     source_path = ASSETS / "enlarge.png"
     source = Image.open(source_path)
@@ -46,7 +37,6 @@ def write_icons() -> None:
         sizes=[(size, size) for size in ICO_SIZES],
         append_images=frames[:-1],
     )
-    _splash(source).save(ASSETS / "splash.jpg", quality=90, optimize=True)
 
 
 if __name__ == "__main__":

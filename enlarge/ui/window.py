@@ -236,7 +236,7 @@ class MainWindow(QWidget):
             return 0
 
     def _refresh_gpu_warning(self) -> None:
-        self.output_page.gpu_warning.setText(assess_gpu(device_index(suite.gpu())).warning)
+        self.output_page.gpu_warning.setText(assess_gpu(device_index(suite.gpu()), app_name=APP_DISPLAY_NAME).warning)
 
     def _update_tile_label(self) -> None:
         model = self.catalog.get(self.model_page.current_id())
@@ -438,6 +438,7 @@ class MainWindow(QWidget):
                 device=suite.gpu(),
                 engine="auto",
                 custom_models_dir=str(self.settings.get("custom_models_dir") or ""),
+                app_name=APP_DISPLAY_NAME,
             ))
         if not requests:
             self.run_page.status.setText("Everything in this queue is already done.")
