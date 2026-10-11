@@ -1,11 +1,13 @@
-# Python 3.14. CI installs this CPU ONNX Runtime wheel so the package imports
-# on a runner without a GPU. The app refuses to start unless an NVIDIA GPU is
-# usable through CUDA. Tests and CI set VOXPRINT_CI_LANCZOS=1.
+# Python 3.14. The GPU ONNX Runtime wheel imports on a runner without a GPU.
+# The CPU distribution named onnxruntime is not a dependency: it shadows this
+# wheel and leaves the Azure and CPU providers. TensorRT 10.14 libs are the
+# [gpu] extra in pyproject.toml. --install-suite installs that extra from the
+# NVIDIA index. Tests and CI set VOXPRINT_CI_LANCZOS=1.
 # docs/ENGINE.md has the CUDA 13 packages.
 PySide6>=6.7,<7
 Pillow>=12.3.0,<13
 psutil>=5.9,<8
 numpy>=2,<3
-onnxruntime>=1.20,<2
+onnxruntime-gpu==1.31.0
 # 2026.10.10 publishes a cp312-abi3 wheel, which installs on Python 3.14.
 imagecodecs==2026.10.10

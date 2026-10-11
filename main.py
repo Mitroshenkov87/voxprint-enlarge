@@ -35,6 +35,7 @@ from voxprint_engine.hardware import assess_gpu, ci_lanczos
 from voxprint_engine.suite_runtime import (
     RuntimeReport,
     SuiteInstallError,
+    cpu_onnxruntime_shadows_gpu,
     ensure_runtime,
     install_gpu_wheels,
     release_runtime,
@@ -227,6 +228,9 @@ def _selftest(as_json: bool) -> int:
         return 1
     providers = _provider_status(report)
     ready = all(bool(item["ok"]) for item in providers.values())
+    shadow = cpu_onnxruntime_shadows_gpu()
+    if shadow:
+        ready = False
     extra: dict[str, object] = dict(providers)
     if not ready:
         extra["ok"] = False
@@ -237,11 +241,13 @@ def _selftest(as_json: bool) -> int:
         done="shared suite: ready" if ready else "shared suite: incomplete",
         extra=extra,
     )
+    if shadow:
+        print(shadow, file=sys.stderr)
     if not ready:
         for item in providers.values():
             if not item["ok"]:
                 print(str(item["detail"]), file=sys.stderr)
-    return 0 if report.ok and ready else 1
+    return 0 if report.ok and ready and not shadow else 1
 
 
 def _install_suite() -> int:

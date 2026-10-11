@@ -11,6 +11,7 @@ skipped, so tests stay offline. Pass ``allow_skip=False`` to force the check.
 """
 from __future__ import annotations
 
+import importlib.metadata as importlib_metadata
 import json
 import os
 import re
@@ -36,6 +37,8 @@ GPU_VERSION = "cu130"
 TORCH_INDEX = "https://download.pytorch.org/whl/cu130"
 ORT_GPU_SPEC = "onnxruntime-gpu==1.31.0"
 TRT_LIBS_SPEC = "tensorrt-cu13-libs==10.14.1.48"
+# Same pins as the ``gpu`` extra in pyproject.toml. ensure_runtime always installs them.
+GPU_EXTRA = (ORT_GPU_SPEC, TRT_LIBS_SPEC)
 TRT_META_SPEC = "tensorrt-cu13==10.14.1.48"
 NVIDIA_INDEX = "https://pypi.nvidia.com"
 SPANDREL_SPEC = "spandrel>=0.4,<0.5"
@@ -289,12 +292,33 @@ def release_runtime(
     return RuntimeReport(not failed, False, tuple(statuses))
 
 
+def cpu_onnxruntime_shadows_gpu() -> str | None:
+    """Error when the CPU ``onnxruntime`` distribution is installed beside the GPU build.
+
+    Both distributions provide the ``onnxruntime`` import. The CPU wheel then
+    wins, and the providers are Azure and CPU only.
+    """
+    names: set[str] = set()
+    for dist in importlib_metadata.distributions():
+        metadata = dist.metadata
+        raw = metadata.get("Name") if metadata else None
+        if isinstance(raw, str) and raw.strip():
+            names.add(raw.lower())
+    if "onnxruntime" in names and "onnxruntime-gpu" in names:
+        return (
+            "CPU onnxruntime is installed beside onnxruntime-gpu, so the providers "
+            "are Azure and CPU only. Uninstall it: python -m pip uninstall -y onnxruntime"
+        )
+    return None
+
+
 def install_gpu_wheels(python: str, progress: Progress | None = None) -> None:
     """Install torch for CUDA 13, ONNX Runtime GPU 1.31, and TensorRT 10.14.
 
-    The CPU ``onnxruntime`` wheel shadows ``onnxruntime-gpu`` and leaves only
-    the CPU and Azure providers. Unpinned ``tensorrt-cu13`` is TensorRT 11
-    (``nvinfer_11``). ONNX Runtime 1.31 loads ``nvinfer_10`` from
+    ``GPU_EXTRA`` is the ``gpu`` extra. This install always applies those pins.
+    The CPU ``onnxruntime`` wheel is forbidden: it shadows ``onnxruntime-gpu``
+    and leaves only the CPU and Azure providers. Unpinned ``tensorrt-cu13`` is
+    TensorRT 11 (``nvinfer_11``). ONNX Runtime 1.31 loads ``nvinfer_10`` from
     ``tensorrt-cu13-libs`` 10.14.1.48. Bindings for that TensorRT have no
     cp314 wheel, so the meta package is recorded with ``--no-deps``.
     """
@@ -321,7 +345,7 @@ def install_gpu_wheels(python: str, progress: Progress | None = None) -> None:
     )
     _pip(
         python,
-        ["install", "--extra-index-url", NVIDIA_INDEX, ORT_GPU_SPEC, TRT_LIBS_SPEC, SPANDREL_SPEC, ONNX_SPEC],
+        ["install", "--extra-index-url", NVIDIA_INDEX, *GPU_EXTRA, SPANDREL_SPEC, ONNX_SPEC],
         "Installing ONNX Runtime GPU 1.31 and TensorRT 10.14",
         progress,
         required=True,

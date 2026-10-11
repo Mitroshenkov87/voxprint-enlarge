@@ -1,15 +1,22 @@
 # Shared inference engine
 
 `voxprint_engine` is the image upscaler Voxprint AI Enlarge owns and Voxprint AI
-Clarity imports. The installable distribution is `voxprint-engine` 1.2.0. It
+Clarity imports. The installable distribution is `voxprint-engine` 1.2.1. It
 does not import Qt. `API` is 1. The package version and `API` are different
 numbers: the version marks this release, and `API` stays 1 until a breaking
 change. 1.1.0 adds `ensure_onnx`, `iter_tile_frames`, and the optional
 manifest fields `onnx_url`, `onnx_sha256`, and `execution`. 1.2.0 adds
 `in_channels` (default 3) so a 4-channel network such as DRUNet exports and
-runs with RGB plus a noise-level map.
+runs with RGB plus a noise-level map. 1.2.1 drops the CPU `onnxruntime` wheel.
+The `gpu` extra pins `onnxruntime-gpu==1.31.0` and `tensorrt-cu13-libs==10.14.1.48`.
 
-The 1.2.0 pin is:
+The 1.2.1 pin is:
+
+```text
+voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.2.1
+```
+
+The 1.2.0 pin stays valid for the surface before that dependency change:
 
 ```text
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.2.0
