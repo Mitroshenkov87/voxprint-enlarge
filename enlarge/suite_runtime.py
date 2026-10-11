@@ -305,7 +305,7 @@ GPU_EXTRA = (ORT_GPU_SPEC, TRT_LIBS_SPEC)
 TRT_META_SPEC = "tensorrt-cu13==10.14.1.48"
 NVIDIA_INDEX = "https://pypi.nvidia.com"
 SPANDREL_SPEC = "spandrel>=0.4,<0.5"
-ONNX_SPEC = "onnx>=1.16,<2"
+ONNX_SPEC = "onnx>=1.17,<2"
 
 ComponentId = Literal["python", "gpu", "model"]
 Progress = Callable[[str], None]
@@ -947,12 +947,8 @@ def _unregister_quietly(app: str) -> None:
 
 
 def _delete_rel(root: Path, rel: str) -> None:
-    if not rel or ".." in Path(rel).parts:
-        raise SuiteInstallError("refusing to delete a path outside the shared folder")
-    dest = (root / rel).resolve()
+    dest = _shared_child(root, rel)
     base = root.resolve()
-    if dest != base and base not in dest.parents:
-        raise SuiteInstallError("refusing to delete a path outside the shared folder")
     if dest == base:
         raise SuiteInstallError("refusing to delete the shared folder itself")
     if dest.is_symlink() or dest.is_file():
@@ -1057,8 +1053,22 @@ def _register_model_user(app: str) -> None:
         return
 
 
+def _shared_child(root: Path, rel: str) -> Path:
+    """Resolve ``rel`` inside ``root``. Absolute paths and ``..`` are refused."""
+    if not rel or Path(rel).is_absolute() or rel.startswith(("/", "\\")) or ".." in Path(rel).parts:
+        raise SuiteInstallError("refusing to use a path outside the shared folder")
+    base = root.resolve()
+    dest = (base / rel).resolve()
+    if dest != base and base not in dest.parents:
+        raise SuiteInstallError("refusing to use a path outside the shared folder")
+    return dest
+
+
 def _python_executable(root: Path, rel: str = "python") -> str | None:
-    folder = root / rel
+    try:
+        folder = _shared_child(root, rel)
+    except SuiteInstallError:
+        return None
     if sys.platform == "win32":
         candidate = folder / "python.exe"
     else:
@@ -1091,7 +1101,7 @@ def _python_ready(root: Path, rel: str = "python") -> bool:
 
 
 def _install_python(root: Path, rel: str, progress: Progress) -> None:
-    dest = root / rel
+    dest = _shared_child(root, rel)
     bundled = bundled_python_tree()
     if bundled is not None:
         try:
@@ -1124,14 +1134,12 @@ def _install_python(root: Path, rel: str, progress: Progress) -> None:
 
 
 def _remove_python(root: Path, rel: str = "python") -> None:
-    dest = root / rel
-    if dest.is_symlink():
+    dest = _shared_child(root, rel)
+    if not dest.exists() and not dest.is_symlink():
+        return
+    if dest.is_symlink() or dest.is_file():
         dest.unlink()
         return
-    if not dest.exists():
-        return
-    if root.resolve() not in dest.resolve().parents:
-        raise SuiteInstallError("refusing to delete a Python outside the shared folder")
     shutil.rmtree(dest)
 
 

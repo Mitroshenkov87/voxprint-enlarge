@@ -23,6 +23,7 @@ from enlarge.suite_runtime import (
     ensure_default_model,
     ensure_runtime,
     managed_ids,
+    _python_executable,
     read_manifest,
     release_runtime,
 )
@@ -397,3 +398,16 @@ def test_windows_bundle_python_is_the_python_directory(tmp_path: Path, monkeypat
     monkeypatch.setattr("sys.platform", "win32")
     monkeypatch.setattr("sys.executable", str(exe))
     assert bundled_python_tree() == folder.resolve()
+
+
+def test_interpreter_json_is_not_read_outside_the_shared_folder(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "interpreter.json").write_text(
+        '{"executable": "/bin/python", "version": "3.14.0"}\n',
+        encoding="utf-8",
+    )
+    root = tmp_path / "shared"
+    root.mkdir()
+    assert _python_executable(root, "../outside") is None
+    assert _python_executable(root, str(outside)) is None

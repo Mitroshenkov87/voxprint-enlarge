@@ -222,7 +222,7 @@ def test_gpu_install_includes_the_converter(monkeypatch: pytest.MonkeyPatch) -> 
     install_gpu_wheels("python")
     flat = " ".join(" ".join(args) for args in calls)
     assert "spandrel>=0.4,<0.5" in flat
-    assert "onnx>=1.16,<2" in flat
+    assert "onnx>=1.17,<2" in flat
     assert "onnxruntime-gpu==1.31.0" in flat
     assert "--extra-index-url https://pypi.nvidia.com" in flat
     assert "tensorrt-cu13-libs==10.14.1.48" in flat
