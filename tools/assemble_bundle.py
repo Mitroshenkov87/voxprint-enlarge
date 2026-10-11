@@ -96,25 +96,63 @@ exec "$BUNDLED" "$ROOT/main.py" "$@"
 def _install_sh() -> str:
     return """#!/bin/sh
 set -eu
+
+target_home() {
+  if [ -n "${SUDO_USER:-}" ]; then
+    home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+  else
+    home=$HOME
+  fi
+  if [ -z "$home" ] || [ "$home" = "/" ]; then
+    echo "install: could not resolve the user home" >&2
+    exit 1
+  fi
+  printf '%s\\n' "$home"
+}
+
+run_as_user() {
+  if [ -n "${SUDO_USER:-}" ]; then
+    sudo -u "$SUDO_USER" -H -- "$@"
+  else
+    "$@"
+  fi
+}
+
+if [ "$(id -u)" -ne 0 ]; then
+  exec sudo -- "$0" "$@"
+fi
 ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
-DEST="${XDG_DATA_HOME:-$HOME/.local/share}/voxprint/enlarge"
+DEST=/opt/voxprint-ai-suite/enlarge
 mkdir -p "$DEST"
 cp -a "$ROOT"/. "$DEST"/
+chmod -R a+rX "$DEST"
 chmod 755 "$DEST/voxprint-enlarge" "$DEST/install.sh" "$DEST/uninstall.sh"
-"$DEST/python/bin/python3" "$DEST/main.py" --install-suite
-"$DEST/python/bin/python3" "$DEST/main.py" --register --exe "$DEST/voxprint-enlarge"
-DESKTOP="${XDG_DATA_HOME:-$HOME/.local/share}/applications/voxprint-enlarge.desktop"
-mkdir -p "$(dirname "$DESKTOP")"
-cat > "$DESKTOP" <<EOF
+HOME_DIR=$(target_home)
+DATA="$HOME_DIR/.local/share"
+OLD="$DATA/voxprint/enlarge"
+# The old tree is the app only. shared/, models, and logs stay.
+case "$OLD" in
+  */voxprint/enlarge)
+    rm -rf "$OLD"
+    ;;
+esac
+rm -f "$DATA/applications/voxprint-enlarge.desktop"
+rm -f "$HOME_DIR/.local/bin/voxprint-enlarge"
+run_as_user "$DEST/python/bin/python3" "$DEST/main.py" --install-suite
+run_as_user "$DEST/python/bin/python3" "$DEST/main.py" --register --exe "$DEST/voxprint-enlarge"
+mkdir -p /usr/share/applications
+cat > /usr/share/applications/voxprint-enlarge.desktop <<EOF
 [Desktop Entry]
 Type=Application
-Name=Voxprint AI Enlarge
+Name=VOXPrint AI Enlarge
 Comment=Offline image upscaling
 Exec=$DEST/voxprint-enlarge
 Icon=$DEST/assets/enlarge.png
 Terminal=false
 Categories=Graphics;
+StartupWMClass=VOXPrint AI Enlarge
 EOF
+ln -sfn "$DEST/voxprint-enlarge" /usr/local/bin/voxprint-enlarge
 echo "$DEST"
 """
 
@@ -122,13 +160,49 @@ echo "$DEST"
 def _uninstall_sh() -> str:
     return """#!/bin/sh
 set -eu
+
+target_home() {
+  if [ -n "${SUDO_USER:-}" ]; then
+    home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+  else
+    home=$HOME
+  fi
+  if [ -z "$home" ] || [ "$home" = "/" ]; then
+    echo "uninstall: could not resolve the user home" >&2
+    exit 1
+  fi
+  printf '%s\\n' "$home"
+}
+
+run_as_user() {
+  if [ -n "${SUDO_USER:-}" ]; then
+    sudo -u "$SUDO_USER" -H -- "$@"
+  else
+    "$@"
+  fi
+}
+
+if [ "$(id -u)" -ne 0 ]; then
+  exec sudo -- "$0" "$@"
+fi
 ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
-"$ROOT/python/bin/python3" "$ROOT/main.py" --uninstall-suite
-"$ROOT/python/bin/python3" "$ROOT/main.py" --unregister
-rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/applications/voxprint-enlarge.desktop"
-case "$ROOT" in
-  */voxprint/enlarge) rm -rf "$ROOT" ;;
+run_as_user "$ROOT/python/bin/python3" "$ROOT/main.py" --uninstall-suite
+run_as_user "$ROOT/python/bin/python3" "$ROOT/main.py" --unregister
+HOME_DIR=$(target_home)
+DATA="$HOME_DIR/.local/share"
+OLD="$DATA/voxprint/enlarge"
+case "$OLD" in
+  */voxprint/enlarge)
+    rm -rf "$OLD"
+    ;;
 esac
+rm -f "$DATA/applications/voxprint-enlarge.desktop"
+rm -f "$HOME_DIR/.local/bin/voxprint-enlarge"
+rm -f /usr/share/applications/voxprint-enlarge.desktop
+rm -f /usr/local/bin/voxprint-enlarge
+if [ -d /opt/voxprint-ai-suite/enlarge ]; then
+  rm -rf /opt/voxprint-ai-suite/enlarge
+fi
 """
 
 

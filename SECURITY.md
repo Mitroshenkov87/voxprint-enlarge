@@ -1,6 +1,6 @@
 # Security
 
-Voxprint AI Enlarge runs on your computer. It does not upload the pictures you enlarge.
+VOXPrint AI Enlarge runs on your computer. It does not upload the pictures you enlarge.
 
 ## Reporting a vulnerability
 

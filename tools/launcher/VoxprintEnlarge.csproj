@@ -8,7 +8,8 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <AssemblyName>VoxprintEnlarge</AssemblyName>
+    <AssemblyName>voxprint-enlarge</AssemblyName>
+    <DefineConstants>$(DefineConstants);GUI_LAUNCHER</DefineConstants>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 </Project>

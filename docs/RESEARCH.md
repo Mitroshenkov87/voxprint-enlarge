@@ -1,4 +1,4 @@
-# Voxprint AI Enlarge: research notes
+# VOXPrint AI Enlarge: research notes
 
 Status of this file: background for the registry. It is not a promise that a
 model is downloaded or running. Weights are not in the repository.

@@ -1,6 +1,6 @@
 # Roadmap
 
-This is what is coming next for Voxprint AI Enlarge. The current install is `v0.2.0-rc.6` (codename Emunah). The shared runtime manifest is schema 1, from `voxprint-common` 0.1.
+This is what is coming next for VOXPrint AI Enlarge. The current install is `v0.2.0-rc.6` (codename Emunah). The shared runtime manifest is schema 1, from `voxprint-common` 0.1.
 
 ## Next version
 

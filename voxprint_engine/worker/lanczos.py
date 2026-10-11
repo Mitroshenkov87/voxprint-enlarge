@@ -56,7 +56,7 @@ def lanczos_resize(
     _delay()
     suffix = src.suffix.lower()
     if suffix in VIDEO_EXTENSIONS:
-        raise ImageJobError("Enlarge takes images only. Video belongs to Voxprint AI Clarity.")
+        raise ImageJobError("Enlarge takes images only. Video belongs to VOXPrint AI Clarity.")
     if suffix not in IMAGE_EXTENSIONS:
         raise ImageJobError(f"unsupported image type {suffix or '(none)'}")
     require_output_format(image_format, lossless=lossless)

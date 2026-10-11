@@ -1,6 +1,6 @@
 # Enlarge CLI
 
-This is the stable command other Voxprint apps call. Canvas and Lucent use this instead of the socket. The process never opens a window. Starting Enlarge with no arguments opens the window and shows the shared splash before that window. The commands on this page do not import Qt.
+This is the stable command other VOXPrint apps call. Canvas and Lucent use this instead of the socket. The process never opens a window. Starting Enlarge with no arguments opens the window and shows the shared splash before that window. The commands on this page do not import Qt.
 
 A warm `voxprint-enlarge --serve` for this user receives the job over protocol 1. If nothing is listening, the same process runs the job. Stdout is the same JSON lines either way. Human text goes to stderr.
 
@@ -120,13 +120,13 @@ Prints one JSON object and exits 0. It does not need a GPU, a network, or a wind
 
 ## Discovery
 
-The executable other apps start is the one the installer wrote.
+The executable other apps start is the one the installer wrote. Canvas calls `voxprint-enlarge-cli` for a 4K job so the process is a console program and the exit code is the shell's.
 
 | Platform | Path |
 |---|---|
-| Windows | `%LOCALAPPDATA%\Voxprint\Enlarge\VoxprintEnlarge.exe` |
-| Linux | `$XDG_DATA_HOME/voxprint/enlarge/voxprint-enlarge` (`~/.local/share` when `XDG_DATA_HOME` is unset) |
+| Windows | `%ProgramFiles%\VOXPrint AI Suite\Enlarge\voxprint-enlarge-cli.exe` |
+| Linux | `/opt/voxprint-ai-suite/enlarge/voxprint-enlarge` |
 
-`voxprint-enlarge --register` records that absolute path in `Exe` and in `X-Voxprint-Exe`. The base name from APP-DISCOVERY is `voxprint-enlarge` (`IpcBase`, `X-Voxprint-Ipc-Base`). `IpcName` and `X-Voxprint-Ipc` stay the listen name the published RC already stored, so a socket client keeps working. Linux also writes `X-Voxprint-Version`. Windows `ProtocolVersion` is a `REG_DWORD`. The per-user App Paths key remains `voxprint-enlarge.exe`.
+The window on Windows is `voxprint-enlarge.exe` in that same folder. `voxprint-enlarge --register` records the CLI path in `Exe` and in `X-Voxprint-Exe`. It writes `HKLM\Software\Voxprint\Enlarge` when it can, and always writes the same key under `HKCU`. App Paths entries are `voxprint-enlarge-cli.exe` (the CLI) and `voxprint-enlarge.exe` (the window, or the same exe when the window launcher is not beside it). The base name from APP-DISCOVERY is `voxprint-enlarge` (`IpcBase`, `X-Voxprint-Ipc-Base`). `IpcName` and `X-Voxprint-Ipc` stay the listen name the published RC already stored, so a socket client keeps working. Linux also writes `X-Voxprint-Version`. Windows `ProtocolVersion` is a `REG_DWORD`.
 
-Fallback when the known file is absent: `voxprint-enlarge` on `PATH`, then the current process.
+Readers try the table above, then `Exe` from HKLM and then HKCU, then the previous per-user files `%LOCALAPPDATA%\Voxprint\Enlarge\VoxprintEnlarge.exe` and `$XDG_DATA_HOME/voxprint/enlarge/voxprint-enlarge`. Those older paths stay valid for one version. After that, `voxprint-enlarge-cli` and `voxprint-enlarge` on `PATH`, then the current process.

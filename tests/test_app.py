@@ -89,7 +89,7 @@ def test_stylesheet_has_no_leftover_braces() -> None:
 
 
 def test_platform_names() -> None:
-    assert START_MENU_FOLDER == "Voxprint"
+    assert START_MENU_FOLDER == "VOXPrint AI Suite"
     assert MIN_BUILD == 26100
     assert check_os(build=26100, is_windows=True).ok
     assert not check_os(build=22000, is_windows=True).ok
@@ -329,4 +329,4 @@ def test_gui_refuses_without_a_cuda_gpu(monkeypatch: pytest.MonkeyPatch, capsys:
     captured = capsys.readouterr()
     assert code == 1
     assert no_gpu_message(APP_DISPLAY_NAME) in captured.err
-    assert shown == [f"Voxprint AI Enlarge: {no_gpu_message(APP_DISPLAY_NAME)}"]
+    assert shown == [f"{APP_DISPLAY_NAME}: {no_gpu_message(APP_DISPLAY_NAME)}"]

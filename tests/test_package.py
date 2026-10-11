@@ -57,22 +57,48 @@ def test_stage_app_leaves_weights_out(tmp_path: Path) -> None:
     text = (dest / "install.sh").read_text(encoding="utf-8")
     assert "--install-suite" in text
     assert "--register" in text
+    assert "/opt/voxprint-ai-suite/enlarge" in text
+    assert "VOXPrint AI Enlarge" in text
+    assert "SUDO_USER" in text
+    assert "*/voxprint/enlarge" in text
     uninstall = (dest / "uninstall.sh").read_text(encoding="utf-8")
     assert "--uninstall-suite" in uninstall
     assert "--unregister" in uninstall
+    assert "/opt/voxprint-ai-suite/enlarge" in uninstall
     launcher = (dest / "voxprint-enlarge").read_text(encoding="utf-8")
     assert "voxprint/shared/python/bin/python3" in launcher
     assert "import voxprint_common, voxprint_engine, onnxruntime" in launcher
     weights = [path for path in dest.rglob("*") if path.suffix.lower() in {".pth", ".onnx"}]
     assert weights == []
     iss = Path("installer/windows/enlarge.iss").read_text(encoding="utf-8")
-    assert r"{localappdata}\Voxprint\Enlarge" in iss
-    assert r"{userprograms}\Voxprint" in iss
+    assert r"{autopf}\VOXPrint AI Suite\Enlarge" in iss
+    assert "PrivilegesRequired=admin" in iss
+    assert "voxprint-enlarge-setup" in iss
+    assert "voxprint-enlarge.exe" in iss
+    assert "voxprint-enlarge-cli.exe" in iss
+    assert r"{autoprograms}\VOXPrint AI Suite\VOXPrint AI Enlarge" in iss
+    migrate = iss.split("procedure MigratePerUserInstall", 1)[1].split("procedure CurStepChanged", 1)[0]
+    assert r"{localappdata}\Voxprint\Enlarge" in migrate
+    assert "DelTree" in migrate
+    assert r"{userprograms}\Voxprint\Voxprint AI Enlarge.lnk" in migrate
+    assert "--uninstall-suite" not in migrate
+    assert "unins000" not in iss
+    assert "function InitializeSetup" in iss
+    assert r"Uninstall\{A7E1C4B2-6D40-4F1A-9C3E-8B5D2F0E1A44}_is1" in iss
     assert "--uninstall-suite" in iss
     assert "--unregister" in iss
     assert "--install-suite" in iss
     assert "--register" in iss
     launcher = Path("tools/launcher/Program.cs").read_text(encoding="utf-8")
+    assert "#if GUI_LAUNCHER" in launcher
+    gui_project = Path("tools/launcher/VoxprintEnlarge.csproj").read_text(encoding="utf-8")
+    cli_project = Path("tools/launcher/voxprint-enlarge-cli.csproj").read_text(encoding="utf-8")
+    assert "<AssemblyName>voxprint-enlarge</AssemblyName>" in gui_project
+    assert "<OutputType>WinExe</OutputType>" in gui_project
+    assert "GUI_LAUNCHER" in gui_project
+    assert "<AssemblyName>voxprint-enlarge-cli</AssemblyName>" in cli_project
+    assert "<OutputType>Exe</OutputType>" in cli_project
+    assert "GUI_LAUNCHER" not in cli_project
     assert 'Path.Combine(local, "Voxprint", "shared", "python")' in launcher
     assert "import voxprint_common, voxprint_engine, onnxruntime" in launcher
     assert "GetConsoleMode" in launcher

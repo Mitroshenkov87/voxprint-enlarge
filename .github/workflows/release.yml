@@ -48,10 +48,14 @@ jobs:
         env:
           GITHUB_SHA: ${{ github.sha }}
         run: python -m tools.assemble_bundle --dest dist/payload --platform windows --with-python
-      - name: Build the launcher
-        run: dotnet publish tools/launcher/VoxprintEnlarge.csproj -c Release -o dist/launcher
-      - name: Copy the launcher into the payload
-        run: Copy-Item dist/launcher/VoxprintEnlarge.exe dist/payload/VoxprintEnlarge.exe
+      - name: Build the launchers
+        run: |
+          dotnet publish tools/launcher/VoxprintEnlarge.csproj -c Release -o dist/launcher-gui
+          dotnet publish tools/launcher/voxprint-enlarge-cli.csproj -c Release -o dist/launcher-cli
+      - name: Copy the launchers into the payload
+        run: |
+          Copy-Item dist/launcher-gui/voxprint-enlarge.exe dist/payload/voxprint-enlarge.exe
+          Copy-Item dist/launcher-cli/voxprint-enlarge-cli.exe dist/payload/voxprint-enlarge-cli.exe
       # 7.1.0's installer sat on an invisible prompt on windows-latest
       # (/DIR without /SP- and /ALLUSERS). 6.7.3 is the compiler enlarge.iss needs.
       - name: Install Inno Setup
@@ -87,7 +91,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: enlarge-windows
-          path: dist/VoxprintEnlarge-Setup.exe
+          path: dist/voxprint-enlarge-setup.exe
           if-no-files-found: error
 
   publish:
@@ -110,17 +114,17 @@ jobs:
           set -euo pipefail
           cd dist
           mv enlarge-linux/voxprint-enlarge-linux-x64.tar.gz .
-          mv enlarge-windows/VoxprintEnlarge-Setup.exe .
-          sha256sum VoxprintEnlarge-Setup.exe voxprint-enlarge-linux-x64.tar.gz > SHA256SUMS
+          mv enlarge-windows/voxprint-enlarge-setup.exe .
+          sha256sum voxprint-enlarge-setup.exe voxprint-enlarge-linux-x64.tar.gz > SHA256SUMS
           build=$(python -c "import sys; sys.path.insert(0, '${{ github.workspace }}'); from tools.build_number import build_number; number = build_number(); print('dev' if number is None else number)")
           name=$(python -c "import sys; sys.path.insert(0, '${{ github.workspace }}'); from tools.build_number import codename; print(codename())")
           tag="${GITHUB_REF_NAME}"
-          title="Voxprint AI Enlarge ${tag#v} · build ${build} \"${name}\""
+          title="VOXPrint AI Enlarge ${tag#v} · build ${build} \"${name}\""
           raw="https://github.com/${GITHUB_REPOSITORY}/raw/${tag}/docs/images"
           notes="$(cat <<EOF
-          Offline image upscaling for the Voxprint suite. Nothing is uploaded.
+          Offline image upscaling for the VOXPrint suite. Nothing is uploaded.
 
-          ![The Images step of Voxprint AI Enlarge](${raw}/enlarge-main.webp)
+          ![The Images step of VOXPrint AI Enlarge](${raw}/enlarge-main.webp)
 
           Illustrated picture, RealESRGAN anime 6B at 4×:
 
@@ -137,7 +141,7 @@ jobs:
           )"
           if gh release view "$tag" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release upload "$tag" --repo "${GITHUB_REPOSITORY}" --clobber \
-              VoxprintEnlarge-Setup.exe \
+              voxprint-enlarge-setup.exe \
               voxprint-enlarge-linux-x64.tar.gz \
               SHA256SUMS
             gh release edit "$tag" --repo "${GITHUB_REPOSITORY}" \
@@ -148,7 +152,7 @@ jobs:
               --title "$title" \
               --prerelease \
               --notes "$notes" \
-              VoxprintEnlarge-Setup.exe \
+              voxprint-enlarge-setup.exe \
               voxprint-enlarge-linux-x64.tar.gz \
               SHA256SUMS
           fi

@@ -4,8 +4,8 @@ Use this on the RTX 4090 machine (Windows 11, Windows Server 2025, or Linux, NVI
 
 Install `v0.2.0-rc.6` (codename Emunah). Check `SHA256SUMS` before you install. A stock machine can run the short set with `bash scripts/vm_test.sh --smoke` before anything else. The script prints `python: ...` for the interpreter it chose: the shared runtime (`%LOCALAPPDATA%\Voxprint\shared\python\python.exe`, or `~/.local/share/voxprint/shared/python/bin/python3`), then `py -3`, then `python3`. `python3` on Windows is often the Microsoft Store alias, so it is last. A `VOXPRINT_HOME` or `LOCALAPPDATA` value with backslashes is accepted. Exit 0 is pass, 1 is a failed test, 2 is setup, and 3 means no usable GPU.
 
-* Windows: run `VoxprintEnlarge-Setup.exe`. It installs for the current user under `%LOCALAPPDATA%\Voxprint\Enlarge`.
-* Linux: unpack `voxprint-enlarge-linux-x64.tar.gz` and run `./install.sh`. The command is then `voxprint-enlarge`.
+* Windows: run `voxprint-enlarge-setup.exe`. It asks for an administrator and installs to `C:\Program Files\VOXPrint AI Suite\Enlarge`. An older copy under `%LOCALAPPDATA%\Voxprint\Enlarge` is removed. Models, the shared runtime, and logs stay in `%LOCALAPPDATA%\Voxprint`.
+* Linux: unpack `voxprint-enlarge-linux-x64.tar.gz` and run `./install.sh`. The tree is `/opt/voxprint-ai-suite/enlarge`. The command is `voxprint-enlarge`.
 
 The installer fills the shared suite folder itself: Python 3.14, the CUDA wheels, and the default model, converted to ONNX. Do not export a weight by hand, and do not install TensorRT yourself. A stock install must upscale.
 
@@ -18,10 +18,10 @@ bash scripts/vm_test.sh --smoke
 voxprint-enlarge upscale --input line.png --scale 4 --preset art --format avif --json-progress
 rm -f "$LOCALAPPDATA/Voxprint/models/1f2be2b4786b5031776aed90e1818564f5576ab1e44da9355c7f3788ea25bdea.onnx"
 voxprint-enlarge upscale --input photo.jpg --scale 4 --preset photo --quality-tier max --format avif --json-progress
-"$LOCALAPPDATA/Voxprint/Enlarge/VoxprintEnlarge.exe"
+# Windows window: & "${env:ProgramFiles}\VOXPrint AI Suite\Enlarge\voxprint-enlarge.exe"
 ```
 
-`vm_test.sh --smoke` prints `python:` and covers the stock upscale, the cached rerun, anime 6B at 4×, and the long-side chain. The line-art command is the same anime 6B run on a real drawing, after Check hash on `realesrgan-x4plus-anime6b`. Removing that ONNX file forces the first DAT2 `.pth` conversion. The window title is `Voxprint AI Enlarge` and the client area is opaque.
+`vm_test.sh --smoke` prints `python:` and covers the stock upscale, the cached rerun, anime 6B at 4×, and the long-side chain. The line-art command is the same anime 6B run on a real drawing, after Check hash on `realesrgan-x4plus-anime6b`. Removing that ONNX file forces the first DAT2 `.pth` conversion. The window title is `VOXPrint AI Enlarge` and the client area is opaque.
 
 Run the cases that failed on `v0.2.0-rc.2` first. The anime 6B run and the Canvas chain stay as regressions after those.
 
@@ -38,7 +38,7 @@ voxprint-enlarge upscale --input samples/sample.png --scale 2 --format avif --js
 
 `--selftest --json` exits 0. `ok` is true. `tensorrt_ep.detail` and `cuda_ep.detail` are both `loaded`, and each `providers` list is what `session.get_providers()` returned from the worker, not the names the wheel was built with. `fallback` is an empty string. A GPU provider that fell back to CPU sets `ok` to false and explains it in `fallback`. `voxprint_home` is the resolved folder and `voxprint_home_source` is `default` on a stock install. A line on stderr that starts with `warning: VOXPRINT_HOME` means the variable points away from a default home that already has `shared/manifest.json`. Unset `VOXPRINT_HOME` and install again so the apps share one runtime.
 
-The Windows launcher writes which interpreter it chose, and why, to `%LOCALAPPDATA%\Voxprint\logs\enlarge-launcher.log`. Setup runs `Enlarge\python\python.exe main.py --install-suite` and `--register` with that bundled interpreter. If either exits non-zero, Setup shows a message and exits non-zero. In PowerShell, `& "$env:LOCALAPPDATA\Voxprint\Enlarge\VoxprintEnlarge.exe" --version` prints the version and sets `$LASTEXITCODE`. `nvidia-smi` is called as `%SystemRoot%\System32\nvidia-smi.exe` when that file exists, so a scheduled task without a console still sees the GPU.
+The Windows launcher writes which interpreter it chose, and why, to `%LOCALAPPDATA%\Voxprint\logs\enlarge-launcher.log`. Setup runs `Enlarge\python\python.exe main.py --install-suite` and `--register` with that bundled interpreter, and records `voxprint-enlarge-cli.exe`. If either exits non-zero, Setup shows a message and exits non-zero. In PowerShell, `& "${env:ProgramFiles}\VOXPrint AI Suite\Enlarge\voxprint-enlarge-cli.exe" --version` prints the version and sets `$LASTEXITCODE`. The window is `voxprint-enlarge.exe` in that folder. `nvidia-smi` is called as `%SystemRoot%\System32\nvidia-smi.exe` when that file exists, so a scheduled task without a console still sees the GPU.
 
 `--capabilities --json` exits 0. On this machine `gpu.status` is `ok` and `gpu.reason` is null. `version` matches `--version`. The default model is `installed` true. It carries the same `voxprint_home` and `voxprint_home_source` fields.
 

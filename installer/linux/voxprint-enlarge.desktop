@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=Voxprint AI Enlarge
+Name=VOXPrint AI Enlarge
 Comment=Offline image upscaling
 Exec=python3 main.py
 Icon=voxprint-enlarge
 Terminal=false
 Categories=Graphics;
-StartupWMClass=Voxprint AI Enlarge
-# Windows installs use the shared Start menu folder "Voxprint", not a private one.
+StartupWMClass=VOXPrint AI Enlarge
+# Windows installs use the shared Start menu folder "VOXPrint AI Suite".

@@ -2,7 +2,7 @@
 
 Lucent (and any other suite app) is the client. Enlarge is the server. This file is the stable public surface: the commands below, the discovery records, and the JSON messages. A major change bumps `protocol`. Readers ignore object keys they do not recognise.
 
-The checkout command is `python main.py`. An install that has called the discovery helper (below) also provides `voxprint-enlarge` with the same flags. There is no installer in this build. The helper only writes the records an installer will call later.
+The checkout command is `python main.py`. An install also provides `voxprint-enlarge` (and, on Windows, `voxprint-enlarge-cli`) with the same flags. The installer calls `--register` after it copies files.
 
 The window and `python main.py --upscale` still refuse to start without an NVIDIA GPU that CUDA can use on a driver from the 600 series or newer. Two commands are the exception: `--capabilities --json` and `--serve --hidden` start anyway, so a client can see that there is nothing to run.
 
@@ -10,19 +10,21 @@ The window and `python main.py --upscale` still refuse to start without an NVIDI
 
 Enlarge writes these records. Lucent only reads them.
 
-Windows, per user:
+Windows. The installer writes HKLM when it is elevated, and always writes HKCU. A reader still accepts an older HKCU `Exe` for one version.
 
 | Location | Values |
 |---|---|
-| `HKCU\Software\Voxprint\Enlarge` | `InstallPath`, `Exe`, `Version`, `IpcName`, `ProtocolVersion` (`1`), all `REG_SZ` |
-| `HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\voxprint-enlarge.exe` | default value is `Exe`; `Path` is `InstallPath` |
+| `HKLM` and `HKCU` `\Software\Voxprint\Enlarge` | `InstallPath`, `Exe` (the CLI), `Version`, `IpcName`, `IpcBase`, `ProtocolVersion` (`1`, `REG_DWORD`) |
+| `HKLM` and `HKCU` `\Software\Microsoft\Windows\CurrentVersion\App Paths\voxprint-enlarge-cli.exe` | default value is the CLI; `Path` is its directory |
+| `HKLM` and `HKCU` `\Software\Microsoft\Windows\CurrentVersion\App Paths\voxprint-enlarge.exe` | default value is the window launcher when that file is beside the CLI, otherwise the same exe |
 
 `IpcName` is the pipe name `QLocalSocket` connects to: `voxprint-enlarge-` plus the first 16 hex characters of `sha256` of the user SID string (UTF-8). The full pipe is `\\.\pipe\` plus that name. The pipe ACL allows the current user. If the SID cannot be read, the hash is of the `USERNAME` environment variable.
 
 Linux:
 
-* `$XDG_DATA_HOME/applications/ai.voxprint.Enlarge.desktop` (`~/.local/share` when `XDG_DATA_HOME` is unset). `NoDisplay=true`. `Exec` is the executable plus `--serve --hidden`. `X-Voxprint-Ipc` is the socket path. `X-Voxprint-Ipc-Base` is `voxprint-enlarge`. `X-Voxprint-Protocol=1`. `X-Voxprint-Version` is the version string. `X-Voxprint-Exe` is the absolute executable path. The installed executable is `~/.local/share/voxprint/enlarge/voxprint-enlarge`.
-* An executable `voxprint-enlarge` in `~/.local/bin`, which is expected to be on `PATH`.
+* `$XDG_DATA_HOME/applications/ai.voxprint.Enlarge.desktop` (`~/.local/share` when `XDG_DATA_HOME` is unset). `NoDisplay=true`. `Exec` is the executable plus `--serve --hidden`. `X-Voxprint-Ipc` is the socket path. `X-Voxprint-Ipc-Base` is `voxprint-enlarge`. `X-Voxprint-Protocol=1`. `X-Voxprint-Version` is the version string. `X-Voxprint-Exe` is the absolute executable path. The installed executable is `/opt/voxprint-ai-suite/enlarge/voxprint-enlarge`. The menu entry is `/usr/share/applications/voxprint-enlarge.desktop`, named VOXPrint AI Enlarge.
+* An executable `voxprint-enlarge` in `/usr/local/bin`, and the discovery wrapper in `~/.local/bin`.
+* For one version, a reader also accepts `$XDG_DATA_HOME/voxprint/enlarge/voxprint-enlarge` when the `/opt` file is absent.
 
 The socket path is `$XDG_RUNTIME_DIR/voxprint/enlarge.sock`. The directory is mode `0700` and the socket is mode `0600`. When `XDG_RUNTIME_DIR` is unset the directory is under the temp folder as `voxprint-run-<uid>`. A Flatpak build, when one exists, is `flatpak run ai.voxprint.Enlarge`.
 

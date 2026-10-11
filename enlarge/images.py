@@ -37,14 +37,14 @@ def collect(paths: list[Path], *, recursive: bool) -> tuple[list[Path], list[str
                     continue
                 suffix = child.suffix.lower()
                 if suffix in VIDEO_EXTENSIONS:
-                    warnings.append(f"Skipped {child.name}: Enlarge is for images. Video belongs to Voxprint AI Clarity.")
+                    warnings.append(f"Skipped {child.name}: Enlarge is for images. Video belongs to VOXPrint AI Clarity.")
                     continue
                 if suffix in IMAGE_EXTENSIONS:
                     add(child)
             continue
         suffix = path.suffix.lower()
         if suffix in VIDEO_EXTENSIONS:
-            warnings.append(f"Skipped {path.name}: Enlarge is for images. Video belongs to Voxprint AI Clarity.")
+            warnings.append(f"Skipped {path.name}: Enlarge is for images. Video belongs to VOXPrint AI Clarity.")
             continue
         if path.is_file() and suffix in IMAGE_EXTENSIONS:
             add(path)

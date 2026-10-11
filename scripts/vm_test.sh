@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Non-interactive GPU checks for a Voxprint AI Enlarge machine.
+# Non-interactive GPU checks for a VOXPrint AI Enlarge machine.
 # Exit 0 pass, 1 a test failed, 2 setup, 3 no usable GPU.
 # --smoke is the short set (selftest, one stock upscale and its cached rerun,
 # anime 6B at 4x, and the long-side chain). It is also the default.
 #
-# The interpreter is the Voxprint shared runtime python, then `py -3`, then
+# The interpreter is the shared runtime python, then `py -3`, then
 # `python3`. On Windows `python3` is often the Microsoft Store alias, so it
 # is last. The chosen command is printed as `python: ...`.
 set -u
@@ -83,10 +83,29 @@ vm_test_main() {
   mkdir -p "$OUT" || { echo "setup: cannot create $OUT" >&2; exit 2; }
 
   APP=()
-  if command -v voxprint-enlarge >/dev/null 2>&1; then
+  local win_root="" win_cli="" legacy="" env_value
+  for env_value in "${ProgramW6432:-}" "${PROGRAMW6432:-}" "${ProgramFiles:-}" "${PROGRAMFILES:-}"; do
+    if [[ -n "$env_value" ]]; then
+      win_root="$(_to_unix "$env_value")"
+      break
+    fi
+  done
+  if [[ -n "$win_root" ]]; then
+    win_cli="$win_root/VOXPrint AI Suite/Enlarge/voxprint-enlarge-cli.exe"
+  fi
+  if [[ -n "${LOCALAPPDATA:-}" ]]; then
+    legacy="$(_to_unix "$LOCALAPPDATA")/Voxprint/Enlarge/VoxprintEnlarge.exe"
+  fi
+  if command -v voxprint-enlarge-cli >/dev/null 2>&1; then
+    APP=(voxprint-enlarge-cli)
+  elif command -v voxprint-enlarge >/dev/null 2>&1; then
     APP=(voxprint-enlarge)
-  elif [[ -n "${LOCALAPPDATA:-}" && -x "$LOCALAPPDATA/Voxprint/Enlarge/VoxprintEnlarge.exe" ]]; then
-    APP=("$LOCALAPPDATA/Voxprint/Enlarge/VoxprintEnlarge.exe")
+  elif [[ -x /opt/voxprint-ai-suite/enlarge/voxprint-enlarge ]]; then
+    APP=(/opt/voxprint-ai-suite/enlarge/voxprint-enlarge)
+  elif [[ -n "$win_cli" && -f "$win_cli" ]]; then
+    APP=("$win_cli")
+  elif [[ -n "$legacy" && -f "$legacy" ]]; then
+    APP=("$legacy")
   elif [[ -f "$ROOT/main.py" ]]; then
     APP=("${PYTHON[@]}" "$ROOT/main.py")
   else

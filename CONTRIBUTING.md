@@ -1,6 +1,6 @@
 # Contributing
 
-Voxprint AI Enlarge is the still-image upscaler in the Voxprint AI Media Suite. Issues and pull requests are welcome.
+VOXPrint AI Enlarge is the still-image upscaler in the VOXPrint AI Media Suite. Issues and pull requests are welcome.
 
 ## What belongs here
 

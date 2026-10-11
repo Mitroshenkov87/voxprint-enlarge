@@ -1,7 +1,7 @@
 """VRAM budget shared by Enlarge and Clarity.
 
 Suite rule: ``budget = free_now - max(2 GB, 8% of total)``, measured again
-before each batch. GB here is 1024^3, matching the other Voxprint programs.
+before each batch. GB here is 1024^3, matching the other VOXPrint programs.
 An optional user fraction is not applied in phase 1; the headroom is the whole margin.
 """
 from __future__ import annotations

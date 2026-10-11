@@ -1,22 +1,27 @@
 using System.Diagnostics;
+#if GUI_LAUNCHER
 using System.Runtime.InteropServices;
+#endif
 using System.Threading.Tasks;
 
 string dir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 bool console = args.Length > 0;
+#if GUI_LAUNCHER
 // A redirected stdout or stderr is a pipe (PowerShell `& exe --version`).
 // AttachConsole would send the child's prints to a console the caller does
 // not capture, and $LASTEXITCODE stays empty. Inherited handles print and
-// return the exit code.
+// return the exit code. The console launcher is a console-subsystem exe, so
+// it must not attach: that would open a second console.
 if (console && !StdioRedirected())
 {
     NativeConsole.AttachParent();
 }
+#endif
 string python = ResolvePython(dir, console, args);
 string main = Path.Combine(dir, "main.py");
 if (!File.Exists(python) || !File.Exists(main))
 {
-    Console.Error.WriteLine("Voxprint AI Enlarge is missing its Python runtime.");
+    Console.Error.WriteLine("VOXPrint AI Enlarge is missing its Python runtime.");
     return 1;
 }
 var start = new ProcessStartInfo(python)
@@ -200,6 +205,7 @@ static void Log(string message)
     }
 }
 
+#if GUI_LAUNCHER
 static bool StdioRedirected()
 {
     return !HandleIsConsole(-11) || !HandleIsConsole(-12);
@@ -238,3 +244,4 @@ static class NativeConsole
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool AllocConsole();
 }
+#endif

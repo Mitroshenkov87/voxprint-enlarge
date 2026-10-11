@@ -145,7 +145,7 @@ def _save(image: np.ndarray, dst: Path, image_format: str, quality: int, lossles
 def _load(src: Path) -> np.ndarray:
     suffix = src.suffix.lower()
     if suffix in VIDEO_EXTENSIONS:
-        raise ImageJobError("Enlarge takes images only. Video belongs to Voxprint AI Clarity.")
+        raise ImageJobError("Enlarge takes images only. Video belongs to VOXPrint AI Clarity.")
     if suffix not in IMAGE_EXTENSIONS:
         raise ImageJobError(f"unsupported image type {suffix or '(none)'}")
     if not src.is_file():

@@ -66,7 +66,7 @@ class SettingsDialog(QDialog):
         title.setObjectName("title")
         root.addWidget(title)
         hint = QLabel(
-            "GPU and the models folder are shared with the other Voxprint apps (suite.json)."
+            "GPU and the models folder are shared with the other VOXPrint apps (suite.json)."
         )
         hint.setObjectName("hint")
         hint.setWordWrap(True)
@@ -148,7 +148,7 @@ class SettingsDialog(QDialog):
         form.addWidget(self._label("Shared models folder"))
         self.models_edit = QLineEdit(str(self._models))
         form.addLayout(self._browse_row(self.models_edit, self._pick_models, self._reset_models))
-        models_hint = QLabel("Weights will live here. Reset goes back to the default Voxprint models folder.")
+        models_hint = QLabel("Weights will live here. Reset goes back to the default VOXPrint models folder.")
         models_hint.setObjectName("hint")
         models_hint.setWordWrap(True)
         form.addWidget(models_hint)
@@ -324,9 +324,9 @@ class CreditsDialog(QDialog):
 
     def _html(self, credits: list[ModelManifest], warnings: list[str]) -> str:
         parts = [
-            "<p>Voxprint AI Enlarge is free software under the Apache License 2.0. "
+            "<p>VOXPrint AI Enlarge is free software under the Apache License 2.0. "
             "Copyright 2026 Aleksandr Mitroshenkov. Pinned models download into the shared "
-            "Voxprint models folder when you run them.</p>",
+            "VOXPrint models folder when you run them.</p>",
             "<p>The models below are read from the registry.</p>",
         ]
         sections = credit_sections(credits)
