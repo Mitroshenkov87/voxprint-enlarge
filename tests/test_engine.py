@@ -137,6 +137,18 @@ def test_provider_order_is_tensorrt_then_cuda_after_a_failed_build() -> None:
     assert gpu_provider_names([CPU], device="auto") == []
 
 
+def test_tensorrt_profile_uses_in_channels(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VOXPRINT_TRT_CACHE", str(tmp_path / "cache"))
+    choice = choices_for([TRT], "auto", in_channels=4)[0]
+    assert choice.options["trt_profile_min_shapes"] == "input:1x4x8x8"
+    assert choice.options["trt_profile_opt_shapes"] == "input:1x4x256x256"
+    assert choice.options["trt_profile_max_shapes"] == "input:1x4x2048x2048"
+    default = choices_for([TRT], "auto")[0]
+    assert default.options["trt_profile_opt_shapes"] == "input:1x3x256x256"
+    with pytest.raises(ValueError, match="in_channels"):
+        choices_for([TRT], "auto", in_channels=0)
+
+
 def test_trt_options_use_the_cache_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("VOXPRINT_TRT_CACHE", str(tmp_path / "cache"))
     choice = choices_for([TRT], "cuda:1", gpu="RTX 4090", driver="560.70", trt="10.0.1")[0]

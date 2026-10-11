@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping
 
-from voxprint_engine.registry.schema import ModelManifest
+from voxprint_engine.registry.schema import ModelManifest, checked_in_channels
 
 ROLES = ("upscale", "restore", "face", "generative")
 SCALES = (1, 2, 4)
@@ -225,6 +225,14 @@ def validate_manifest(data: Mapping[str, Any], *, release: bool) -> ModelManifes
         execution = execution.strip().lower()
         if execution not in EXECUTIONS:
             errors.append("execution must be auto, cuda, or tensorrt")
+    if "in_channels" not in data or data.get("in_channels") is None:
+        in_channels = 3
+    else:
+        try:
+            in_channels = checked_in_channels(data.get("in_channels"))
+        except ValueError as exc:
+            errors.append(str(exc))
+            in_channels = 3
     selectable = data.get("selectable", True)
     if not isinstance(selectable, bool):
         errors.append("selectable must be true or false")
@@ -251,4 +259,5 @@ def validate_manifest(data: Mapping[str, Any], *, release: bool) -> ModelManifes
         onnx_url=onnx_url,
         onnx_sha256=onnx_sha,
         execution=execution,
+        in_channels=in_channels,
     )

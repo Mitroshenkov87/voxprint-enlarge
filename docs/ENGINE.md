@@ -1,13 +1,15 @@
 # Shared inference engine
 
 `voxprint_engine` is the image upscaler Voxprint AI Enlarge owns and Voxprint AI
-Clarity imports. The installable distribution is `voxprint-engine` 1.1.0. It
+Clarity imports. The installable distribution is `voxprint-engine` 1.2.0. It
 does not import Qt. `API` is 1. The package version and `API` are different
 numbers: the version marks this release, and `API` stays 1 until a breaking
 change. 1.1.0 adds `ensure_onnx`, `iter_tile_frames`, and the optional
-manifest fields `onnx_url`, `onnx_sha256`, and `execution`.
+manifest fields `onnx_url`, `onnx_sha256`, and `execution`. 1.2.0 adds
+`in_channels` (default 3) so a 4-channel network such as DRUNet exports and
+runs with RGB plus a noise-level map.
 
-Clarity pins the merge commit of this release:
+The 1.1.0 pin is:
 
 ```text
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0
@@ -315,7 +317,7 @@ kept rows back to the source index. Frame-wise models use `length=1` and
 The worker accepts `op` `restore_batch` on the same JSON-line stream as
 `upscale`. `RestoreBatchRequest` (`id`, `frames_npy`, `out_npy`, `onnx`, and
 optional `tile`, `overlap`, `batch`, `scale`, `length`, `window_overlap`,
-`device`, `owner`) is defined in `voxprint_engine.video` and re-exported from
+`device`, `owner`, `in_channels`) is defined in `voxprint_engine.video` and re-exported from
 `voxprint_engine.worker.protocol`. The handler loads the NHWC float `.npy`
 with `allow_pickle=False`, then holds `gpu_job` for `owner` (default
 `clarity`) across the session build and `restore_frames`. The session is
@@ -346,8 +348,11 @@ weight is copied into that cache when `onnx.checker` accepts it.
 Torch 2.14's default dynamo exporter writes two nodes with the same name.
 `ensure_onnx` calls the legacy exporter (`dynamo=False`, opset 17, dynamic
 height and width), converts the graph to fp16, and runs `onnx.checker`
-before the cache file is kept. The loader is spandrel's MIT package.
-`spandrel_extra_arches` is not imported.
+before the cache file is kept. The example tensor is `1 x in_channels x H x W`.
+`in_channels` defaults to 3. A manifest that sets it to 4 exports a
+4-channel graph. The TensorRT profile uses that same count (`input:1x4x…`),
+and the session rejects a tile whose channel count does not match the graph.
+The loader is spandrel's MIT package. `spandrel_extra_arches` is not imported.
 
 ```bash
 python tools/export_onnx.py path/to/model.pth

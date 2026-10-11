@@ -336,9 +336,26 @@ def upscale_file(
     image = _load(src)
     gpu, driver, trt = _gpu_label()
     installed = available_providers()
-    attempts = [choices_for(installed, device, gpu=gpu, driver=driver, trt=trt, execution=model.execution)]
+    attempts = [
+        choices_for(
+            installed,
+            device,
+            gpu=gpu,
+            driver=driver,
+            trt=trt,
+            execution=model.execution,
+            in_channels=model.in_channels,
+        )
+    ]
     if model.execution.strip().lower() != "cuda":
-        fallback = cuda_fallback_choices(installed, device, gpu=gpu, driver=driver, trt=trt)
+        fallback = cuda_fallback_choices(
+            installed,
+            device,
+            gpu=gpu,
+            driver=driver,
+            trt=trt,
+            in_channels=model.in_channels,
+        )
         if fallback:
             attempts.append(fallback)
     native = model.scale if model.scale > 1 else factor

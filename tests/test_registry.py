@@ -128,6 +128,18 @@ def test_custom_folder_skips_a_blocked_manifest(tmp_path: Path) -> None:
     assert DEFAULT_MODEL_ID in {model.id for model in catalog.models}
 
 
+def test_in_channels_defaults_to_three_and_rejects_a_bad_count() -> None:
+    plain = validate_manifest(_manifest(), release=True)
+    assert plain.in_channels == 3
+    four = validate_manifest(_manifest(in_channels=4), release=True)
+    assert four.in_channels == 4
+    missing = validate_manifest(_manifest(in_channels=None), release=True)
+    assert missing.in_channels == 3
+    for bad in (0, 17, "4", True, 1.5):
+        with pytest.raises(ManifestError, match="in_channels"):
+            validate_manifest(_manifest(in_channels=bad), release=True)
+
+
 def test_onnx_source_is_optional_and_dat2_uses_cuda() -> None:
     digest = "b" * 64
     model = validate_manifest(

@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from voxprint_engine.paths import models_dir
+from voxprint_engine.registry.schema import ModelManifest, checked_in_channels
+from voxprint_engine.store import StoreError, download, ensure_weight, sha256_file
 
 # These imports stay inside the export functions. The worker imports this
 # module on every job, and importing torch at module level takes long enough
@@ -26,8 +28,6 @@ _torch: Any = None
 _onnx: Any = None
 _to_fp16: Any = None
 _loader: Any = None
-from voxprint_engine.registry.schema import ModelManifest
-from voxprint_engine.store import StoreError, download, ensure_weight, sha256_file
 
 Progress = Callable[[float, str], None]
 Downloader = Callable[[str, Path, str, Progress | None], None]
@@ -64,13 +64,20 @@ def cached_onnx(model: ModelManifest, root: Path | None = None) -> Path | None:
     return None
 
 
-def export_module(module: Any, dest: Path, *, height: int = 64, width: int = 64) -> None:
+def export_module(module: Any, dest: Path, *, height: int = 64, width: int = 64, channels: int = 3) -> None:
     """Write a checked fp16 ONNX file for an eval-mode torch module.
 
-    The legacy exporter is requested explicitly. A torch build that does not
-    accept ``dynamo`` is retried once without that argument, and the result
-    still has to pass ``onnx.checker``.
+    The example tensor is ``1 x channels x height x width``. ``channels``
+    defaults to 3. A 4-channel network such as DRUNet needs the noise-level
+    map in that count, or the exported graph cannot feed TensorRT. The legacy
+    exporter is requested explicitly. A torch build that does not accept
+    ``dynamo`` is retried once without that argument, and the result still
+    has to pass ``onnx.checker``.
     """
+    try:
+        channels = checked_in_channels(channels)
+    except ValueError as exc:
+        raise OnnxExportError(str(exc)) from exc
     if height < 1 or width < 1:
         raise OnnxExportError("the export size must be at least 1 pixel")
     torch = _load_torch()
@@ -78,7 +85,7 @@ def export_module(module: Any, dest: Path, *, height: int = 64, width: int = 64)
     to_fp16 = _load_fp16()
     module.eval()
     module = module.cpu().float()
-    example = torch.rand(1, 3, height, width)
+    example = torch.rand(1, channels, height, width)
     dest.parent.mkdir(parents=True, exist_ok=True)
     partial = dest.with_name(dest.name + ".partial")
     checked = dest.with_name(dest.name + ".checked")
@@ -98,8 +105,12 @@ def export_module(module: Any, dest: Path, *, height: int = 64, width: int = 64)
         checked.unlink(missing_ok=True)
 
 
-def export_weight(weight: Path, dest: Path, on_progress: Progress | None = None) -> None:
-    """Load ``weight`` with spandrel's MIT core and write a checked fp16 ONNX file."""
+def export_weight(weight: Path, dest: Path, on_progress: Progress | None = None, *, channels: int = 3) -> None:
+    """Load ``weight`` with spandrel's MIT core and write a checked fp16 ONNX file.
+
+    ``channels`` is the example tensor's depth. The manifest field
+    ``in_channels`` is what :func:`ensure_onnx` passes.
+    """
     if not weight.is_file():
         raise OnnxExportError(f"not a file: {weight.name}")
     loader_cls = _load_spandrel()
@@ -111,7 +122,7 @@ def export_weight(weight: Path, dest: Path, on_progress: Progress | None = None)
     except Exception as exc:
         raise OnnxExportError(f"could not load {weight.name}: {exc}") from exc
     _emit(on_progress, 0.5, f"converting {weight.name} to ONNX")
-    export_module(descriptor.model, dest)
+    export_module(descriptor.model, dest, channels=channels)
     _emit(on_progress, 1.0, "checked the ONNX file")
 
 
@@ -152,7 +163,8 @@ def ensure_onnx(
             _emit(on_progress, 1.0, "ONNX file is cached")
             return adopted
     _emit(on_progress, 0.4, f"converting {weight.name} to ONNX")
-    convert = converter or (lambda src, target: export_weight(src, target, on_progress))
+    channels = model.in_channels
+    convert = converter or (lambda src, target: export_weight(src, target, on_progress, channels=channels))
     try:
         convert(weight, dest)
     except OnnxExportError:

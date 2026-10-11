@@ -25,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Convert a .pth (spandrel MIT core) to ONNX fp16.")
     parser.add_argument("weight", type=Path)
     parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument("--channels", type=int, default=3)
     args = parser.parse_args(argv)
     weight = args.weight
     if not weight.is_file():
@@ -32,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     dest = args.out or weight.with_suffix(".onnx")
     try:
-        export_weight(weight, dest)
+        export_weight(weight, dest, channels=args.channels)
     except OnnxExportError as exc:
         print(str(exc), file=sys.stderr)
         return 1
