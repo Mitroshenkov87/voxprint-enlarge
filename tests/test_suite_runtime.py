@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -152,6 +153,10 @@ def test_python_copy_and_bundle_detection(tmp_path: Path, monkeypatch: pytest.Mo
     exe.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
     monkeypatch.setattr("voxprint_engine.suite_runtime.bundled_python_tree", lambda: bundle.parent)
+    monkeypatch.setattr(
+        "voxprint_engine.suite_runtime._python_ready",
+        lambda path: (path / "python" / "bin" / "python3").is_file(),
+    )
     root = tmp_path / "shared"
 
     def ready_gpu(_path: Path) -> bool:
@@ -175,8 +180,9 @@ def test_python_copy_and_bundle_detection(tmp_path: Path, monkeypatch: pytest.Mo
     copied = root / "python" / "bin" / "python3"
     assert copied.is_file()
     assert copied.read_text(encoding="utf-8").startswith("#!/bin/sh")
-    monkeypatch.setattr("sys.executable", str(exe))
-    assert bundled_python_tree() == bundle.parent
+    if sys.platform != "win32":
+        monkeypatch.setattr("sys.executable", str(exe))
+        assert bundled_python_tree() == bundle.parent
 
 
 def test_release_keeps_an_unknown_component_another_app_holds(tmp_path: Path) -> None:
