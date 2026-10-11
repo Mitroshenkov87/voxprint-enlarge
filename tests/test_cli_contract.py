@@ -146,10 +146,21 @@ def test_argument_format_model_gpu_and_io_codes(
     source = tmp_path / "hill.png"
     _picture(source)
     assert main(["--input", str(source), "--preset", "photo"]) == 2
+    missing_json = capsys.readouterr()
+    assert "--json-progress" in missing_json.err
+    assert missing_json.out == ""
     assert main(_job(source, "--scale", "3")) == 2
+    scale_error = capsys.readouterr()
+    assert _lines(scale_error.out)[-1]["code"] == "bad_input"
+    assert "usage:" not in scale_error.out.lower()
+    assert scale_error.err == ""
+    assert main(["upscale", *_job(source, "--scale", "3")]) == 2
+    sub_error = capsys.readouterr()
+    assert _lines(sub_error.out)[-1]["code"] == "bad_input"
     both = main(_job(source, "--scale", "2", "--long-side", "20"))
     assert both == 2
-    capsys.readouterr()
+    both_error = capsys.readouterr()
+    assert _lines(both_error.out)[-1]["code"] == "bad_input"
     png = main(_job(source, "--scale", "2", "--format", "png", "--dry-run"))
     assert png == 3
     assert _lines(capsys.readouterr().out)[-1]["code"] == "unsupported_format"

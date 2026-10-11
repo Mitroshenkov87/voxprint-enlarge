@@ -7,15 +7,44 @@ process stay the same.
 from __future__ import annotations
 
 import argparse
+import sys
 from typing import NoReturn
+
+from enlarge.ipc.protocol import dumps, error_message
 
 
 class CliParser(argparse.ArgumentParser):
-    """Parser that exits with code 2 instead of raising into the caller."""
+    """Parser that exits with code 2 instead of raising into the caller.
+
+    When ``json_errors`` is set, an argument error is one ``bad_input`` JSON
+    line on stdout. Without that flag the short message stays on stderr.
+    """
+
+    json_errors: bool = False
 
     def error(self, message: str) -> NoReturn:
-        """Print the argparse message and exit 2."""
+        """Exit 2 with the short argparse message."""
         self.exit(2, f"{self.prog}: error: {message}\n")
+
+    def exit(self, status: int = 0, message: str | None = None) -> NoReturn:
+        """Status 2 with ``json_errors`` writes one JSON object and no usage text."""
+        if status == 2 and self.json_errors:
+            text = (message or "invalid arguments").strip()
+            prefix = f"{self.prog}: error: "
+            if text.startswith(prefix):
+                text = text[len(prefix):].strip()
+            payload = dumps(error_message("", "bad_input", text))
+            buffer = getattr(sys.stdout, "buffer", None)
+            if buffer is not None:
+                buffer.write(payload)
+                buffer.flush()
+            else:
+                sys.stdout.write(payload.decode("utf-8"))
+                sys.stdout.flush()
+            raise SystemExit(2)
+        if message:
+            self._print_message(message, sys.stderr)
+        raise SystemExit(status)
 
 
 def _add_job_flags(parser: argparse.ArgumentParser) -> None:
@@ -85,12 +114,13 @@ def _add_job_flags(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def build_parser() -> CliParser:
+def build_parser(json_errors: bool = False) -> CliParser:
     """Return the process-wide parser. The docs build calls this and prints its help."""
     parser = CliParser(
         prog="voxprint-enlarge",
         description="Enlarge a still image. Headless jobs print JSON lines and do not open a window.",
     )
+    parser.json_errors = json_errors
     parser.add_argument("--version", action="store_true", help="Print the version and exit.")
     parser.add_argument("--worker", action="store_true", help="Internal inference process.")
     parser.add_argument("--capabilities", action="store_true", help="Print what this install can run.")
@@ -128,15 +158,17 @@ def build_parser() -> CliParser:
         help="Legacy command. Prints a path for a person and needs --out.",
     )
     _add_job_flags(parser)
-    commands = parser.add_subparsers(dest="command")
+    commands = parser.add_subparsers(dest="command", parser_class=CliParser)
     upscale = commands.add_parser("upscale", help="Headless job. Same flags as voxprint-enlarge itself.")
+    if isinstance(upscale, CliParser):
+        upscale.json_errors = json_errors
     _add_job_flags(upscale)
     return parser
 
 
 def parse_cli(argv: list[str]) -> argparse.Namespace | int:
-    """Parse ``argv``. An int is the exit code argparse already reported on stderr."""
-    parser = build_parser()
+    """Parse ``argv``. An int is the exit code argparse already reported."""
+    parser = build_parser(json_errors="--json-progress" in argv)
     try:
         return parser.parse_args(argv)
     except SystemExit as exc:

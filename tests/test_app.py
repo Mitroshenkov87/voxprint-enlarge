@@ -15,7 +15,7 @@ from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
 from main import main
 from voxprint_engine.hardware import NO_GPU_MESSAGE, OLD_DRIVER_MESSAGE, GpuInfo
 
-from enlarge.appinfo import format_version, version_line
+from enlarge.appinfo import build_info, format_version, version_line
 from enlarge.images import collect, plan_outputs
 from enlarge.queue_state import dump_queue
 from enlarge.platform_win import MIN_BUILD, START_MENU_FOLDER, check_os
@@ -81,10 +81,27 @@ def test_platform_names() -> None:
     assert check_os(build=26100, is_windows=True).ok
     assert not check_os(build=22000, is_windows=True).ok
     assert "0.2.0-rc.2" in version_line()
+    assert "run from source" in version_line()
     assert "pre-alpha" in format_version("0.1.0-pre")
     source = Path("enlarge/platform_win.py").read_text(encoding="utf-8")
     assert "22621" not in source
     assert "22H2" not in source
+
+
+def test_a_stamped_bundle_says_installed_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "build_info.json").write_text(
+        '{"commit": "abc123", "built": "2026-10-11"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("enlarge.appinfo.resource_dir", lambda: tmp_path)
+    build_info.cache_clear()
+    try:
+        text = version_line()
+    finally:
+        build_info.cache_clear()
+    assert "installed build" in text
+    assert "commit abc123" in text
+    assert "run from source" not in text
 
 
 def test_collect_includes_subfolders(tmp_path: Path) -> None:

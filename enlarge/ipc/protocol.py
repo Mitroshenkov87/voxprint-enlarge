@@ -26,8 +26,24 @@ ErrorCode = Literal[
     "model_missing",
     "internal",
 ]
-Stage = Literal["queued", "waiting_gpu", "loading", "tiles", "encoding"]
-STAGES: tuple[Stage, ...] = ("queued", "waiting_gpu", "loading", "tiles", "encoding")
+Stage = Literal[
+    "queued",
+    "waiting_gpu",
+    "loading",
+    "building_engine",
+    "loading_cached_engine",
+    "tiles",
+    "encoding",
+]
+STAGES: tuple[Stage, ...] = (
+    "queued",
+    "waiting_gpu",
+    "loading",
+    "building_engine",
+    "loading_cached_engine",
+    "tiles",
+    "encoding",
+)
 ERROR_CODES: tuple[ErrorCode, ...] = (
     "gpu_unsupported",
     "gpu_busy",

@@ -102,5 +102,11 @@ def version_line() -> str:
         parts.append(f"commit {info['commit']}")
     if info.get("built"):
         parts.append(f"built {info['built']}")
-    parts.append("frozen exe" if getattr(sys, "frozen", False) else "run from source")
+    if getattr(sys, "frozen", False):
+        origin = "frozen exe"
+    elif info.get("commit"):
+        origin = "installed build"
+    else:
+        origin = "run from source"
+    parts.append(origin)
     return f"{version_label()} ({', '.join(parts)})"
