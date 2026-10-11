@@ -2,7 +2,7 @@
 
 Use this on the RTX 4090 machine (Windows 11, Windows Server 2025, or Linux, NVIDIA driver from the 600 series or newer). CI does not run these steps. The installer contains no model weights.
 
-Install `v0.2.0-rc.3` (codename Marpe). Check `SHA256SUMS` before you install.
+Install `v0.2.0-rc.4` (codename Tikvah). Check `SHA256SUMS` before you install. A stock machine can run the short set with `bash scripts/vm_test.sh --smoke` before anything else. Exit 0 is pass, 1 is a failed test, 2 is setup, and 3 means no usable GPU.
 
 * Windows: run `VoxprintEnlarge-Setup.exe`. It installs for the current user under `%LOCALAPPDATA%\Voxprint\Enlarge`.
 * Linux: unpack `voxprint-enlarge-linux-x64.tar.gz` and run `./install.sh`. The command is then `voxprint-enlarge`.
@@ -20,7 +20,7 @@ voxprint-enlarge --capabilities --json
 voxprint-enlarge upscale --input samples/sample.png --scale 2 --format avif --json-progress
 ```
 
-`--version` exits 0, prints `0.2.0-rc.3` and `Marpe`, and says `installed build`. It does not say `run from source`.
+`--version` exits 0, prints `0.2.0-rc.4` and `Tikvah`, and says `installed build`. It does not say `run from source`.
 
 `--selftest --json` exits 0. `ok` is true. `tensorrt_ep.detail` and `cuda_ep.detail` are both `loaded`.
 

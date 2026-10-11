@@ -49,6 +49,7 @@ class MainWindow(QWidget):
     def __init__(self) -> None:
         """Build the pages and restore a saved queue."""
         super().__init__()
+        self.setWindowTitle(APP_DISPLAY_NAME)
         self.setObjectName("root")
         self.setAcceptDrops(True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -119,6 +120,7 @@ class MainWindow(QWidget):
         self.output_page = pages.OutputPage()
         self.run_page = pages.RunPage()
         self.stack = QStackedWidget()
+        self.stack.setObjectName("central")
         for page in (self.images_page, self.model_page, self.output_page, self.run_page):
             self.stack.addWidget(page)
         body.addWidget(self.stack, 1)
@@ -654,11 +656,14 @@ class MainWindow(QWidget):
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 - Qt name
         """Finish the first layout once the window is on screen."""
         super().showEvent(event)
+        self.setWindowTitle(APP_DISPLAY_NAME)
         if sys.platform == "win32" and self.backdrop == "plain":
             self.backdrop = platform_win.apply_backdrop(int(self.winId()))
-            glass = self.backdrop == "acrylic"
-            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, glass)
-            self.setStyleSheet(build_style(glass))
+        glass = self.backdrop == "acrylic"
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, glass)
+        self.setStyleSheet(build_style(glass))
+        if not glass:
+            self.setAutoFillBackground(True)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt name
         """Save the queue, then close."""

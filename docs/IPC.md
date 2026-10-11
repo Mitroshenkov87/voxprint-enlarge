@@ -42,7 +42,7 @@ Prints one JSON object on stdout and exits 0, including on a machine with no usa
 |---|---|
 | `protocol` | `1` |
 | `app` | `enlarge` |
-| `version` | The same version `--version` prints. A stamped `build_info.json` wins, then `BUILD.json`, then the source constant. This tree's `BUILD.json` version is `0.2.0-rc.3` |
+| `version` | The same version `--version` prints. A stamped `build_info.json` wins, then `BUILD.json`, then the source constant. This tree's `BUILD.json` version is `0.2.0-rc.4` |
 | `gpu` | `name`, `cc` (`8.9`), `status` (`ok`, `warn`, or `none`), `reason` (`null` unless `status` is `none`: `no_nvidia` or `driver_too_old`) |
 | `models` | List of `{id, preset, quality, scales, installed}` |
 | `presets` | `photo`, `art` |

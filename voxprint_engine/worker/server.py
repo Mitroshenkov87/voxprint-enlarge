@@ -11,7 +11,7 @@ from voxprint_engine.formats import DEFAULT_FORMAT
 from voxprint_engine.paths import voxprint_home
 from voxprint_engine.gpu_lock import GpuLockTimeout, gpu_job
 from voxprint_engine.infer import JobOutcome, preflight, upscale_file, uses_lanczos
-from voxprint_engine.onnx_export import OnnxExportError, ensure_onnx
+from voxprint_engine.onnx_export import OnnxExportError, ensure_onnx_in_child
 from voxprint_engine.paths import models_dir
 from voxprint_engine.registry import combined_catalog
 from voxprint_engine.registry.schema import ModelManifest
@@ -98,7 +98,11 @@ def _job(message: dict[str, Any]) -> dict[str, Any]:
         register_quietly()
         progress(0.05, "checking the model file")
         try:
-            network = ensure_onnx(model, on_progress=progress)
+            network = ensure_onnx_in_child(
+                model,
+                on_progress=progress,
+                custom_models_dir=str(message.get("custom_models_dir") or ""),
+            )
         except (StoreError, OnnxExportError) as exc:
             raise ImageJobError(str(exc)) from exc
         if model.filename and "/" not in model.filename and "\\" not in model.filename:

@@ -35,11 +35,29 @@ def tensorrt_ep_loaded() -> bool:
 
 
 def cache_is_warm(folder: Path) -> bool:
-    """True when the TensorRT cache folder already holds an engine file."""
+    """True when the TensorRT cache folder already holds an engine file.
+
+    ORT sometimes writes the engine one directory down from the cache path.
+    A warm file at that depth is still a cache hit.
+    """
+    def hit(path: Path) -> bool:
+        try:
+            return path.is_file() and path.stat().st_size > 0
+        except OSError:
+            return False
+
     try:
-        return any(path.is_file() and path.stat().st_size > 0 for path in folder.iterdir())
+        for path in folder.iterdir():
+            if hit(path):
+                return True
+            if not path.is_dir():
+                continue
+            for child in path.iterdir():
+                if hit(child):
+                    return True
     except OSError:
         return False
+    return False
 
 
 def trt_build_message(folder: Path) -> str:

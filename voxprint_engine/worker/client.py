@@ -166,8 +166,13 @@ class WorkerClient:
                 detail = self.stderr_text()
                 raise WorkerError("worker timed out" + (f": {detail}" if detail else "")) from exc
             if line is None:
-                detail = self.stderr_text()
-                raise WorkerError("worker closed the pipe" + (f": {detail}" if detail else ""))
+                proc = self.proc
+                code = proc.poll() if proc is not None else None
+                detail = self.stderr_text().strip()
+                if code is not None and code < 0 and "memory" not in detail.lower():
+                    detail = f"{detail}; out of memory" if detail else "out of memory"
+                reason = detail or (f"exit {code}" if code is not None else "no exit status")
+                raise WorkerError(f"worker closed the pipe: {reason}")
             message = parse_worker_line(line)
             if message is None:
                 continue
