@@ -33,6 +33,7 @@ from voxprint_engine.suite_runtime import (
 from voxprint_engine.thermal import decide
 from voxprint_engine.video import (
     RestoreBatchRequest,
+    iter_tile_frames,
     read_shared_usage,
     restore_frames,
     temporal_windows,
@@ -65,6 +66,7 @@ __all__ = [
     "ensure_weight",
     "gpu_job",
     "halve_tile",
+    "iter_tile_frames",
     "load_builtin",
     "models_dir",
     "note_spill",

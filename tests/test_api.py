@@ -35,6 +35,7 @@ CONTRACT = (
     "ensure_weight",
     "gpu_job",
     "halve_tile",
+    "iter_tile_frames",
     "load_builtin",
     "models_dir",
     "note_spill",

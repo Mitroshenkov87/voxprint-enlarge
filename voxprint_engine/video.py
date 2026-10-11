@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -331,6 +331,58 @@ def tile_frames(
     return np.clip(acc / np.maximum(cover, 1e-6), 0.0, 1.0)
 
 
+def iter_tile_frames(
+    frames: Array,
+    infer: Infer,
+    tile: int,
+    overlap: int,
+    *,
+    scale: int = 1,
+    batch: int = 1,
+) -> Iterator[Array]:
+    """Yield one restored HWC frame.
+
+    ``tile_frames`` allocates the accumulator, the coverage map, and the
+    ``clip`` temporary for every frame at once. A 138-frame 720p chunk at
+    4x is about 22.7 GiB of float32. This iterator keeps those arrays at
+    one frame. Stacking the yields allocates the whole chunk again.
+    """
+    if frames.ndim != 4:
+        raise ValueError("expected NHWC")
+    count = int(frames.shape[0])
+    for index in range(count):
+        restored = tile_frames(
+            frames[index : index + 1],
+            infer,
+            tile,
+            overlap,
+            scale=scale,
+            batch=batch,
+        )
+        yield restored[0]
+
+
+def _collect_frames(
+    frames: Array,
+    infer: Infer,
+    tile: int,
+    overlap: int,
+    *,
+    scale: int,
+    batch: int,
+) -> Array:
+    """Write one restored frame at a time into the returned chunk."""
+    count = int(frames.shape[0])
+    output: Array | None = None
+    for index, frame in enumerate(iter_tile_frames(frames, infer, tile, overlap, scale=scale, batch=batch)):
+        if output is None:
+            output = np.empty((count, frame.shape[0], frame.shape[1], frame.shape[2]), dtype=np.float32)
+        output[index] = frame
+    if output is None:
+        return tile_frames(frames, infer, tile, overlap, scale=scale, batch=batch)
+    return output
+
+
 def restore_frames(
     frames: Array,
     infer: Infer,
@@ -351,7 +403,7 @@ def restore_frames(
     count = int(frames.shape[0])
     windows = temporal_windows(count, length, window_overlap if length > 1 else 0)
     if length <= 1:
-        return tile_frames(frames, infer, tile, overlap, scale=scale, batch=batch)
+        return _collect_frames(frames, infer, tile, overlap, scale=scale, batch=batch)
     output: Array | None = None
     for window in windows:
         gathered = gather_window(frames, window)
