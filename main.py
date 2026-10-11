@@ -1,23 +1,26 @@
 """Voxprint AI Enlarge.
 
     python main.py                         open the window
-    python main.py --selftest              open the window, then quit (smoke test)
+    python main.py --selftest [--json]     re-check the shared install and repair it
     python main.py --version
     python main.py --capabilities --json   one JSON object, exit 0 with or without a GPU
     python main.py --serve --hidden        protocol 1 listener, no window until open_ui
     python main.py --register [--exe PATH] discovery records for Lucent
     python main.py --unregister            remove those discovery records
-    python main.py --install-gpu           CUDA 13 ONNX Runtime and TensorRT wheels
+    python main.py --install-suite         shared Python, CUDA wheels, and the default model
+    python main.py --uninstall-suite       drop this app's hold on those shared files
+    python main.py --install-gpu           torch, CUDA 13 ONNX Runtime, and TensorRT wheels
     python main.py --input FILE --scale 2|4 --preset photo|art [--model ID] [--quality fast|max] [--format FMT] [--output PATH] --json-progress
     python main.py --upscale FILE --out FILE [--scale 2|4] [--format avif|jxl|webp|jpeg|heic] [--quality N] [--lossless]
     python main.py --worker                internal: the inference process
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
-import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from enlarge.appinfo import APP_DISPLAY_NAME, version_line
@@ -28,7 +31,14 @@ from enlarge.ipc.register import register_install, unregister_install
 from enlarge.paths import logs_dir
 from enlarge.suite import gpu
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
-from voxprint_engine.hardware import assess_gpu
+from voxprint_engine.hardware import assess_gpu, ci_lanczos
+from voxprint_engine.suite_runtime import (
+    RuntimeReport,
+    SuiteInstallError,
+    ensure_runtime,
+    install_gpu_wheels,
+    release_runtime,
+)
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
 from voxprint_engine.store import register_quietly
 from voxprint_engine.worker import UpscaleRequest
@@ -126,9 +136,94 @@ def _upscale(argv: list[str]) -> int:
     return 1 if failed else 0
 
 
-def _gui(argv: list[str]) -> int:
+def _failure_text(report: RuntimeReport) -> str:
+    """One line naming each component that is still missing or failed."""
+    parts = [f"{item.id}: {item.detail}" for item in report.components if item.state in {"failed", "missing"}]
+    return "; ".join(parts) or "shared suite install is incomplete"
+
+
+def _ensure_shared(progress: Callable[[str], None] | None = None) -> str:
+    """Empty when the shared install is ready. CI skips the check."""
+    if ci_lanczos():
+        return ""
+    sink = progress or (lambda message: print(message, file=sys.stderr, flush=True))
+    try:
+        report = ensure_runtime("enlarge", progress=sink)
+    except SuiteInstallError as exc:
+        return str(exc)
+    if report.ok:
+        return ""
+    return _failure_text(report)
+
+
+def _refuse_if_broken() -> int:
+    """Repair the shared install. Return 1 when it is still incomplete."""
+    message = _ensure_shared()
+    if not message:
+        return 0
+    print(message, file=sys.stderr)
+    return 1
+
+
+def _print_suite(report: RuntimeReport, lines: list[str], as_json: bool, *, done: str) -> None:
+    """Human lines on stdout, or one JSON object. Progress already collected stays on stderr for JSON."""
+    if as_json:
+        if lines:
+            print("\n".join(lines), file=sys.stderr)
+        print(json.dumps(report.as_dict()))
+        return
+    for line in lines:
+        print(line, flush=True)
+    if report.skipped:
+        print("shared suite: skipped")
+        return
+    if report.ok:
+        print(done)
+        return
+    print("shared suite: incomplete", file=sys.stderr)
+    for item in report.components:
+        if item.state in {"failed", "missing"}:
+            print(f"{item.id}: {item.detail}", file=sys.stderr)
+
+
+def _selftest(as_json: bool) -> int:
+    """Re-check the shared install without opening a window."""
+    lines: list[str] = []
+    try:
+        report = ensure_runtime("enlarge", progress=lines.append)
+    except SuiteInstallError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _print_suite(report, lines, as_json, done="shared suite: ready")
+    return 0 if report.ok else 1
+
+
+def _install_suite() -> int:
+    """Install shared Python, the CUDA wheels, and the default model."""
+    lines: list[str] = []
+    try:
+        report = ensure_runtime("enlarge", progress=lines.append)
+    except SuiteInstallError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _print_suite(report, lines, as_json=False, done="shared suite: ready")
+    return 0 if report.ok else 1
+
+
+def _uninstall_suite() -> int:
+    """Drop Enlarge's hold on the shared runtime. Delete a file only at zero holders."""
+    lines: list[str] = []
+    try:
+        report = release_runtime("enlarge", progress=lines.append)
+    except SuiteInstallError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _print_suite(report, lines, as_json=False, done="shared suite: released")
+    return 0 if report.ok else 1
+
+
+def _gui(_argv: list[str]) -> int:
     # Qt is imported on the window path only. Headless commands must not load libEGL.
-    from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication, QMessageBox
 
     from enlarge.ui import splash as splash_mod
@@ -138,21 +233,35 @@ def _gui(argv: list[str]) -> int:
     app = running if isinstance(running, QApplication) else QApplication(sys.argv)
     app.setApplicationName(APP_DISPLAY_NAME)
     app.setOrganizationName("Voxprint")
+    splash = splash_mod.show()
+    if not ci_lanczos():
+        seen = {"n": 0}
+
+        def on_progress(message: str) -> None:
+            seen["n"] += 1
+            splash.status(message, min(0.35, 0.05 * seen["n"]))
+            print(message, file=sys.stderr, flush=True)
+
+        splash.status("Checking the shared install", 0.08)
+        message = _ensure_shared(on_progress)
+        if message:
+            splash.close()
+            print(message, file=sys.stderr)
+            QMessageBox.critical(None, APP_DISPLAY_NAME, message)
+            return 1
     blocked = _gpu_block()
     if blocked:
+        splash.close()
         print(blocked, file=sys.stderr)
         QMessageBox.critical(None, APP_DISPLAY_NAME, blocked)
         return 1
     register_quietly()
-    splash = splash_mod.show()
-    splash.status("Loading", 0.35)
+    splash.status("Loading", 0.45)
     window = MainWindow()
-    splash.status("Opening", 0.85)
+    splash.status("Opening", 0.9)
     window.show()
     splash.finish(window)
-    if "--selftest" in argv:
-        QTimer.singleShot(300, app.quit)
-    return app.exec()
+    return int(app.exec())
 
 
 def _register(exe: str | None) -> int:
@@ -166,17 +275,13 @@ def _unregister() -> int:
 
 
 def _install_gpu() -> int:
-    """Replace the CPU ONNX Runtime wheel with the CUDA 13 wheels. Needs a network."""
-    if getattr(sys, "frozen", False):
-        print("install the app directory, then run voxprint-enlarge --install-gpu", file=sys.stderr)
+    """Install torch and the CUDA 13 wheels into this interpreter."""
+    try:
+        install_gpu_wheels(sys.executable, lambda message: print(message, flush=True))
+    except SuiteInstallError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
-    python = sys.executable
-    subprocess.run([python, "-m", "pip", "uninstall", "-y", "onnxruntime"], check=False)
-    completed = subprocess.run(
-        [python, "-m", "pip", "install", "onnxruntime-gpu>=1.20,<2", "tensorrt-cu13"],
-        check=False,
-    )
-    return int(completed.returncode)
+    return 0
 
 
 def _serve() -> int:
@@ -205,6 +310,10 @@ def main(argv: list[str] | None = None) -> int:
         return parsed
     if parsed.command == "upscale":
         _setup_logging()
+        if not parsed.dry_run:
+            broken = _refuse_if_broken()
+            if broken:
+                return broken
         return run_contract(args)
     if parsed.version:
         print(version_line())
@@ -222,12 +331,28 @@ def main(argv: list[str] | None = None) -> int:
         return _unregister()
     if parsed.install_gpu:
         return _install_gpu()
+    if parsed.install_suite:
+        return _install_suite()
+    if parsed.uninstall_suite:
+        return _uninstall_suite()
+    if parsed.selftest:
+        return _selftest(bool(parsed.json))
     _setup_logging()
     if parsed.serve:
+        broken = _refuse_if_broken()
+        if broken:
+            return broken
         return _serve()
     if parsed.input or parsed.dry_run:
+        if parsed.input and not parsed.dry_run:
+            broken = _refuse_if_broken()
+            if broken:
+                return broken
         return run_contract(args)
     if parsed.upscale:
+        broken = _refuse_if_broken()
+        if broken:
+            return broken
         blocked = _gpu_block()
         if blocked:
             print(blocked, file=sys.stderr)

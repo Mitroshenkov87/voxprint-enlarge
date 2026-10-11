@@ -1,6 +1,7 @@
 """Shared folders Clarity and Enlarge both use.
 
-The models folder matches the other suite programs. The TensorRT cache does
+The models folder matches the other suite programs. The shared runtime folder
+holds the suite Python and the refcounted manifest. The TensorRT cache does
 not: engines are rebuilt from the ONNX file, so they are not refcounted and
 they live under the cache directory rather than next to the weights.
 """
@@ -31,6 +32,11 @@ def voxprint_home() -> Path:
 def suite_file() -> Path:
     """Path of the shared suite.json."""
     return voxprint_home() / "state" / "suite.json"
+
+
+def shared_dir() -> Path:
+    """``%LOCALAPPDATA%\\Voxprint\\shared`` or ``~/.local/share/voxprint/shared``."""
+    return voxprint_home() / "shared"
 
 
 def models_dir() -> Path:

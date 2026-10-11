@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -204,10 +205,10 @@ def test_a_crashed_queue_is_restored(tmp_path: Path) -> None:
     window.close()
 
 
-def test_main_selftest_and_version() -> None:
+def test_main_selftest_and_version(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--version"]) == 0
-    _app()
     assert main(["--selftest"]) == 0
+    assert "shared suite: skipped" in capsys.readouterr().out
 
 
 def test_cli_upscale(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -225,6 +226,7 @@ def test_cli_refuses_without_a_cuda_gpu(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    monkeypatch.setattr("main.ensure_runtime", lambda *_args, **_kwargs: SimpleNamespace(ok=True, skipped=True, components=()))
     monkeypatch.setattr("voxprint_engine.hardware.query_gpus", lambda runner=None: [])
     source = tmp_path / "in.png"
     dest = tmp_path / "out.avif"
@@ -240,6 +242,7 @@ def test_cli_refuses_a_driver_below_600(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    monkeypatch.setattr("main.ensure_runtime", lambda *_args, **_kwargs: SimpleNamespace(ok=True, skipped=True, components=()))
     monkeypatch.setattr(
         "voxprint_engine.hardware.query_gpus",
         lambda runner=None: [GpuInfo("NVIDIA GeForce RTX 4090", "560.35.03", (8, 9))],
@@ -256,6 +259,7 @@ def test_cli_refuses_a_driver_below_600(
 
 def test_gui_refuses_without_a_cuda_gpu(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    monkeypatch.setattr("main.ensure_runtime", lambda *_args, **_kwargs: SimpleNamespace(ok=True, skipped=True, components=()))
     monkeypatch.setattr("voxprint_engine.hardware.query_gpus", lambda runner=None: [])
     shown: list[str] = []
 

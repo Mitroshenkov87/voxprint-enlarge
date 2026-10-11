@@ -2,12 +2,7 @@ using System.Diagnostics;
 
 string dir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 bool console = args.Length > 0;
-string folder = Path.Combine(dir, "python");
-string python = Path.Combine(folder, console ? "python.exe" : "pythonw.exe");
-if (!File.Exists(python))
-{
-    python = Path.Combine(folder, "python.exe");
-}
+string python = ResolvePython(dir, console);
 string main = Path.Combine(dir, "main.py");
 if (!File.Exists(python) || !File.Exists(main))
 {
@@ -27,3 +22,26 @@ foreach (string arg in args)
 using Process process = Process.Start(start) ?? throw new InvalidOperationException("python did not start");
 process.WaitForExit();
 return process.ExitCode;
+
+static string ResolvePython(string dir, bool console)
+{
+    string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+    string shared = Path.Combine(local, "Voxprint", "shared", "python");
+    string sharedPreferred = Path.Combine(shared, console ? "python.exe" : "pythonw.exe");
+    if (File.Exists(sharedPreferred))
+    {
+        return sharedPreferred;
+    }
+    string sharedFallback = Path.Combine(shared, "python.exe");
+    if (File.Exists(sharedFallback))
+    {
+        return sharedFallback;
+    }
+    string folder = Path.Combine(dir, "python");
+    string bundled = Path.Combine(folder, console ? "python.exe" : "pythonw.exe");
+    if (!File.Exists(bundled))
+    {
+        bundled = Path.Combine(folder, "python.exe");
+    }
+    return bundled;
+}

@@ -13,6 +13,8 @@ Once, before the GPU cases, install the CUDA wheels (network, no model download)
 voxprint-enlarge --install-gpu
 ```
 
+This checklist matches the published v0.2.0-rc.2 installer, which does not fill the shared suite folder itself. Builds after that release run `--install-suite` from the installer (Python 3.14, the CUDA wheels, and the default model) into `%LOCALAPPDATA%\Voxprint\shared` or `~/.local/share/voxprint/shared`.
+
 ## 1. No-GPU checks first
 
 Run these before any model download. They must not build a TensorRT engine.

@@ -39,6 +39,9 @@ names below are that addition.
 | `read_shared_usage` | Windows shared GPU memory for one pid, or `None` |
 | `gpu_job` | Hold `%TEMP%/voxprint-gpu.lock` for one job. `owner` defaults to `enlarge` |
 | `decide` | Suite thermal pause rule |
+| `shared_dir`, `read_manifest` | `%LOCALAPPDATA%\Voxprint\shared` or `~/.local/share/voxprint/shared`, and its refcounted manifest |
+| `ensure_runtime`, `release_runtime` | Install or repair Python 3.14, the CUDA wheels, and the default model; drop one app and delete a payload only at zero holders |
+| `ComponentStatus`, `RuntimeReport`, `SuiteInstallError` | One component, the check result (`as_dict` is the `--selftest --json` object), and a failed install |
 
 ```python
 from voxprint_engine.api import (
@@ -161,12 +164,22 @@ Weights:
 * Linux: `~/.local/share/voxprint/models` (or `$XDG_DATA_HOME/voxprint/models`)
 * Override: `VOXPRINT_MODELS_DIR`, then `models_dir` in `suite.json`
 
-`<models>/.users.json` is the shared refcount, the same file Audiobook Builder
-and Movie Dubber write: `{"audiobook-builder": true, "movie-dubber": true}`.
+`<models>/.users.json` is the shared refcount for weight files, the same file
+Audiobook Builder and Movie Dubber write: `{"audiobook-builder": true, "movie-dubber": true}`.
 Enlarge adds `"enlarge": true`. Unknown keys are kept. A damaged file is
 treated as empty on the next write. `register` / `unregister` are the calls.
 Unregister returns the other programs that are still true, so an uninstaller
 can leave the folder alone while someone else uses it.
+
+The suite runtime is a second refcount, in `shared/manifest.json` under
+`shared_dir()`. It tracks Python 3.14, the CUDA 13 wheels (torch, ONNX
+Runtime GPU, TensorRT), and the default model. `ensure_runtime("enlarge")`
+installs whatever is missing and records the app. `ensure_runtime("clarity")`
+reuses the same files and adds a holder. `release_runtime` removes that one
+holder and deletes a payload only when the list is empty. The default weight
+stays in the models folder above; the manifest is what decides whether this
+app may delete it. `VOXPRINT_CI_LANCZOS=1` skips the install and reports each
+component as skipped. `API` stays 1.
 
 TensorRT engines are not refcounted and are safe to delete. They are rebuilt
 from the ONNX file.

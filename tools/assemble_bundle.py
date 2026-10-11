@@ -1,8 +1,9 @@
 """Stage the source tree that the Windows installer and the Linux tarball ship.
 
 Weights are not copied. ``--with-python`` downloads a relocatable CPython and
-installs ``requirements.txt`` into it. GPU wheels stay out of this tree;
-``--install-gpu`` adds them on the machine that has the driver.
+installs ``requirements.txt`` into it. The installer then runs ``--install-suite``,
+which copies that runtime into the shared suite folder and installs the CUDA
+wheels and the default model on the machine.
 """
 from __future__ import annotations
 
@@ -81,6 +82,10 @@ def stamp_build_info(dest: Path, env: dict[str, str] | None = None) -> None:
 def _linux_launcher() -> str:
     return """#!/bin/sh
 ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+SHARED="${XDG_DATA_HOME:-$HOME/.local/share}/voxprint/shared/python/bin/python3"
+if [ -x "$SHARED" ]; then
+  exec "$SHARED" "$ROOT/main.py" "$@"
+fi
 exec "$ROOT/python/bin/python3" "$ROOT/main.py" "$@"
 """
 
@@ -93,6 +98,7 @@ DEST="${XDG_DATA_HOME:-$HOME/.local/share}/voxprint/enlarge"
 mkdir -p "$DEST"
 cp -a "$ROOT"/. "$DEST"/
 chmod 755 "$DEST/voxprint-enlarge" "$DEST/install.sh" "$DEST/uninstall.sh"
+"$DEST/python/bin/python3" "$DEST/main.py" --install-suite
 "$DEST/python/bin/python3" "$DEST/main.py" --register --exe "$DEST/voxprint-enlarge"
 DESKTOP="${XDG_DATA_HOME:-$HOME/.local/share}/applications/voxprint-enlarge.desktop"
 mkdir -p "$(dirname "$DESKTOP")"
@@ -114,6 +120,7 @@ def _uninstall_sh() -> str:
     return """#!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+"$ROOT/python/bin/python3" "$ROOT/main.py" --uninstall-suite
 "$ROOT/python/bin/python3" "$ROOT/main.py" --unregister
 rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/applications/voxprint-enlarge.desktop"
 case "$ROOT" in
