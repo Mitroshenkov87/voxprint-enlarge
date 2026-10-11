@@ -12,6 +12,7 @@ import numpy as np
 
 from voxprint_engine.gpu_lock import gpu_job
 from voxprint_engine.providers import ProviderChoice, choices_for, cuda_fallback_choices
+from voxprint_engine.registry.schema import checked_in_channels
 from voxprint_engine.session import EngineBuildError, available_providers, open_session
 from voxprint_engine.video import restore_frames, run_batch
 from voxprint_engine.vram import is_memory_error
@@ -92,9 +93,13 @@ def handle_restore(message: dict[str, Any]) -> dict[str, Any]:
     window_overlap = int(message.get("window_overlap") or 0)
     device = str(message.get("device") or "auto")
     owner = str(message.get("owner") or "clarity")
+    raw_channels = message.get("in_channels", 3)
+    if raw_channels is None:
+        raw_channels = 3
+    channels = checked_in_channels(raw_channels)
     installed = available_providers()
-    attempts = [choices_for(installed, device)]
-    fallback = cuda_fallback_choices(installed, device)
+    attempts = [choices_for(installed, device, in_channels=channels)]
+    fallback = cuda_fallback_choices(installed, device, in_channels=channels)
     if fallback:
         attempts.append(fallback)
 

@@ -15,7 +15,7 @@ from voxprint_engine import API
 from voxprint_engine.gpu_lock import GpuLockTimeout, gpu_job, lock_path, read_lock, release, try_acquire
 from voxprint_engine.hardware import OLD_DRIVER_MESSAGE, assess_gpu
 from voxprint_engine.providers import CPU, CUDA, TRT
-from voxprint_engine.session import EngineBuildError, run_batch as session_run_batch
+from voxprint_engine.session import EngineBuildError, InferenceError, run_batch as session_run_batch, run_tile
 from voxprint_engine.tile import upscale_tiled
 from voxprint_engine.video import (
     SPILL_BYTES,
@@ -69,9 +69,10 @@ def _smi(stdout: str, code: int = 0):
 
 
 class _Input:
-    def __init__(self, name: str, type_name: str) -> None:
+    def __init__(self, name: str, type_name: str, shape: list[object] | None = None) -> None:
         self.name = name
         self.type = type_name
+        self.shape = shape
 
 
 class _Session:
@@ -135,6 +136,25 @@ def test_nchw_batch_casts_fp16_and_returns_float32() -> None:
     assert session.seen[0].dtype == np.float16
     assert np.allclose(output[0, :, 0, 0], [0.25, 0.5, 0.75])
     assert np.allclose(session_run_batch(session, batch), run_batch(session, batch))
+
+
+def test_a_four_channel_graph_rejects_an_rgb_tile() -> None:
+    class _Shaped:
+        def get_inputs(self) -> list[_Input]:
+            return [_Input("input", "tensor(float)", [1, 4, "height", "width"])]
+
+        def run(self, _names: object, feeds: dict[str, np.ndarray]) -> list[np.ndarray]:
+            return [feeds["input"]]
+
+    session = _Shaped()
+    with pytest.raises(InferenceError, match="4 channels"):
+        run_tile(session, np.zeros((8, 8, 3), dtype=np.float32))
+    restored = run_tile(session, np.zeros((8, 8, 4), dtype=np.float32))
+    assert restored.shape == (8, 8, 4)
+    with pytest.raises(ValueError, match="4 channels"):
+        run_batch(session, np.zeros((1, 3, 8, 8), dtype=np.float32))
+    matched = run_batch(session, np.zeros((1, 4, 8, 8), dtype=np.float32))
+    assert matched.shape == (1, 4, 8, 8)
 
 
 def test_run_batch_reports_a_failed_session() -> None:
@@ -441,6 +461,74 @@ def test_restore_batch_uses_the_session_lock_and_trt_cache(tmp_path: Path, monke
     assert message["owner"] == "clarity"
     assert message["length"] == 1
     assert message["tile"] == 0
+    assert message["in_channels"] == 3
+    four = RestoreBatchRequest(
+        id="clip-1",
+        frames_npy=str(src),
+        out_npy=str(dst),
+        onnx=str(onnx),
+        in_channels=4,
+    )
+    assert four.to_message()["in_channels"] == 4
+
+
+def test_restore_batch_puts_four_channels_on_the_tensorrt_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("VOXPRINT_TRT_CACHE", str(tmp_path / "trt"))
+    frames = np.zeros((1, 8, 8, 4), dtype=np.float32)
+    src = tmp_path / "frames.npy"
+    dst = tmp_path / "out.npy"
+    np.save(src, frames)
+    onnx = tmp_path / "model.onnx"
+    onnx.write_bytes(b"onnx")
+    opened: dict[str, object] = {}
+
+    class _Pass:
+        def get_inputs(self) -> list[_Input]:
+            return [_Input("input", "tensor(float)", [1, 4, "height", "width"])]
+
+        def run(self, _names: object, feeds: dict[str, np.ndarray]) -> list[np.ndarray]:
+            assert feeds["input"].shape[1] == 4
+            return [feeds["input"]]
+
+        def close(self) -> None:
+            return None
+
+    def opener(_path: Path, choices: list[object]) -> tuple[_Pass, str]:
+        choice = choices[0]
+        opened["profile"] = choice.options.get("trt_profile_opt_shapes")
+        return _Pass(), str(choice.name)
+
+    monkeypatch.setattr("voxprint_engine.worker.restore.available_providers", lambda: [TRT, CUDA, CPU])
+    monkeypatch.setattr("voxprint_engine.worker.restore.open_session", opener)
+    reply = handle(
+        {
+            "op": "restore_batch",
+            "id": "clean-1",
+            "frames_npy": str(src),
+            "out_npy": str(dst),
+            "onnx": str(onnx),
+            "tile": 16,
+            "in_channels": 4,
+            "owner": "clarity",
+        }
+    )
+    assert reply is not None and reply["ok"] is True
+    assert opened["profile"] == "input:1x4x256x256"
+    assert np.load(dst).shape[-1] == 4
+    rejected = handle(
+        {
+            "op": "restore_batch",
+            "id": "clean-1",
+            "frames_npy": str(src),
+            "out_npy": str(dst),
+            "onnx": str(onnx),
+            "in_channels": 0,
+        }
+    )
+    assert rejected is not None and rejected["ok"] is False
+    assert "in_channels" in str(rejected["message"])
 
 
 def test_restore_batch_defaults_a_missing_tile_and_owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

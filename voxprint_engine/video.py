@@ -57,6 +57,7 @@ class RestoreBatchRequest:
     window_overlap: int = 0
     device: str = "auto"
     owner: str = "clarity"
+    in_channels: int = 3
 
     def to_message(self) -> dict[str, Any]:
         """The restore_batch worker message for this request."""
@@ -74,6 +75,7 @@ class RestoreBatchRequest:
             "window_overlap": self.window_overlap,
             "device": self.device,
             "owner": self.owner,
+            "in_channels": self.in_channels,
         }
 
 
@@ -153,6 +155,23 @@ def to_nhwc(batch_nchw: Array) -> Array:
     return np.transpose(batch_nchw, (0, 2, 3, 1))
 
 
+def _graph_channels(session: object) -> int | None:
+    """Static channel count on the first input, or ``None`` when the graph leaves it free."""
+    getter = getattr(session, "get_inputs", None)
+    if not callable(getter):
+        return None
+    specs = getter()
+    if not specs:
+        return None
+    shape = getattr(specs[0], "shape", None)
+    if not shape or len(shape) < 2:
+        return None
+    dim = shape[1]
+    if isinstance(dim, bool) or not isinstance(dim, int) or dim < 1:
+        return None
+    return dim
+
+
 def _session_dtype(session: object) -> np.dtype[np.generic]:
     inputs = getattr(session, "get_inputs", None)
     if not callable(inputs):
@@ -173,6 +192,9 @@ def run_batch(session: object, batch: Array) -> Array:
     """
     if batch.ndim != 4:
         raise ValueError("batch must be NCHW")
+    expected = _graph_channels(session)
+    if expected is not None and int(batch.shape[1]) != expected:
+        raise ValueError(f"this model takes {expected} channels, not {int(batch.shape[1])}")
     array = np.ascontiguousarray(batch.astype(_session_dtype(session), copy=False))
     getter = getattr(session, "get_inputs", None)
     if not callable(getter):

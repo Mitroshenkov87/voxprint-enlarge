@@ -60,8 +60,8 @@ CONTRACT = (
 def test_api_number_and_version() -> None:
     assert voxprint_engine.API == 1
     assert api.API == 1
-    assert voxprint_engine.__version__ == "1.1.0"
-    assert api.__version__ == "1.1.0"
+    assert voxprint_engine.__version__ == "1.2.0"
+    assert api.__version__ == "1.2.0"
 
 
 def test_public_names_match_the_contract() -> None:
@@ -73,7 +73,7 @@ def test_public_names_match_the_contract() -> None:
 def test_distribution_is_the_engine_only() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["project"]["name"] == "voxprint-engine"
-    assert project["project"]["version"] == "1.1.0"
+    assert project["project"]["version"] == "1.2.0"
     assert project["project"]["requires-python"] == ">=3.14,<3.15"
     assert "psutil>=5.9,<8" in project["project"]["dependencies"]
     include = project["tool"]["setuptools"]["packages"]["find"]["include"]

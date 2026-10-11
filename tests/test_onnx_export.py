@@ -74,6 +74,38 @@ def test_tiny_export_passes_the_checker(tmp_path: Path) -> None:
     assert TensorProto.FLOAT16 in {item.data_type for item in model.graph.initializer}
 
 
+def test_four_channel_export_sets_the_graph_depth(tmp_path: Path) -> None:
+    torch = pytest.importorskip("torch")
+    dest = tmp_path / "four.onnx"
+    export_module(torch.nn.Conv2d(4, 4, 1), dest, height=8, width=8, channels=4)
+    model = onnx.load(dest)
+    onnx.checker.check_model(model)
+    dims = model.graph.input[0].type.tensor_type.shape.dim
+    assert dims[1].dim_value == 4
+    with pytest.raises(OnnxExportError, match="in_channels"):
+        export_module(torch.nn.Conv2d(3, 3, 1), tmp_path / "bad.onnx", channels=0)
+
+
+def test_ensure_onnx_uses_the_manifest_channel_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = b"weight-bytes"
+    digest = hashlib.sha256(payload).hexdigest()
+    root = tmp_path / "models"
+    root.mkdir()
+    weight = root / "example.pth"
+    weight.write_bytes(payload)
+    seen: list[int] = []
+
+    def convert(src: Path, dest: Path, on_progress: object = None, *, channels: int = 3) -> None:
+        del src, on_progress
+        seen.append(channels)
+        _nearest(dest)
+
+    monkeypatch.setattr("voxprint_engine.onnx_export.export_weight", convert)
+    path = ensure_onnx(_manifest(sha256=digest, in_channels=4), root, weight=weight)
+    assert seen == [4]
+    assert path.is_file()
+
+
 def test_conversion_is_cached_by_weight_sha256(tmp_path: Path) -> None:
     payload = b"weight-bytes"
     digest = hashlib.sha256(payload).hexdigest()

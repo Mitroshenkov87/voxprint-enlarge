@@ -13,7 +13,7 @@ register_tensorrt_libraries()
 
 import onnxruntime as ort  # noqa: E402
 
-from voxprint_engine.video import run_batch as _video_run_batch
+from voxprint_engine.video import _graph_channels, run_batch as _video_run_batch
 
 
 class EngineBuildError(RuntimeError):
@@ -85,6 +85,9 @@ def run_tile(session: ort.InferenceSession, tile: np.ndarray) -> np.ndarray:
     """HWC float -> HWC float. The network is NCHW."""
     if tile.ndim != 3:
         raise InferenceError("a tile must be HWC")
+    expected = _graph_channels(session)
+    if expected is not None and int(tile.shape[2]) != expected:
+        raise InferenceError(f"this model takes {expected} channels, not {int(tile.shape[2])}")
     array = np.transpose(tile, (2, 0, 1))[None, ...]
     array = np.ascontiguousarray(array.astype(_dtype(session), copy=False))
     name = str(session.get_inputs()[0].name)
