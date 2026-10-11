@@ -21,7 +21,7 @@ from enlarge.ipc.protocol import (
     message_kind,
     request_from_message,
 )
-from enlarge.appinfo import product_version
+from enlarge.appinfo import APP_DISPLAY_NAME, product_version
 from enlarge.ui.window import MainWindow
 from voxprint_engine.hardware import assess_gpu, ci_lanczos
 
@@ -147,7 +147,7 @@ class IpcServer(QObject):
             job_id = message.get("id")
             self._send(client, error_message(job_id if isinstance(job_id, str) else "", "bad_input", str(exc)))
             return
-        if request.open_ui and (ci_lanczos() or not assess_gpu().message):
+        if request.open_ui and (ci_lanczos() or not assess_gpu(app_name=APP_DISPLAY_NAME).message):
             self._open_ui(request.input)
         position = (1 if self.active else 0) + len(self.pending)
         self.pending.append((client, request, position))

@@ -19,13 +19,15 @@ from voxprint_engine.suite_runtime import (
     SuiteInstallError,
     bundled_python_tree,
     cpu_onnxruntime_shadows_gpu,
+    default_model_component_id,
+    ensure_default_model,
     ensure_runtime,
     managed_ids,
     read_manifest,
     release_runtime,
 )
 
-UNITS = ("python", "gpu", "model")
+UNITS = ("python", "gpu")
 
 
 def _hooks() -> tuple[list[str], dict[str, object], dict[str, object], dict[str, object]]:
@@ -144,8 +146,7 @@ def test_same_app_is_not_counted_twice_and_bad_ids_are_refused(tmp_path: Path) -
     ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
     with pytest.raises(SuiteInstallError):
         ensure_runtime("../enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
-    model_id = next(item_id for item_id in managed_ids() if item_id.startswith("model-"))
-    assert read_manifest(tmp_path)["components"][model_id]["refs"] == ["enlarge"]
+    assert read_manifest(tmp_path)["components"]["python-3.14"]["refs"] == ["enlarge"]
 
 
 def test_python_copy_and_bundle_detection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -207,7 +208,7 @@ def test_selftest_json_and_uninstall_command(capsys: pytest.CaptureFixture[str])
     assert payload["skipped"] is True
     assert payload["tensorrt_ep"]["detail"] == "skipped"
     assert payload["cuda_ep"]["detail"] == "skipped"
-    assert {item["id"] for item in payload["components"]} == set(managed_ids())
+    assert {item["id"] for item in payload["components"]} == set(managed_ids()) | {default_model_component_id()}
     assert payload["voxprint_home_source"] in {"env", "default"}
     assert payload["voxprint_home"]
     assert main(["--install-suite"]) == 0
@@ -226,6 +227,7 @@ def test_selftest_requires_tensorrt_and_cuda(monkeypatch: pytest.MonkeyPatch, ca
         return RuntimeReport(True, False, ())
 
     monkeypatch.setattr("main.ensure_runtime", ready)
+    monkeypatch.setattr("main.ensure_default_model", ready)
     monkeypatch.setattr("main.available_providers", lambda: ["CUDAExecutionProvider"])
     assert main(["--selftest", "--json"]) == 1
     failed = capsys.readouterr()
@@ -256,6 +258,7 @@ def test_selftest_fails_when_the_cpu_wheel_shadows_the_gpu_build(
         return RuntimeReport(True, False, ())
 
     monkeypatch.setattr("main.ensure_runtime", ready)
+    monkeypatch.setattr("main.ensure_default_model", ready)
     monkeypatch.setattr(
         "main.available_providers",
         lambda: ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
@@ -298,6 +301,10 @@ def test_selftest_failure_is_nonzero(monkeypatch: pytest.MonkeyPatch, capsys: py
         return RuntimeReport(False, False, (ComponentStatus("gpu", "cu130", "failed", (), "pip failed"),))
 
     monkeypatch.setattr("main.ensure_runtime", broken)
+    monkeypatch.setattr(
+        "main.ensure_default_model",
+        lambda *_args, **_kwargs: RuntimeReport(True, False, ()),
+    )
     assert main(["--selftest", "--json"]) == 1
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is False
@@ -331,6 +338,52 @@ def test_weight_file_is_removed_only_when_the_last_app_releases(
     assert target.is_file()
     assert release_runtime("clarity", root=root).ok is True
     assert not target.exists()
+
+
+def test_installed_components_record_the_caller_and_skip_the_default_model(tmp_path: Path) -> None:
+    calls, probes, installers, _removers = _hooks()
+
+    def model_install(_path: Path, _progress) -> None:
+        raise AssertionError("ensure_runtime installed the default model")
+
+    installers = dict(installers)
+    installers["model"] = model_install
+    report = ensure_runtime("canvas", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
+    assert report.ok is True
+    assert calls == ["python", "gpu"]
+    components = read_manifest(tmp_path)["components"]
+    assert components
+    assert all(not str(key).startswith("model-") for key in components)
+    for entry in components.values():
+        assert entry["kind"] in {"runtime", "wheels"}
+        assert "canvas" in entry["refs"]
+
+
+def test_default_model_download_is_enlarge_only(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def install(path: Path, progress) -> None:
+        calls.append("model")
+        progress("Installing model")
+        (path / "model").write_text("ready", encoding="utf-8")
+
+    def probe(path: Path) -> bool:
+        return (path / "model").is_file()
+
+    hooks = {"probes": {"model": probe}, "installers": {"model": install}, "root": tmp_path, "allow_skip": False}
+    skipped = ensure_default_model("clarity", **hooks)
+    assert calls == []
+    assert skipped.ok is True
+    assert skipped.skipped is True
+    assert skipped.components[0].detail == "not this app"
+    assert read_manifest(tmp_path)["components"] == {}
+    installed = ensure_default_model("enlarge", **hooks)
+    assert calls == ["model"]
+    assert installed.ok is True
+    components = read_manifest(tmp_path)["components"]
+    assert list(components) == [default_model_component_id()]
+    assert components[default_model_component_id()]["kind"] == "model"
+    assert components[default_model_component_id()]["refs"] == ["enlarge"]
 
 
 def test_windows_bundle_python_is_the_python_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

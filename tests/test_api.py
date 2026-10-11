@@ -34,6 +34,7 @@ CONTRACT = (
     "SuiteInstallError",
     "decide",
     "ensure_onnx",
+    "ensure_default_model",
     "ensure_runtime",
     "ensure_weight",
     "gpu_job",
