@@ -18,6 +18,7 @@ from voxprint_engine.suite_runtime import (
     RuntimeReport,
     SuiteInstallError,
     bundled_python_tree,
+    cpu_onnxruntime_shadows_gpu,
     ensure_runtime,
     managed_ids,
     read_manifest,
@@ -243,6 +244,51 @@ def test_selftest_requires_tensorrt_and_cuda(monkeypatch: pytest.MonkeyPatch, ca
     assert loaded["ok"] is True
     assert loaded["tensorrt_ep"]["detail"] == "loaded"
     assert loaded["cuda_ep"]["detail"] == "loaded"
+
+
+def test_selftest_fails_when_the_cpu_wheel_shadows_the_gpu_build(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+
+    def ready(_app: str, **_kwargs: object) -> RuntimeReport:
+        return RuntimeReport(True, False, ())
+
+    monkeypatch.setattr("main.ensure_runtime", ready)
+    monkeypatch.setattr(
+        "main.available_providers",
+        lambda: ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
+    )
+    monkeypatch.setattr(
+        "main.cpu_onnxruntime_shadows_gpu",
+        lambda: "CPU onnxruntime is installed beside onnxruntime-gpu, so the providers are Azure and CPU only.",
+    )
+    assert main(["--selftest", "--json"]) == 1
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["ok"] is False
+    assert "CPU onnxruntime is installed beside onnxruntime-gpu" in captured.err
+
+
+def test_cpu_wheel_beside_the_gpu_build_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Dist:
+        def __init__(self, name: str) -> None:
+            self.metadata = {"Name": name}
+
+    monkeypatch.setattr(
+        "voxprint_engine.suite_runtime.importlib_metadata.distributions",
+        lambda: [_Dist("onnxruntime")],
+    )
+    assert cpu_onnxruntime_shadows_gpu() is None
+    monkeypatch.setattr(
+        "voxprint_engine.suite_runtime.importlib_metadata.distributions",
+        lambda: [_Dist("onnxruntime"), _Dist("onnxruntime-gpu")],
+    )
+    message = cpu_onnxruntime_shadows_gpu()
+    assert message is not None
+    assert "CPU onnxruntime" in message
+    assert "onnxruntime-gpu" in message
 
 
 def test_selftest_failure_is_nonzero(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
