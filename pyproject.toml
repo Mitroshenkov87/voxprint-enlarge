@@ -11,7 +11,7 @@ readme = "docs/ENGINE.md"
 license = "Apache-2.0"
 dependencies = [
     "Pillow>=12.3.0,<13",
-    "numpy>=2,<3",
+    "numpy>=2.5.3,<3",
     "imagecodecs==2026.10.10",
     "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl",
 ]

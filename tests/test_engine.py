@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+import urllib.request
 from pathlib import Path
 from unittest import mock
 
@@ -18,7 +19,14 @@ from voxprint_engine.infer import _passes, _run_network, upscale_file, uses_lanc
 from voxprint_common.paths import models_dir, trt_cache_dir
 from voxprint_engine.providers import CPU, CUDA, TRT, choices_for, cuda_fallback_choices, gpu_provider_names
 from voxprint_engine.registry.schema import ModelManifest
-from voxprint_engine.store import StoreError, download, ensure_weight, register, unregister
+from voxprint_engine.store import (
+    StoreError,
+    _SameRegistryRedirect,
+    download,
+    ensure_weight,
+    register,
+    unregister,
+)
 from voxprint_engine.tile import blend, feather, plan_tiles, upscale_tiled
 from voxprint_engine.vram import halve_tile, is_memory_error
 
@@ -201,15 +209,19 @@ def test_download_checks_https_hash_and_users(tmp_path: Path) -> None:
     payload = b"weight-bytes"
     digest = hashlib.sha256(payload).hexdigest()
     target = root / "example.pth"
+    url = "https://huggingface.co/voxprint/models/resolve/main/example.pth"
     with pytest.raises(StoreError, match="https"):
         download("http://example.com/example.pth", target, digest)
-    wrong = b"not-the-weight"
-    with mock.patch("voxprint_common.download._urlopen", return_value=_Body(wrong, "https://example.com/example.pth")):
-        with pytest.raises(StoreError, match="does not match"):
-            download("https://example.com/example.pth", target, digest)
-    assert not target.exists()
-    with mock.patch("voxprint_common.download._urlopen", side_effect=lambda *_args, **_kwargs: _Body(payload, "https://example.com/example.pth")):
+    with pytest.raises(StoreError, match="registry host"):
         download("https://example.com/example.pth", target, digest)
+    wrong = b"not-the-weight"
+    public = mock.patch("voxprint_engine.store._addresses", return_value=["1.1.1.1"])
+    with public, mock.patch("voxprint_engine.store._open_registry", side_effect=lambda *_args, **_kwargs: _Body(wrong, url)):
+        with pytest.raises(StoreError, match="does not match"):
+            download(url, target, digest)
+    assert not target.exists()
+    with public, mock.patch("voxprint_engine.store._open_registry", side_effect=lambda *_args, **_kwargs: _Body(payload, url)):
+        download(url, target, digest)
     assert target.read_bytes() == payload
     model = _manifest(sha256=digest)
     assert ensure_weight(model, root) == target
@@ -228,6 +240,40 @@ def test_download_checks_https_hash_and_users(tmp_path: Path) -> None:
     again = register("enlarge", root)
     assert again == users
     assert unregister("enlarge", root) == ["audiobook-builder", "movie-dubber"]
+
+
+def test_download_refuses_private_addresses_and_cross_registry_redirects(tmp_path: Path) -> None:
+    url = "https://github.com/Phhofm/models/releases/download/v1/model.pth"
+    digest = "ab" * 32
+    target = tmp_path / "model.pth"
+    for address in ("127.0.0.1", "10.1.2.3", "169.254.169.254", "::1", "::ffff:127.0.0.1"):
+        with mock.patch("voxprint_engine.store._addresses", return_value=[address]):
+            with pytest.raises(StoreError, match="private"):
+                download(url, target, digest)
+    handler = _SameRegistryRedirect()
+    request = urllib.request.Request(url)
+    with mock.patch("voxprint_engine.store._addresses", return_value=["1.1.1.1"]):
+        with pytest.raises(StoreError, match="another host"):
+            handler.redirect_request(request, None, 302, "Found", {}, "https://evil.example/model.pth")
+        with pytest.raises(StoreError, match="another host"):
+            handler.redirect_request(
+                request,
+                None,
+                302,
+                "Found",
+                {},
+                "https://huggingface.co/voxprint/models/resolve/main/model.pth",
+            )
+        allowed = handler.redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            "https://release-assets.githubusercontent.com/github-production-release-asset/model.pth",
+        )
+    assert allowed is not None
+    assert urllib.parse.urlsplit(allowed.full_url).hostname == "release-assets.githubusercontent.com"
 
 
 def test_converter_does_not_import_extra_arches() -> None:
