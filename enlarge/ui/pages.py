@@ -137,7 +137,10 @@ class ModelPage(QWidget):
                 meta = f"{model.licence}  ·  no download"
             else:
                 vram = f"~{model.vram_mb} MB VRAM hint" if model.vram_mb else "VRAM hint not set"
-                meta = f"{model.arch}  ·  native {model.scale}x  ·  {model.licence}  ·  {vram}"
+                cuda = ""
+                if model.execution == "cuda":
+                    cuda = "  ·  CUDA (TensorRT cannot run this network)"
+                meta = f"{model.arch}  ·  native {model.scale}x  ·  {model.licence}  ·  {vram}{cuda}"
             text = f"{model.name}\n{model.summary}\n{meta}"
             item = QListWidgetItem(text)
             item.setData(Qt.ItemDataRole.UserRole, model.id)

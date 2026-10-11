@@ -15,7 +15,7 @@ try:
     import torch
     from spandrel import ModelLoader
 except ImportError:  # torch and spandrel are optional; the ONNX path does not need them
-    torch = None
+    torch = None  # type: ignore[assignment]
     ModelLoader = None
 
 

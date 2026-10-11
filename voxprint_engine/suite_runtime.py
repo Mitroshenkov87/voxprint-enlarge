@@ -27,7 +27,8 @@ from typing import Literal, assert_never
 from voxprint_engine.hardware import ci_lanczos
 from voxprint_engine.paths import models_dir, shared_dir
 from voxprint_engine.registry import DEFAULT_MODEL_ID, ModelManifest, load_builtin
-from voxprint_engine.store import StoreError, ensure_weight, register, unregister, weight_report
+from voxprint_engine.onnx_export import OnnxExportError, cached_onnx, ensure_onnx
+from voxprint_engine.store import StoreError, register, unregister, weight_report
 
 SCHEMA = 1
 PYTHON_VERSION = "3.14"
@@ -50,7 +51,7 @@ _GPU_PROBE = """
 import importlib.metadata as meta
 import importlib.util as util
 import sys
-missing = [name for name in ("torch", "onnxruntime") if util.find_spec(name) is None]
+missing = [name for name in ("torch", "onnxruntime", "spandrel", "onnx") if util.find_spec(name) is None]
 try:
     meta.version("tensorrt-cu13")
 except meta.PackageNotFoundError:
@@ -260,7 +261,7 @@ def release_runtime(
 
 
 def install_gpu_wheels(python: str, progress: Progress | None = None) -> None:
-    """Install torch for CUDA 13, then the ONNX Runtime GPU and TensorRT wheels."""
+    """Install torch for CUDA 13, ONNX Runtime GPU, TensorRT, spandrel, and onnx."""
     if getattr(sys, "frozen", False):
         raise SuiteInstallError("install the app directory, then run voxprint-enlarge --install-gpu")
     if not python:
@@ -269,8 +270,8 @@ def install_gpu_wheels(python: str, progress: Progress | None = None) -> None:
     _pip(python, ["uninstall", "-y", "onnxruntime"], "Removing the CPU ONNX Runtime wheel", progress, required=False)
     _pip(
         python,
-        ["install", "onnxruntime-gpu>=1.20,<2", "tensorrt-cu13"],
-        "Installing ONNX Runtime GPU and TensorRT",
+        ["install", "onnxruntime-gpu>=1.20,<2", "tensorrt-cu13", "spandrel>=0.4,<0.5", "onnx>=1.16,<2"],
+        "Installing ONNX Runtime GPU, TensorRT, and the ONNX converter",
         progress,
         required=True,
     )
@@ -512,7 +513,7 @@ def _remove_gpu(root: Path) -> None:
     python = _python_executable(root) or sys.executable
     if python and Path(python).is_file() and not getattr(sys, "frozen", False):
         subprocess.run(
-            [python, "-m", "pip", "uninstall", "-y", "torch", "onnxruntime-gpu", "tensorrt-cu13", "tensorrt"],
+            [python, "-m", "pip", "uninstall", "-y", "torch", "onnxruntime-gpu", "tensorrt-cu13", "tensorrt", "spandrel", "onnx"],
             check=False,
         )
 
@@ -526,7 +527,12 @@ def _default_model() -> ModelManifest:
 
 
 def _model_ready() -> bool:
-    state, _detail = weight_report(_default_model())
+    model = _default_model()
+    if cached_onnx(model) is None:
+        return False
+    if model.onnx_url and model.onnx_sha256:
+        return True
+    state, _detail = weight_report(model)
     return state == "ready"
 
 
@@ -536,7 +542,10 @@ def _install_model(progress: Progress) -> None:
     def on_progress(_fraction: float, message: str) -> None:
         progress(message)
 
-    ensure_weight(model, on_progress=on_progress)
+    try:
+        ensure_onnx(model, on_progress=on_progress)
+    except (StoreError, OnnxExportError) as exc:
+        raise SuiteInstallError(str(exc)) from exc
 
 
 def _remove_model(app: str) -> None:
@@ -549,6 +558,11 @@ def _remove_model(app: str) -> None:
     target = models_dir() / model.filename
     target.unlink(missing_ok=True)
     target.with_name(target.name + ".partial").unlink(missing_ok=True)
+    cached = cached_onnx(model)
+    if cached is not None:
+        cached.unlink(missing_ok=True)
+    if model.sha256:
+        (models_dir() / f"{model.sha256.lower()}.onnx").unlink(missing_ok=True)
 
 
 def _pip(python: str, args: list[str], message: str, progress: Progress | None, *, required: bool) -> None:

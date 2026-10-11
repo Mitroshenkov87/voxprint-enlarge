@@ -130,6 +130,9 @@ def test_provider_order_is_tensorrt_then_cuda_after_a_failed_build() -> None:
     assert cuda_fallback_choices([CUDA, "DmlExecutionProvider"], "auto") == []
     assert gpu_provider_names(["DmlExecutionProvider", "WinMLExecutionProvider"], device="auto") == []
     assert choices_for(["DmlExecutionProvider"], "auto") == []
+    assert [choice.name for choice in choices_for(available, "auto", execution="cuda")] == [CUDA]
+    assert [choice.name for choice in choices_for(available, "auto", execution="tensorrt")] == [TRT]
+    assert choices_for([TRT], "auto", execution="cuda") == []
     assert gpu_provider_names(available, device="cpu") == []
     assert gpu_provider_names([CPU], device="auto") == []
 

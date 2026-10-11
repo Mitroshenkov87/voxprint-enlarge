@@ -1,20 +1,28 @@
 # Shared inference engine
 
 `voxprint_engine` is the image upscaler Voxprint AI Enlarge owns and Voxprint AI
-Clarity imports. The installable distribution is `voxprint-engine` 1.0.0. It
+Clarity imports. The installable distribution is `voxprint-engine` 1.1.0. It
 does not import Qt. `API` is 1. The package version and `API` are different
 numbers: the version marks this release, and `API` stays 1 until a breaking
-change.
+change. 1.1.0 adds `ensure_onnx` and the optional manifest fields `onnx_url`,
+`onnx_sha256`, and `execution`.
 
 Clarity pins the merge commit of this release:
+
+```text
+voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0
+```
+
+The previous pin stays valid for the 1.0 surface:
 
 ```text
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0
 ```
 
-The tag `engine-v1.0.0` is the commit on `main` that publishes this file and
-the root `pyproject.toml`. The wheel contains `voxprint_engine` only. The Qt
-app stays in this repository and is not part of the wheel.
+The tag `engine-v1.0.0` is the earlier commit on `main`. `engine-v1.1.0`
+publishes this file and the root `pyproject.toml`. The wheel contains
+`voxprint_engine` only. The Qt app stays in this repository and is not part
+of the wheel.
 
 ## Public API
 
@@ -34,6 +42,7 @@ names below are that addition.
 | `upscale_file`, `uses_lanczos` | One image, and whether this job must skip the network |
 | `restore_frames`, `temporal_windows`, `tile_frames` | Temporal windows and per-frame tiles for Clarity |
 | `ensure_weight`, `register`, `unregister` | Pinned download, and the shared `.users.json` refcount |
+| `ensure_onnx` | Download a prebuilt ONNX file when the manifest pins one, otherwise convert the `.pth` to a checked fp16 ONNX file and cache it by sha256 |
 | `models_dir`, `trt_cache_dir` | Weights folder and the rebuildable TensorRT cache |
 | `vram_budget_gb`, `choose_tile`, `halve_tile`, `note_spill`, `sysmem_spill` | Suite VRAM margin, the tile ladder, and the 256 MB spill check |
 | `read_shared_usage` | Windows shared GPU memory for one pid, or `None` |
@@ -81,8 +90,11 @@ CPU execution provider. That is the smoke test. It is not a user mode.
 
 Otherwise the session is:
 
-1. TensorRT EP, fp16, engine cache enabled
-2. CUDA EP, only when that TensorRT engine does not build (or when the TensorRT provider is not installed and CUDA is)
+1. TensorRT EP, fp16, engine cache enabled, unless the manifest says `execution: cuda` or `execution: tensorrt`
+2. CUDA EP, when the manifest says `cuda`, when TensorRT is not installed, or when that TensorRT engine does not build
+
+`4x-nomos2-hq-dat2` is `execution: cuda`. TensorRT builds an engine for that
+network and then fails at runtime. The model step says so.
 
 DirectML and Windows ML are not providers. The x86-64 CPU baseline is
 x86-64-v3, without an AVX-512 path. ARM uses this same code.
@@ -104,7 +116,7 @@ Three weights are pinned. The sha256 is the official GitHub release asset.
 | id | file | licence | role |
 |---|---|---|---|
 | `4x-nomos2-realplksr-dysample` | `4xNomos2_realplksr_dysample.pth` | CC-BY-4.0 | default, fast photos |
-| `4x-nomos2-hq-dat2` | `4xNomos2_hq_dat2.pth` | CC-BY-4.0 | highest quality photos |
+| `4x-nomos2-hq-dat2` | `4xNomos2_hq_dat2.pth` | CC-BY-4.0 | highest quality photos, CUDA provider |
 | `realesrgan-x4plus-anime6b` | `RealESRGAN_x4plus_anime_6B.pth` | BSD-3-Clause | illustrated / anime |
 
 `lanczos` stays in the catalogue for the CI stand-in. It is not selectable.
@@ -300,23 +312,33 @@ still rejects a video file.
 Weights stay in the shared store. Clarity's refcount key is `clarity`
 (`register` / `unregister`). Downloads still finish before the GPU lock.
 
-## Offline conversion
+## ONNX conversion
 
-Runtime inference prefers a sibling `.onnx` next to the `.pth`. Build it with
-spandrel's MIT package only:
+The store downloads a `.pth`. The runtime needs a `.onnx`. `ensure_onnx`
+produces it. The shared installer converts the default model after torch and
+spandrel are installed. The Model step converts the others when they are
+downloaded. A worker job converts too, when the weight is already on disk,
+and it does that before taking the GPU lock. A headless job still refuses
+with `model_missing` when the weight itself is absent. It does not download.
+
+The cache file is `<models>/<sha256>.onnx`. A conversion is named with the
+weight sha256. A prebuilt file (`onnx_url` and `onnx_sha256` on the manifest)
+is preferred and named with its own sha256. A sibling `.onnx` next to the
+weight is copied into that cache when `onnx.checker` accepts it.
+
+Torch 2.14's default dynamo exporter writes two nodes with the same name.
+`ensure_onnx` calls the legacy exporter (`dynamo=False`, opset 17, dynamic
+height and width), converts the graph to fp16, and runs `onnx.checker`
+before the cache file is kept. The loader is spandrel's MIT package.
+`spandrel_extra_arches` is not imported.
 
 ```bash
-python -m pip install -r requirements.txt
-python -m pip install torch --index-url https://download.pytorch.org/whl/cu130
-python -m pip install spandrel onnx onnxruntime-gpu tensorrt-cu13
 python tools/export_onnx.py path/to/model.pth
 ```
 
-`tools/export_onnx.py` does not import `spandrel_extra_arches`. Copy the
-`.onnx` into the shared models folder beside the weight (or pass `--out`).
-The graph is fp16, with dynamic height and width. The author's own ONNX files
-on the Nomos releases are fp32 and, for the fast model, a fixed 256 input.
-This project does not use those files.
+That script calls `export_weight`. The install already has torch, spandrel,
+and onnx. The author's own ONNX files on the Nomos releases are fp32 and, for
+the fast model, a fixed 256 input. This project does not use those files.
 
 `requirements.txt` stays on the CPU ONNX Runtime wheel so CI can import the
 package. The app still refuses to start on that machine. `requirements-gpu.txt`

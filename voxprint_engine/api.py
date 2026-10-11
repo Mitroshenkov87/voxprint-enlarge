@@ -9,6 +9,7 @@ from __future__ import annotations
 from voxprint_engine import API, __version__
 from voxprint_engine.gpu_lock import gpu_job
 from voxprint_engine.infer import upscale_file, uses_lanczos
+from voxprint_engine.onnx_export import ensure_onnx
 from voxprint_engine.paths import models_dir, shared_dir, trt_cache_dir
 from voxprint_engine.registry import (
     DEFAULT_MODEL_ID,
@@ -59,6 +60,7 @@ __all__ = [
     "RuntimeReport",
     "SuiteInstallError",
     "decide",
+    "ensure_onnx",
     "ensure_runtime",
     "ensure_weight",
     "gpu_job",
