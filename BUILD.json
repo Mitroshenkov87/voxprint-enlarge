@@ -1,6 +1,6 @@
 {
-  "version": "0.2.0-rc.2",
+  "version": "0.2.0-rc.3",
   "offset": 0,
-  "codename": "Bahir",
-  "offset_note": "The release workflow's GITHUB_RUN_NUMBER plus offset. version is what --version and --capabilities report. Bahir names the v0.2.0-rc.2 installer."
+  "codename": "Marpe",
+  "offset_note": "The release workflow's GITHUB_RUN_NUMBER plus offset. version is what --version and --capabilities report. Marpe names the v0.2.0-rc.3 installer."
 }

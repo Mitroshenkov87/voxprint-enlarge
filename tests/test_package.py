@@ -14,8 +14,8 @@ def test_build_number_uses_the_run_and_the_offset() -> None:
     assert build_number({}) == 0
     assert build_number({"GITHUB_RUN_NUMBER": "4"}) == 4
     assert build_number({"VOXPRINT_BUILD": "9", "GITHUB_RUN_NUMBER": "4"}) == 9
-    assert codename() == "Bahir"
-    assert release_version() == "0.2.0-rc.2"
+    assert codename() == "Marpe"
+    assert release_version() == "0.2.0-rc.3"
     iss = Path("installer/windows/enlarge.iss").read_text(encoding="utf-8")
     assert f'#define AppVersion "{release_version()}"' in iss
     assert json.loads(Path("BUILD.json").read_text(encoding="utf-8"))["version"] == release_version()
