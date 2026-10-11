@@ -5,9 +5,24 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "vm_test.sh"
 PS1 = ROOT / "installer" / "windows" / "start-menu.ps1"
+
+
+def _bash_exe() -> str:
+    """Git bash. ``bash`` on a Windows runner is often the WSL stub in System32."""
+    if os.name == "nt":
+        for candidate in (
+            r"C:\Program Files\Git\bin\bash.exe",
+            r"C:\Program Files\Git\usr\bin\bash.exe",
+        ):
+            if os.path.isfile(candidate):
+                return candidate
+        pytest.skip("Git bash is not installed")
+    return "bash"
 
 
 def _bash_path(path: Path) -> str:
@@ -31,7 +46,7 @@ def _resolve(env: dict[str, str]) -> str:
     if "PATH" in env and os.name == "nt":
         merged["Path"] = env["PATH"]
     completed = subprocess.run(
-        ["bash", "--noprofile", "--norc", "-c", 'source "$1"; resolve_vm_python', "vosource", str(SCRIPT)],
+        [_bash_exe(), "--noprofile", "--norc", "-c", 'source "$1"; resolve_vm_python', "vosource", _bash_path(SCRIPT)],
         check=False,
         capture_output=True,
         text=True,
@@ -64,7 +79,7 @@ def test_py_launcher_is_before_python3(tmp_path: Path) -> None:
     python3.chmod(0o755)
     bash_bin = _bash_path(bindir)
     subprocess.run(
-        ["bash", "--noprofile", "--norc", "-c", 'chmod +x "$1" "$2"', "chmod", f"{bash_bin}/py", f"{bash_bin}/python3"],
+        [_bash_exe(), "--noprofile", "--norc", "-c", 'chmod +x "$1" "$2"', "chmod", f"{bash_bin}/py", f"{bash_bin}/python3"],
         check=True,
     )
     found = _resolve({"PATH": f"{bash_bin}:/usr/bin", "HOME": _bash_path(tmp_path / "empty")})
