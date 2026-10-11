@@ -9,6 +9,7 @@ manifest fields `onnx_url`, `onnx_sha256`, and `execution`. 1.2.0 adds
 `in_channels` (default 3) so a 4-channel network such as DRUNet exports and
 runs with RGB plus a noise-level map. 1.2.1 drops the CPU `onnxruntime` wheel.
 The `gpu` extra pins `onnxruntime-gpu==1.31.0` and `tensorrt-cu13-libs==10.14.1.48`.
+`voxprint_engine.shared_manifest` is the schema 1 file for the shared runtime.
 
 The 1.2.1 pin is:
 
@@ -64,7 +65,12 @@ names below are that addition.
 | `gpu_job` | Hold `%TEMP%/voxprint-gpu.lock` for one job. `owner` defaults to `enlarge` |
 | `decide` | Suite thermal pause rule |
 | `shared_dir`, `read_manifest` | `%LOCALAPPDATA%\Voxprint\shared` or `~/.local/share/voxprint/shared`, and its refcounted manifest |
-| `ensure_runtime`, `release_runtime` | Install or repair Python 3.14, the CUDA wheels, and the default model; drop one app and delete a payload only at zero holders |
+| `load`, `save`, `update` | Read the schema 1 manifest (migrating an old file), write it atomically, or hold `manifest.lock` across a read-modify-write |
+| `find_reusable`, `reserve` | Reuse a component when id, version, and sha256 match. Otherwise record a side-by-side path. A component another app refs is not overwritten |
+| `add_ref`, `remove_ref` | Add an app id, or remove it. `remove_ref` returns true when `refs` is now empty and the payload may be deleted |
+| `lock_hash` | SHA-256 of a pin string (`python==3.14`, `torch@cu130`, `onnxruntime-gpu==1.31.0`, `tensorrt-cu13-libs==10.14.1.48`) |
+| `SharedManifest`, `SharedManifestError` | The document, and a lock, schema, or shape failure |
+| `ensure_runtime`, `release_runtime` | Install or repair Python 3.14, torch cu130, ONNX Runtime GPU, TensorRT 10, and the default model; drop one app and delete a payload only when `refs` is empty |
 | `ComponentStatus`, `RuntimeReport`, `SuiteInstallError` | One component, the check result (`as_dict` is the `--selftest --json` object), and a failed install |
 
 ```python
@@ -216,14 +222,41 @@ Unregister returns the other programs that are still true, so an uninstaller
 can leave the folder alone while someone else uses it.
 
 The suite runtime is a second refcount, in `shared/manifest.json` under
-`shared_dir()`. It tracks Python 3.14, the CUDA 13 wheels (torch, ONNX
-Runtime GPU, TensorRT), and the default model. `ensure_runtime("enlarge")`
-installs whatever is missing and records the app. `ensure_runtime("clarity")`
-reuses the same files and adds a holder. `release_runtime` removes that one
-holder and deletes a payload only when the list is empty. The default weight
-stays in the models folder above; the manifest is what decides whether this
-app may delete it. `VOXPRINT_CI_LANCZOS=1` skips the install and reports each
-component as skipped. `API` stays 1.
+`shared_dir()`. Schema 1 has exactly `schema` and `components`. Unknown keys
+are kept. Each component is `kind` (`runtime`, `wheels`, `model`, or `tool`),
+`version`, `path`, `sha256`, `installed_at` (ISO-8601 with a numeric offset),
+and `refs` (app ids such as `enlarge` and `canvas`). Ids look like
+`python-3.14`, `torch-cu130`, `onnxruntime-gpu-1.31`, `tensorrt-10`, and
+`model-<sha256 prefix>`.
+
+`load` migrates two older files and writes them back. A Canvas file has
+`version` and `resources`. An Enlarge file has `holders` instead of `refs`,
+or the short ids `python`, `gpu`, and `model`. `update` holds
+`manifest.lock` for at most 30 seconds around the read-modify-write. A lock
+whose recorded pid is gone is taken over. The check uses the process table,
+because on Windows `os.kill(pid, 0)` is Ctrl+C. `save`
+writes `manifest.json.tmp`, fsyncs, and renames it over `manifest.json`.
+
+A component is reused when id, version, and sha256 all match. Otherwise the
+install goes to a new path. A component another app still refs is never
+overwritten. `remove_ref` returns true when that component can be deleted.
+
+The runtime holds torch from the CUDA 13 index and `onnxruntime-gpu` only.
+Installing the CPU `onnxruntime` wheel is forbidden. TensorRT 10 libs are the
+`tensorrt-10` component, for ONNX Runtime 1.31.
+
+`ensure_runtime("enlarge")` installs whatever is missing and adds the ref.
+`ensure_runtime("clarity")` reuses the same files when the pin matches.
+`release_runtime` removes that one ref and deletes a payload only when the
+list is empty. The default weight stays in the models folder above; the
+manifest is what decides whether this app may delete it.
+`VOXPRINT_CI_LANCZOS=1` skips the install and reports each component as
+skipped. `API` stays 1.
+
+`VOXPRINT_HOME` overrides the Voxprint home. `--selftest` and
+`--capabilities --json` report `voxprint_home` and `voxprint_home_source`
+(`env` or `default`). When the variable points somewhere else and the default
+home already has `shared/manifest.json`, the install log and stderr warn.
 
 TensorRT engines are not refcounted and are safe to delete. They are rebuilt
 from the ONNX file.

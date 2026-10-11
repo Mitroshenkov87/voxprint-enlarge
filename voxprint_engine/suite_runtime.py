@@ -13,25 +13,35 @@ from __future__ import annotations
 
 import importlib.metadata as importlib_metadata
 import json
-import os
 import re
 import shutil
 import subprocess
 import sys
-import time
-import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, assert_never
 
 from voxprint_engine.hardware import ci_lanczos
-from voxprint_engine.paths import models_dir, shared_dir
-from voxprint_engine.registry import DEFAULT_MODEL_ID, ModelManifest, load_builtin
 from voxprint_engine.onnx_export import OnnxExportError, cached_onnx, ensure_onnx
+from voxprint_engine.paths import models_dir, shared_dir, voxprint_home, voxprint_home_source, voxprint_home_warning
+from voxprint_engine.registry import DEFAULT_MODEL_ID, ModelManifest, load_builtin
+from voxprint_engine.shared_manifest import (
+    ORT_LOCK,
+    PYTHON_LOCK,
+    TRT_LOCK,
+    TORCH_LOCK,
+    SharedManifest,
+    SharedManifestError,
+    find_reusable,
+    load,
+    lock_hash,
+    remove_ref,
+    reserve,
+    update,
+)
 from voxprint_engine.store import StoreError, register, unregister, weight_report
 
-SCHEMA = 1
 PYTHON_VERSION = "3.14"
 GPU_VERSION = "cu130"
 TORCH_INDEX = "https://download.pytorch.org/whl/cu130"
@@ -51,11 +61,6 @@ Installer = Callable[[Path, Progress], None]
 Remover = Callable[[Path], None]
 
 _APP_ID = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
-_COMPONENTS: tuple[tuple[ComponentId, str], ...] = (
-    ("python", PYTHON_VERSION),
-    ("gpu", GPU_VERSION),
-    ("model", DEFAULT_MODEL_ID),
-)
 _GPU_PROBE = """
 import importlib.metadata as meta
 import importlib.util as util
@@ -134,30 +139,42 @@ class RuntimeReport:
         }
 
 
+@dataclass(frozen=True)
+class _Pin:
+    id: str
+    kind: str
+    version: str
+    path: str
+    sha256: str
+    unit: ComponentId
+
+
+def _pins() -> tuple[_Pin, ...]:
+    digest = _default_model().sha256.lower()
+    prefix = digest[:12]
+    return (
+        _Pin("python-3.14", "runtime", PYTHON_VERSION, "python", lock_hash(PYTHON_LOCK), "python"),
+        _Pin("torch-cu130", "wheels", GPU_VERSION, "python", lock_hash(TORCH_LOCK), "gpu"),
+        _Pin("onnxruntime-gpu-1.31", "wheels", "1.31.0", "python", lock_hash(ORT_LOCK), "gpu"),
+        _Pin("tensorrt-10", "wheels", "10.14.1.48", "python", lock_hash(TRT_LOCK), "gpu"),
+        _Pin(f"model-{prefix}", "model", DEFAULT_MODEL_ID, f"model/{prefix}", digest, "model"),
+    )
+
+
+def managed_ids() -> tuple[str, ...]:
+    """Component ids ``ensure_runtime`` records in the shared manifest."""
+    return tuple(pin.id for pin in _pins())
+
+
 def read_manifest(root: Path | None = None) -> dict[str, object]:
-    """Return the suite manifest. A missing or damaged file is an empty schema 1 document."""
-    path = _manifest_path(root or shared_dir())
+    """Return the suite manifest. A missing or damaged file is an empty schema 1 document.
+
+    An old Canvas or Enlarge file is migrated to schema 1 before it is returned.
+    """
     try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError):
-        return _empty_manifest()
-    if not isinstance(data, dict):
-        return _empty_manifest()
-    schema = data.get("schema")
-    if schema != SCHEMA:
-        if schema is not None:
-            raise SuiteInstallError(f"unsupported suite manifest schema {schema}")
-        return _empty_manifest()
-    raw = data.get("components")
-    components: dict[str, dict[str, object]] = {}
-    if isinstance(raw, dict):
-        for key, value in raw.items():
-            if isinstance(key, str) and isinstance(value, dict):
-                components[key] = {
-                    "holders": _holders(value.get("holders")),
-                    "version": str(value.get("version") or ""),
-                }
-    return {"schema": SCHEMA, "components": components}
+        return load(root).as_dict()
+    except SharedManifestError as exc:
+        raise SuiteInstallError(str(exc)) from exc
 
 
 def ensure_runtime(
@@ -172,62 +189,81 @@ def ensure_runtime(
 ) -> RuntimeReport:
     """Hold ``app`` on each shared component, installing anything that is missing.
 
-    The same app a second time does not add a second holder. ``probes`` and
+    The same app a second time does not add a second ref. ``probes`` and
     ``installers`` replace the real checks for tests. The real steps copy or
-    record Python 3.14, install the CUDA 13 wheels, and download the default model.
+    record Python 3.14, install the CUDA 13 wheels (torch cu130, ONNX Runtime
+    GPU, TensorRT 10), and download the default model. A component another app
+    refs is left in place and the new copy is recorded beside it.
     """
     _check_app(app)
+    _emit(progress, f"Voxprint home: {voxprint_home()} ({voxprint_home_source()})")
+    warning = voxprint_home_warning()
+    if warning:
+        _emit(progress, warning)
     if allow_skip and ci_lanczos():
         return _skipped_report()
     folder = root or shared_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    manifest = read_manifest(folder)
-    components = _components(manifest)
+    pins = _pins()
+    try:
+        snapshot = load(folder)
+    except SharedManifestError as exc:
+        raise SuiteInstallError(str(exc)) from exc
+    assignments = _assign(snapshot, app, pins)
+    outcomes: dict[str, tuple[str, str]] = {}
+    units: tuple[ComponentId, ...] = ("python", "gpu", "model")
+    for unit in units:
+        rel = _unit_path(assignments, unit)
+        for pin, component_id, _path in assignments:
+            if pin.unit == unit:
+                _emit(progress, f"Checking {component_id} {pin.version}")
+        if _unit_ready(snapshot, assignments, unit, folder, probes):
+            outcomes[unit] = ("ok", "ready")
+            continue
+        if not repair:
+            outcomes[unit] = ("missing", "not installed")
+            continue
+        for pin, component_id, _path in assignments:
+            if pin.unit == unit:
+                _emit(progress, f"Installing {component_id} {pin.version}")
+        try:
+            _call_installer(unit, folder, progress, installers, rel)
+        except (SuiteInstallError, StoreError, OSError, SharedManifestError) as exc:
+            outcomes[unit] = ("failed", str(exc))
+            continue
+        if _call_probe(unit, folder, probes, rel):
+            outcomes[unit] = ("repaired", "repaired")
+        else:
+            outcomes[unit] = ("failed", "still missing after install")
+    records: dict[str, dict[str, object]] = {}
+    if any(state in {"ok", "repaired"} for state, _detail in outcomes.values()):
+        try:
+            with update(folder) as manifest:
+                for pin, component_id, path in assignments:
+                    state, _detail = outcomes[pin.unit]
+                    if state not in {"ok", "repaired"}:
+                        continue
+                    record, _reused = reserve(
+                        manifest,
+                        component_id=component_id,
+                        kind=pin.kind,
+                        version=pin.version,
+                        path=path,
+                        sha256=pin.sha256,
+                        app=app,
+                    )
+                    records[component_id] = record
+        except SharedManifestError as exc:
+            raise SuiteInstallError(str(exc)) from exc
     statuses: list[ComponentStatus] = []
-    changed = False
-    for component, version in _COMPONENTS:
-        entry = components.get(component)
-        holders = list(_entry_holders(entry))
-        files_ready = _call_probe(component, folder, probes)
-        version_ok = entry is not None and str(entry.get("version") or "") == version
-        ready = files_ready and (entry is None or version_ok)
-        state = "ok"
-        detail = "ready"
-        _emit(progress, f"Checking {component} {version}")
-        if not ready:
-            if not repair:
-                state = "missing"
-                detail = "not installed"
-            else:
-                _emit(progress, f"Installing {component} {version}")
-                try:
-                    _call_installer(component, folder, progress, installers)
-                except (SuiteInstallError, StoreError, OSError) as exc:
-                    state = "failed"
-                    detail = str(exc)
-                else:
-                    files_ready = _call_probe(component, folder, probes)
-                    if files_ready:
-                        state = "repaired"
-                        detail = "repaired"
-                        ready = True
-                    else:
-                        state = "failed"
-                        detail = "still missing after install"
-        if ready:
-            if app not in holders:
-                holders.append(app)
-            new_entry: dict[str, object] = {"holders": holders, "version": version}
-            if entry != new_entry:
-                changed = True
-            components[component] = new_entry
-            if state == "ok":
-                _emit(progress, f"{component} {version} is ready")
-            if component == "model":
-                _register_model_user(app)
-        statuses.append(ComponentStatus(component, version, state, tuple(holders), detail))
-    if changed:
-        _write_manifest(manifest, folder)
+    for pin, component_id, _path in assignments:
+        state, detail = outcomes[pin.unit]
+        holders = tuple(_entry_refs(records.get(component_id)))
+        if state == "ok":
+            _emit(progress, f"{component_id} {pin.version} is ready")
+        if pin.unit == "model" and state in {"ok", "repaired"}:
+            _register_model_user(app)
+        statuses.append(ComponentStatus(component_id, pin.version, state, holders, detail))
     ok = all(item.state in {"ok", "repaired"} for item in statuses)
     return RuntimeReport(ok, False, tuple(statuses))
 
@@ -239,56 +275,91 @@ def release_runtime(
     root: Path | None = None,
     removers: Mapping[str, Remover] | None = None,
 ) -> RuntimeReport:
-    """Drop ``app`` from the manifest. Delete a payload only when its holder list is empty."""
+    """Drop ``app`` from the manifest. Delete a payload only when its ref list is empty."""
     _check_app(app)
     folder = root or shared_dir()
-    manifest = read_manifest(folder)
-    components = _components(manifest)
-    statuses: list[ComponentStatus] = []
+    pins = _pins()
+    known = {pin.id for pin in pins}
+    if not (folder / "manifest.json").is_file():
+        return RuntimeReport(
+            True,
+            False,
+            tuple(ComponentStatus(pin.id, pin.version, "ok", (), "absent") for pin in pins),
+        )
     failed = False
-    known = {component for component, _version in _COMPONENTS}
-    for component, version in _COMPONENTS:
-        entry = components.get(component)
-        if entry is None:
-            statuses.append(ComponentStatus(component, version, "ok", (), "absent"))
-            continue
-        previous = _entry_holders(entry)
-        holders = [name for name in previous if name != app]
-        if component == "model" and app in previous and holders:
-            try:
-                unregister(app)
-            except (OSError, StoreError):
-                pass
-        if app in previous and not holders:
-            _emit(progress, f"Removing {component} {version}")
-            try:
-                _call_remover(component, folder, app, removers)
-            except (SuiteInstallError, StoreError, OSError) as exc:
-                failed = True
-                statuses.append(ComponentStatus(component, version, "failed", tuple(_entry_holders(entry)), str(exc)))
-                continue
-            del components[component]
-            statuses.append(ComponentStatus(component, version, "ok", (), "removed"))
-            continue
-        if holders != _entry_holders(entry):
-            updated: dict[str, object] = {"holders": holders, "version": str(entry.get("version") or version)}
-            components[component] = updated
-            _emit(progress, f"{component} {version} still used by {', '.join(holders)}")
-        recorded = str(entry.get("version") or version)
-        detail = "held" if holders else "absent"
-        statuses.append(ComponentStatus(component, recorded, "ok", tuple(holders), detail))
-    for key, entry in list(components.items()):
-        if key in known or not isinstance(entry, dict):
-            continue
-        holders = [name for name in _entry_holders(entry) if name != app]
-        if holders == _entry_holders(entry):
-            continue
-        if holders:
-            components[key] = {"holders": holders, "version": str(entry.get("version") or "")}
-        else:
-            del components[key]
-    if folder.exists():
-        _write_manifest(manifest, folder)
+    removed: set[str] = set()
+    failed_detail: dict[str, str] = {}
+    try:
+        with update(folder) as manifest:
+            pending: list[tuple[_Pin, str, dict[str, object]]] = []
+            for pin in pins:
+                entry = manifest.components.get(pin.id)
+                if not isinstance(entry, dict) or app not in _entry_refs(entry):
+                    continue
+                others = [name for name in _entry_refs(entry) if name != app]
+                if others:
+                    remove_ref(manifest, pin.id, app)
+                    if pin.unit == "model":
+                        _unregister_quietly(app)
+                    _emit(progress, f"{pin.id} {pin.version} still used by {', '.join(others)}")
+                    continue
+                saved = dict(entry)
+                saved["refs"] = list(_entry_refs(entry))
+                rel = str(entry.get("path") or pin.path)
+                remove_ref(manifest, pin.id, app)
+                del manifest.components[pin.id]
+                pending.append((pin, rel, saved))
+            extras: list[tuple[str, str, dict[str, object]]] = []
+            for key, entry in list(manifest.components.items()):
+                if key in known or not isinstance(entry, dict) or app not in _entry_refs(entry):
+                    continue
+                others = [name for name in _entry_refs(entry) if name != app]
+                if others:
+                    remove_ref(manifest, key, app)
+                    continue
+                saved = dict(entry)
+                saved["refs"] = list(_entry_refs(entry))
+                rel = str(entry.get("path") or "")
+                remove_ref(manifest, key, app)
+                del manifest.components[key]
+                extras.append((key, rel, saved))
+            by_unit: dict[str, list[tuple[_Pin, str, dict[str, object]]]] = {"gpu": [], "python": [], "model": []}
+            for row in pending:
+                by_unit[row[0].unit].append(row)
+            for unit in ("gpu", "python", "model"):
+                rows = by_unit[unit]
+                if not rows:
+                    continue
+                rels: list[str] = []
+                for _pin, rel, _saved in rows:
+                    if rel not in rels:
+                        rels.append(rel)
+                try:
+                    for rel in rels:
+                        if _path_used(manifest, rel):
+                            continue
+                        _emit(progress, f"Removing {unit}")
+                        _call_remover(unit, folder, app, removers, rel)
+                except (SuiteInstallError, StoreError, OSError) as exc:
+                    failed = True
+                    failed_detail[unit] = str(exc)
+                    for pin, _rel, saved in rows:
+                        manifest.components[pin.id] = saved
+                else:
+                    for pin, _rel, _saved in rows:
+                        removed.add(pin.id)
+            for key, rel, saved in extras:
+                try:
+                    if rel and not _path_used(manifest, rel):
+                        _delete_rel(folder, rel)
+                    if saved.get("kind") == "model" and not _model_still_held(manifest):
+                        _remove_model(app)
+                except (SuiteInstallError, StoreError, OSError):
+                    failed = True
+                    manifest.components[key] = saved
+            statuses = _release_statuses(manifest, pins, removed, failed_detail)
+    except SharedManifestError as exc:
+        raise SuiteInstallError(str(exc)) from exc
     return RuntimeReport(not failed, False, tuple(statuses))
 
 
@@ -319,8 +390,9 @@ def install_gpu_wheels(python: str, progress: Progress | None = None) -> None:
     The CPU ``onnxruntime`` wheel is forbidden: it shadows ``onnxruntime-gpu``
     and leaves only the CPU and Azure providers. Unpinned ``tensorrt-cu13`` is
     TensorRT 11 (``nvinfer_11``). ONNX Runtime 1.31 loads ``nvinfer_10`` from
-    ``tensorrt-cu13-libs`` 10.14.1.48. Bindings for that TensorRT have no
-    cp314 wheel, so the meta package is recorded with ``--no-deps``.
+    ``tensorrt-cu13-libs`` 10.14.1.48, recorded as component ``tensorrt-10``.
+    Bindings for that TensorRT have no cp314 wheel, so the meta package is
+    recorded with ``--no-deps``. Torch from the CUDA 13 index is ``torch-cu130``.
     """
     if getattr(sys, "frozen", False):
         raise SuiteInstallError("install the app directory, then run voxprint-enlarge --install-gpu")
@@ -378,32 +450,24 @@ def bundled_python_tree() -> Path | None:
 
 
 def _skipped_report() -> RuntimeReport:
-    items = tuple(
-        ComponentStatus(component, version, "skipped", (), "CI stand-in") for component, version in _COMPONENTS
-    )
+    items = tuple(ComponentStatus(pin.id, pin.version, "skipped", (), "CI stand-in") for pin in _pins())
     return RuntimeReport(True, True, items)
 
 
-def _empty_manifest() -> dict[str, object]:
-    return {"schema": SCHEMA, "components": {}}
+def _check_app(app: str) -> None:
+    if _APP_ID.fullmatch(app) is None:
+        raise SuiteInstallError("app id must be a short lowercase name")
 
 
-def _components(manifest: dict[str, object]) -> dict[str, dict[str, object]]:
-    raw = manifest.get("components")
-    if isinstance(raw, dict):
-        return raw
-    components: dict[str, dict[str, object]] = {}
-    manifest["components"] = components
-    return components
+def _emit(progress: Progress | None, message: str) -> None:
+    if progress is not None:
+        progress(message)
 
 
-def _entry_holders(entry: dict[str, object] | None) -> list[str]:
-    if entry is None:
+def _entry_refs(entry: dict[str, object] | None) -> list[str]:
+    if not isinstance(entry, dict):
         return []
-    return _holders(entry.get("holders"))
-
-
-def _holders(value: object) -> list[str]:
+    value = entry.get("refs")
     if not isinstance(value, list):
         return []
     seen: list[str] = []
@@ -414,47 +478,155 @@ def _holders(value: object) -> list[str]:
     return seen
 
 
-def _check_app(app: str) -> None:
-    if _APP_ID.fullmatch(app) is None:
-        raise SuiteInstallError("app id must be a short lowercase name")
+def _foreign_id(manifest: SharedManifest, component_id: str, app: str) -> bool:
+    return any(name != app for name in _entry_refs(manifest.components.get(component_id)))
 
 
-def _manifest_path(root: Path) -> Path:
-    return root / "manifest.json"
+def _assign(manifest: SharedManifest, app: str, pins: tuple[_Pin, ...]) -> list[tuple[_Pin, str, str]]:
+    python_pin = next(pin for pin in pins if pin.unit == "python")
+    wheels = [pin for pin in pins if pin.unit == "gpu"]
+    conflict = _python_conflict(manifest, app, python_pin, wheels)
+    assigned: list[tuple[_Pin, str, str]] = []
+    if conflict:
+        rel = f"python-{python_pin.sha256[:12]}"
+        for pin in pins:
+            if pin.unit == "model":
+                assigned.append(_model_assignment(manifest, app, pin))
+            else:
+                assigned.append((pin, f"{pin.id}-{python_pin.sha256[:12]}", rel))
+        return assigned
+    matched = find_reusable(manifest, python_pin.id, python_pin.version, python_pin.sha256)
+    py_path = str(matched.get("path") or "python") if matched is not None else "python"
+    for pin in pins:
+        if pin.unit == "model":
+            assigned.append(_model_assignment(manifest, app, pin))
+        else:
+            assigned.append((pin, pin.id, py_path))
+    return assigned
 
 
-def _emit(progress: Progress | None, message: str) -> None:
-    if progress is not None:
-        progress(message)
+def _python_conflict(manifest: SharedManifest, app: str, python_pin: _Pin, wheels: list[_Pin]) -> bool:
+    matched = find_reusable(manifest, python_pin.id, python_pin.version, python_pin.sha256)
+    if matched is None and _foreign_id(manifest, python_pin.id, app):
+        return True
+    for pin in wheels:
+        if find_reusable(manifest, pin.id, pin.version, pin.sha256) is not None:
+            continue
+        if _foreign_id(manifest, pin.id, app):
+            return True
+    return False
 
 
-def _write_manifest(manifest: dict[str, object], root: Path) -> None:
-    path = _manifest_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps({"components": manifest.get("components", {}), "schema": SCHEMA}, indent=1, sort_keys=True) + "\n"
-    tmp = path.with_name(f".manifest-{uuid.uuid4().hex[:8]}.tmp")
-    tmp.write_text(text, encoding="utf-8")
+def _model_assignment(manifest: SharedManifest, app: str, pin: _Pin) -> tuple[_Pin, str, str]:
+    found = find_reusable(manifest, pin.id, pin.version, pin.sha256)
+    if found is not None:
+        return pin, pin.id, str(found.get("path") or pin.path)
+    if _foreign_id(manifest, pin.id, app):
+        suffix = pin.sha256[:12] or "unset"
+        return pin, f"{pin.id}-{suffix}", f"{pin.path}-{suffix}"
+    return pin, pin.id, pin.path
+
+
+def _unit_path(assignments: list[tuple[_Pin, str, str]], unit: str) -> str:
+    for pin, _component_id, path in assignments:
+        if pin.unit == unit:
+            return path
+    return "python"
+
+
+def _unit_ready(
+    manifest: SharedManifest,
+    assignments: list[tuple[_Pin, str, str]],
+    unit: ComponentId,
+    folder: Path,
+    probes: Mapping[str, Probe] | None,
+) -> bool:
+    rel = _unit_path(assignments, unit)
+    if not _call_probe(unit, folder, probes, rel):
+        return False
+    for pin, component_id, _path in assignments:
+        if pin.unit != unit:
+            continue
+        if find_reusable(manifest, component_id, pin.version, pin.sha256) is None:
+            return False
+    return True
+
+
+def _path_used(manifest: SharedManifest, rel: str) -> bool:
+    if not rel:
+        return True
+    for entry in manifest.components.values():
+        if isinstance(entry, dict) and str(entry.get("path") or "") == rel:
+            return True
+    return False
+
+
+def _model_still_held(manifest: SharedManifest) -> bool:
+    for entry in manifest.components.values():
+        if isinstance(entry, dict) and entry.get("kind") == "model" and _entry_refs(entry):
+            return True
+    return False
+
+
+def _unregister_quietly(app: str) -> None:
     try:
-        for attempt in range(10):
-            try:
-                os.replace(tmp, path)
-                return
-            except PermissionError:
-                if attempt == 9:
-                    raise
-                time.sleep(0.05 * (attempt + 1))
-    finally:
-        if tmp.exists():
-            tmp.unlink()
+        unregister(app)
+    except (OSError, StoreError):
+        return
 
 
-def _call_probe(component: ComponentId, root: Path, probes: Mapping[str, Probe] | None) -> bool:
+def _delete_rel(root: Path, rel: str) -> None:
+    if not rel or ".." in Path(rel).parts:
+        raise SuiteInstallError("refusing to delete a path outside the shared folder")
+    dest = (root / rel).resolve()
+    base = root.resolve()
+    if dest != base and base not in dest.parents:
+        raise SuiteInstallError("refusing to delete a path outside the shared folder")
+    if dest == base:
+        raise SuiteInstallError("refusing to delete the shared folder itself")
+    if dest.is_symlink() or dest.is_file():
+        dest.unlink()
+        return
+    if dest.is_dir():
+        shutil.rmtree(dest)
+
+
+def _release_statuses(
+    manifest: SharedManifest,
+    pins: tuple[_Pin, ...],
+    removed: set[str],
+    failed_detail: dict[str, str],
+) -> list[ComponentStatus]:
+    statuses: list[ComponentStatus] = []
+    for pin in pins:
+        if pin.unit in failed_detail and pin.id in manifest.components:
+            holders = tuple(_entry_refs(manifest.components.get(pin.id)))
+            statuses.append(ComponentStatus(pin.id, pin.version, "failed", holders, failed_detail[pin.unit]))
+            continue
+        if pin.id in removed:
+            statuses.append(ComponentStatus(pin.id, pin.version, "ok", (), "removed"))
+            continue
+        entry = manifest.components.get(pin.id)
+        holders = tuple(_entry_refs(entry))
+        if holders:
+            statuses.append(ComponentStatus(pin.id, pin.version, "ok", holders, "held"))
+        else:
+            statuses.append(ComponentStatus(pin.id, pin.version, "ok", (), "absent"))
+    return statuses
+
+
+def _call_probe(
+    component: ComponentId,
+    root: Path,
+    probes: Mapping[str, Probe] | None,
+    rel: str = "python",
+) -> bool:
     if probes is not None and component in probes:
         return probes[component](root)
     if component == "python":
-        return _python_ready(root)
+        return _python_ready(root, rel)
     if component == "gpu":
-        return _gpu_ready(root)
+        return _gpu_ready(root, rel)
     if component == "model":
         return _model_ready()
     assert_never(component)
@@ -465,16 +637,17 @@ def _call_installer(
     root: Path,
     progress: Progress | None,
     installers: Mapping[str, Installer] | None,
+    rel: str = "python",
 ) -> None:
     if installers is not None and component in installers:
         installers[component](root, progress or (lambda _message: None))
         return
     sink = progress or (lambda _message: None)
     if component == "python":
-        _install_python(root, sink)
+        _install_python(root, rel, sink)
         return
     if component == "gpu":
-        _install_gpu(root, sink)
+        _install_gpu(root, rel, sink)
         return
     if component == "model":
         _install_model(sink)
@@ -482,17 +655,23 @@ def _call_installer(
     assert_never(component)
 
 
-def _call_remover(component: ComponentId, root: Path, app: str, removers: Mapping[str, Remover] | None) -> None:
+def _call_remover(
+    component: ComponentId,
+    root: Path,
+    app: str,
+    removers: Mapping[str, Remover] | None,
+    rel: str = "python",
+) -> None:
     if removers is not None:
         if component not in removers:
             raise SuiteInstallError(f"no remover for {component}")
         removers[component](root)
         return
     if component == "python":
-        _remove_python(root)
+        _remove_python(root, rel)
         return
     if component == "gpu":
-        _remove_gpu(root)
+        _remove_gpu(root, rel)
         return
     if component == "model":
         _remove_model(app)
@@ -507,8 +686,8 @@ def _register_model_user(app: str) -> None:
         return
 
 
-def _python_executable(root: Path) -> str | None:
-    folder = root / "python"
+def _python_executable(root: Path, rel: str = "python") -> str | None:
+    folder = root / rel
     if sys.platform == "win32":
         candidate = folder / "python.exe"
     else:
@@ -531,8 +710,8 @@ def _python_executable(root: Path) -> str | None:
     return executable
 
 
-def _python_ready(root: Path) -> bool:
-    executable = _python_executable(root)
+def _python_ready(root: Path, rel: str = "python") -> bool:
+    executable = _python_executable(root, rel)
     if executable is None:
         return False
     script = "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 14) else 1)"
@@ -540,8 +719,8 @@ def _python_ready(root: Path) -> bool:
     return completed.returncode == 0
 
 
-def _install_python(root: Path, progress: Progress) -> None:
-    dest = root / "python"
+def _install_python(root: Path, rel: str, progress: Progress) -> None:
+    dest = root / rel
     bundled = bundled_python_tree()
     if bundled is not None:
         try:
@@ -558,7 +737,7 @@ def _install_python(root: Path, progress: Progress) -> None:
                 shutil.copytree(bundled, dest, symlinks=True)
             except OSError as exc:
                 raise SuiteInstallError(f"could not copy Python 3.14: {exc}") from exc
-            if _python_ready(root):
+            if _python_ready(root, rel):
                 return
             if dest.is_symlink():
                 dest.unlink()
@@ -573,8 +752,8 @@ def _install_python(root: Path, progress: Progress) -> None:
     raise SuiteInstallError("Python 3.14 was not found. Install the Enlarge bundle, which carries that runtime.")
 
 
-def _remove_python(root: Path) -> None:
-    dest = root / "python"
+def _remove_python(root: Path, rel: str = "python") -> None:
+    dest = root / rel
     if dest.is_symlink():
         dest.unlink()
         return
@@ -585,21 +764,21 @@ def _remove_python(root: Path) -> None:
     shutil.rmtree(dest)
 
 
-def _gpu_ready(root: Path) -> bool:
-    python = _python_executable(root) or sys.executable
+def _gpu_ready(root: Path, rel: str = "python") -> bool:
+    python = _python_executable(root, rel) or sys.executable
     if not Path(python).is_file():
         return False
     completed = subprocess.run([python, "-c", _GPU_PROBE], check=False, capture_output=True)
     return completed.returncode == 0
 
 
-def _install_gpu(root: Path, progress: Progress) -> None:
-    python = _python_executable(root) or sys.executable
+def _install_gpu(root: Path, rel: str, progress: Progress) -> None:
+    python = _python_executable(root, rel) or sys.executable
     install_gpu_wheels(python, progress)
 
 
-def _remove_gpu(root: Path) -> None:
-    python = _python_executable(root) or sys.executable
+def _remove_gpu(root: Path, rel: str = "python") -> None:
+    python = _python_executable(root, rel) or sys.executable
     if python and Path(python).is_file() and not getattr(sys, "frozen", False):
         subprocess.run(
             [

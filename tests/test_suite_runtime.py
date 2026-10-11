@@ -20,11 +20,12 @@ from voxprint_engine.suite_runtime import (
     bundled_python_tree,
     cpu_onnxruntime_shadows_gpu,
     ensure_runtime,
+    managed_ids,
     read_manifest,
     release_runtime,
 )
 
-COMPONENTS = ("python", "gpu", "model")
+UNITS = ("python", "gpu", "model")
 
 
 def _hooks() -> tuple[list[str], dict[str, object], dict[str, object], dict[str, object]]:
@@ -50,9 +51,9 @@ def _hooks() -> tuple[list[str], dict[str, object], dict[str, object], dict[str,
 
         return run
 
-    probes = {name: probe(name) for name in COMPONENTS}
-    installers = {name: install(name) for name in COMPONENTS}
-    removers = {name: remove(name) for name in COMPONENTS}
+    probes = {name: probe(name) for name in UNITS}
+    installers = {name: install(name) for name in UNITS}
+    removers = {name: remove(name) for name in UNITS}
     return calls, probes, installers, removers
 
 
@@ -65,10 +66,10 @@ def test_ci_skips_without_installing(tmp_path: Path) -> None:
     def boom(_path: Path, _progress) -> None:
         raise AssertionError("installer ran")
 
-    report = ensure_runtime("enlarge", root=tmp_path, installers={name: boom for name in COMPONENTS})
+    report = ensure_runtime("enlarge", root=tmp_path, installers={name: boom for name in UNITS})
     assert report.ok is True
     assert report.skipped is True
-    assert {item.id for item in report.components} == set(COMPONENTS)
+    assert {item.id for item in report.components} == set(managed_ids())
     assert not (tmp_path / "manifest.json").exists()
 
 
@@ -77,22 +78,21 @@ def test_holders_are_shared_and_removed_only_at_zero(tmp_path: Path) -> None:
     kwargs = {"root": tmp_path, "allow_skip": False, "probes": probes, "installers": installers}
     first = ensure_runtime("enlarge", **kwargs)
     assert first.ok is True
-    assert calls == list(COMPONENTS)
+    assert calls == list(UNITS)
     again = ensure_runtime("enlarge", **kwargs)
-    assert calls == list(COMPONENTS)
-    enlarge_holders = {item.id: item.holders for item in again.components}
-    assert enlarge_holders == {name: ("enlarge",) for name in COMPONENTS}
+    assert calls == list(UNITS)
+    assert {item.holders for item in again.components} == {("enlarge",)}
     clarity = ensure_runtime("clarity", **kwargs)
-    assert calls == list(COMPONENTS)
+    assert calls == list(UNITS)
     assert {item.holders for item in clarity.components} == {("enlarge", "clarity")}
     released = release_runtime("enlarge", root=tmp_path, removers=removers)
     assert released.ok is True
-    assert all((tmp_path / name).is_file() for name in COMPONENTS)
+    assert all((tmp_path / name).is_file() for name in UNITS)
     assert {item.holders for item in released.components} == {("clarity",)}
     gone = release_runtime("clarity", root=tmp_path, removers=removers)
     assert gone.ok is True
     assert {item.detail for item in gone.components} == {"removed"}
-    assert all(not (tmp_path / name).exists() for name in COMPONENTS)
+    assert all(not (tmp_path / name).exists() for name in UNITS)
     manifest = read_manifest(tmp_path)
     assert manifest["components"] == {}
 
@@ -104,9 +104,10 @@ def test_a_missing_component_is_repaired_once(tmp_path: Path) -> None:
     calls.clear()
     report = ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
     assert calls == ["gpu"]
-    gpu = next(item for item in report.components if item.id == "gpu")
-    assert gpu.state == "repaired"
-    assert gpu.holders == ("enlarge",)
+    wheels = [item for item in report.components if item.id in {"torch-cu130", "onnxruntime-gpu-1.31", "tensorrt-10"}]
+    assert len(wheels) == 3
+    assert {item.state for item in wheels} == {"repaired"}
+    assert {item.holders for item in wheels} == {("enlarge",)}
     assert removers["gpu"](tmp_path) is None
 
 
@@ -115,23 +116,23 @@ def test_a_version_change_reinstalls_that_component(tmp_path: Path) -> None:
     ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
     path = tmp_path / "manifest.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
-    payload["components"]["python"]["version"] = "3.13"
+    payload["components"]["python-3.14"]["version"] = "3.13"
     path.write_text(json.dumps(payload), encoding="utf-8")
     calls.clear()
     report = ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
     assert calls == ["python"]
-    python = next(item for item in report.components if item.id == "python")
+    python = next(item for item in report.components if item.id == "python-3.14")
     assert python.version == PYTHON_VERSION
     assert python.state == "repaired"
-    assert read_manifest(tmp_path)["components"]["python"]["version"] == PYTHON_VERSION
+    assert read_manifest(tmp_path)["components"]["python-3.14"]["version"] == PYTHON_VERSION
 
 
 def test_a_failed_install_does_not_take_a_hold(tmp_path: Path) -> None:
     def fail(_path: Path, _progress) -> None:
         raise SuiteInstallError("disk full")
 
-    probes = {name: (lambda _path: False) for name in COMPONENTS}
-    installers = {name: fail for name in COMPONENTS}
+    probes = {name: (lambda _path: False) for name in UNITS}
+    installers = {name: fail for name in UNITS}
     report = ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
     assert report.ok is False
     assert all(item.state == "failed" for item in report.components)
@@ -143,8 +144,8 @@ def test_same_app_is_not_counted_twice_and_bad_ids_are_refused(tmp_path: Path) -
     ensure_runtime("enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
     with pytest.raises(SuiteInstallError):
         ensure_runtime("../enlarge", root=tmp_path, allow_skip=False, probes=probes, installers=installers)
-    holders = read_manifest(tmp_path)["components"]["model"]["holders"]
-    assert holders == ["enlarge"]
+    model_id = next(item_id for item_id in managed_ids() if item_id.startswith("model-"))
+    assert read_manifest(tmp_path)["components"][model_id]["refs"] == ["enlarge"]
 
 
 def test_python_copy_and_bundle_detection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -156,17 +157,17 @@ def test_python_copy_and_bundle_detection(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr("voxprint_engine.suite_runtime.bundled_python_tree", lambda: bundle.parent)
     monkeypatch.setattr(
         "voxprint_engine.suite_runtime._python_ready",
-        lambda path: (path / "python" / "bin" / "python3").is_file(),
+        lambda path, _rel="python": (path / "python" / "bin" / "python3").is_file(),
     )
     root = tmp_path / "shared"
 
-    def ready_gpu(_path: Path) -> bool:
+    def ready_gpu(_path: Path, _rel: str = "python") -> bool:
         return True
 
     def ready_model() -> bool:
         return True
 
-    def skip_gpu(_path: Path, _progress) -> None:
+    def skip_gpu(_path: Path, _rel: str, _progress) -> None:
         return None
 
     def skip_model(_progress) -> None:
@@ -195,7 +196,8 @@ def test_release_keeps_an_unknown_component_another_app_holds(tmp_path: Path) ->
     path.write_text(json.dumps(payload), encoding="utf-8")
     release_runtime("enlarge", root=tmp_path, removers=removers)
     future = read_manifest(tmp_path)["components"]["future"]
-    assert future["holders"] == ["clarity"]
+    assert future["refs"] == ["clarity"]
+    assert "holders" not in future
 
 
 def test_selftest_json_and_uninstall_command(capsys: pytest.CaptureFixture[str]) -> None:
@@ -205,9 +207,14 @@ def test_selftest_json_and_uninstall_command(capsys: pytest.CaptureFixture[str])
     assert payload["skipped"] is True
     assert payload["tensorrt_ep"]["detail"] == "skipped"
     assert payload["cuda_ep"]["detail"] == "skipped"
-    assert {item["id"] for item in payload["components"]} == set(COMPONENTS)
+    assert {item["id"] for item in payload["components"]} == set(managed_ids())
+    assert payload["voxprint_home_source"] in {"env", "default"}
+    assert payload["voxprint_home"]
     assert main(["--install-suite"]) == 0
-    assert "shared suite: skipped" in capsys.readouterr().out
+    install_out = capsys.readouterr().out
+    assert "shared suite: skipped" in install_out
+    assert "Voxprint home:" in install_out
+    assert "(env)" in install_out
     assert main(["--uninstall-suite"]) == 0
     assert main(["--selftest"]) == 0
 

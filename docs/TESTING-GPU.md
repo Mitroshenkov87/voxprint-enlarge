@@ -2,12 +2,26 @@
 
 Use this on the RTX 4090 machine (Windows 11, Windows Server 2025, or Linux, NVIDIA driver from the 600 series or newer). CI does not run these steps. The installer contains no model weights.
 
-Install `v0.2.0-rc.4` (codename Tikvah). Check `SHA256SUMS` before you install. A stock machine can run the short set with `bash scripts/vm_test.sh --smoke` before anything else. Exit 0 is pass, 1 is a failed test, 2 is setup, and 3 means no usable GPU.
+Install `v0.2.0-rc.5` (codename Chayil). Check `SHA256SUMS` before you install. A stock machine can run the short set with `bash scripts/vm_test.sh --smoke` before anything else. The script prints `python: ...` for the interpreter it chose: the shared runtime (`%LOCALAPPDATA%\Voxprint\shared\python\python.exe`, or `~/.local/share/voxprint/shared/python/bin/python3`), then `py -3`, then `python3`. `python3` on Windows is often the Microsoft Store alias, so it is last. A `VOXPRINT_HOME` or `LOCALAPPDATA` value with backslashes is accepted. Exit 0 is pass, 1 is a failed test, 2 is setup, and 3 means no usable GPU.
 
 * Windows: run `VoxprintEnlarge-Setup.exe`. It installs for the current user under `%LOCALAPPDATA%\Voxprint\Enlarge`.
 * Linux: unpack `voxprint-enlarge-linux-x64.tar.gz` and run `./install.sh`. The command is then `voxprint-enlarge`.
 
 The installer fills the shared suite folder itself: Python 3.14, the CUDA wheels, and the default model, converted to ONNX. Do not export a weight by hand, and do not install TensorRT yourself. A stock install must upscale.
+
+## Quick re-test
+
+Unset `VOXPRINT_HOME` when `--selftest` warns that it differs from the default. Then:
+
+```bash
+bash scripts/vm_test.sh --smoke
+voxprint-enlarge upscale --input line.png --scale 4 --preset art --format avif --json-progress
+rm -f "$LOCALAPPDATA/Voxprint/models/1f2be2b4786b5031776aed90e1818564f5576ab1e44da9355c7f3788ea25bdea.onnx"
+voxprint-enlarge upscale --input photo.jpg --scale 4 --preset photo --quality-tier max --format avif --json-progress
+"$LOCALAPPDATA/Voxprint/Enlarge/VoxprintEnlarge.exe"
+```
+
+`vm_test.sh --smoke` prints `python:` and covers the stock upscale, the cached rerun, anime 6B at 4×, and the long-side chain. The line-art command is the same anime 6B run on a real drawing, after Check hash on `realesrgan-x4plus-anime6b`. Removing that ONNX file forces the first DAT2 `.pth` conversion. The window title is `Voxprint AI Enlarge` and the client area is opaque.
 
 Run the cases that failed on `v0.2.0-rc.2` first. The anime 6B run and the Canvas chain stay as regressions after those.
 
@@ -20,11 +34,11 @@ voxprint-enlarge --capabilities --json
 voxprint-enlarge upscale --input samples/sample.png --scale 2 --format avif --json-progress
 ```
 
-`--version` exits 0, prints `0.2.0-rc.4` and `Tikvah`, and says `installed build`. It does not say `run from source`.
+`--version` exits 0, prints `0.2.0-rc.5` and `Chayil`, and says `installed build`. It does not say `run from source`.
 
-`--selftest --json` exits 0. `ok` is true. `tensorrt_ep.detail` and `cuda_ep.detail` are both `loaded`.
+`--selftest --json` exits 0. `ok` is true. `tensorrt_ep.detail` and `cuda_ep.detail` are both `loaded`. `voxprint_home` is the resolved folder and `voxprint_home_source` is `default` on a stock install. A line on stderr that starts with `warning: VOXPRINT_HOME` means the variable points away from a default home that already has `shared/manifest.json`. Unset `VOXPRINT_HOME` and install again so the apps share one runtime.
 
-`--capabilities --json` exits 0. On this machine `gpu.status` is `ok` and `gpu.reason` is null. `version` matches `--version`. The default model is `installed` true.
+`--capabilities --json` exits 0. On this machine `gpu.status` is `ok` and `gpu.reason` is null. `version` matches `--version`. The default model is `installed` true. It carries the same `voxprint_home` and `voxprint_home_source` fields.
 
 The upscale exits 0 and writes an AVIF file next to the sample. Nobody has to produce an ONNX file first. The first run reports `building_engine`, and `eta_s` starts near 90. Run the same command again. It reports `loading_cached_engine` and finishes sooner.
 

@@ -32,6 +32,7 @@ from enlarge.paths import logs_dir
 from enlarge.suite import gpu
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
 from voxprint_engine.hardware import assess_gpu, ci_lanczos
+from voxprint_engine.paths import voxprint_home, voxprint_home_source
 from voxprint_engine.suite_runtime import (
     RuntimeReport,
     SuiteInstallError,
@@ -232,6 +233,8 @@ def _selftest(as_json: bool) -> int:
     if shadow:
         ready = False
     extra: dict[str, object] = dict(providers)
+    extra["voxprint_home"] = str(voxprint_home())
+    extra["voxprint_home_source"] = voxprint_home_source()
     if not ready:
         extra["ok"] = False
     _print_suite(

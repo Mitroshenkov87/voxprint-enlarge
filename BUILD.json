@@ -1,6 +1,6 @@
 {
-  "version": "0.2.0-rc.4",
+  "version": "0.2.0-rc.5",
   "offset": 0,
-  "codename": "Tikvah",
-  "offset_note": "The release workflow's GITHUB_RUN_NUMBER plus offset. version is what --version and --capabilities report. Tikvah names the v0.2.0-rc.4 installer."
+  "codename": "Chayil",
+  "offset_note": "The release workflow's GITHUB_RUN_NUMBER plus offset. version is what --version and --capabilities report. Chayil names the v0.2.0-rc.5 installer."
 }
