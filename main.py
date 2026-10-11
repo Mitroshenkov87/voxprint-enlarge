@@ -40,7 +40,7 @@ from voxprint_engine.suite_runtime import (
     release_runtime,
 )
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
-from voxprint_engine.session import tensorrt_ep_loaded
+from voxprint_engine.session import available_providers
 from voxprint_engine.store import register_quietly
 from voxprint_engine.worker import UpscaleRequest
 from voxprint_engine.worker.server import serve
@@ -197,13 +197,24 @@ def _print_suite(
             print(f"{item.id}: {item.detail}", file=sys.stderr)
 
 
-def _tensorrt_status(report: RuntimeReport) -> tuple[bool, str]:
-    """Skip the provider check in CI. A real install must load the TensorRT EP."""
+def _provider_status(report: RuntimeReport) -> dict[str, dict[str, object]]:
+    """Skip the provider check in CI. A real install must load TensorRT and CUDA."""
     if report.skipped or not report.ok:
-        return True, "skipped"
-    if tensorrt_ep_loaded():
-        return True, "loaded"
-    return False, "TensorRT execution provider did not load (nvinfer_10)"
+        return {
+            "cuda_ep": {"detail": "skipped", "ok": True},
+            "tensorrt_ep": {"detail": "skipped", "ok": True},
+        }
+    found = set(available_providers())
+    required = (
+        ("cuda_ep", "CUDAExecutionProvider"),
+        ("tensorrt_ep", "TensorrtExecutionProvider"),
+    )
+    status: dict[str, dict[str, object]] = {}
+    for key, name in required:
+        loaded = name in found
+        detail = "loaded" if loaded else f"{name} did not load"
+        status[key] = {"detail": detail, "ok": loaded}
+    return status
 
 
 def _selftest(as_json: bool) -> int:
@@ -214,20 +225,23 @@ def _selftest(as_json: bool) -> int:
     except SuiteInstallError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    trt_ok, trt_detail = _tensorrt_status(report)
-    extra: dict[str, object] = {"tensorrt_ep": {"ok": trt_ok, "detail": trt_detail}}
-    if not trt_ok:
+    providers = _provider_status(report)
+    ready = all(bool(item["ok"]) for item in providers.values())
+    extra: dict[str, object] = dict(providers)
+    if not ready:
         extra["ok"] = False
     _print_suite(
         report,
         lines,
         as_json,
-        done="shared suite: ready" if trt_ok else "shared suite: incomplete",
+        done="shared suite: ready" if ready else "shared suite: incomplete",
         extra=extra,
     )
-    if not trt_ok:
-        print(trt_detail, file=sys.stderr)
-    return 0 if report.ok and trt_ok else 1
+    if not ready:
+        for item in providers.values():
+            if not item["ok"]:
+                print(str(item["detail"]), file=sys.stderr)
+    return 0 if report.ok and ready else 1
 
 
 def _install_suite() -> int:

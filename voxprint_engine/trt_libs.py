@@ -3,7 +3,7 @@
 ONNX Runtime 1.31's TensorRT execution provider opens ``nvinfer_10``. The
 unpinned ``tensorrt-cu13`` package currently installs TensorRT 11
 (``nvinfer_11``), so the provider never loads. The GPU installer pins
-``tensorrt_cu13_libs`` 10.16. This module does not import ONNX Runtime.
+``tensorrt-cu13-libs`` 10.14.1.48. This module does not import ONNX Runtime.
 """
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ import sys
 import sysconfig
 from pathlib import Path
 
-TRT_LIBS_VERSION = "10.16.1.11"
-TRT_LIBS_PACKAGE = "tensorrt_cu13_libs"
+TRT_LIBS_VERSION = "10.14.1.48"
+TRT_LIBS_PACKAGE = "tensorrt-cu13-libs"
 _LIB_NAMES = ("nvinfer_10.dll", "libnvinfer.so.10")
 _EXTRA_LIBS = ("libnvinfer_plugin.so.10", "libnvonnxparser.so.10", "nvinfer_plugin_10.dll", "nvonnxparser_10.dll")
 

@@ -3,11 +3,13 @@
 #
 # The NVIDIA driver must be from the 600 series or newer. The wheels are CUDA 13.
 #   python -m pip install torch --index-url https://download.pytorch.org/whl/cu130
-#   python -m pip install spandrel onnx 'onnxruntime-gpu==1.31.0'
-#   python -m pip uninstall -y tensorrt tensorrt-cu13
-#   python -m pip install --no-deps 'tensorrt_cu13_libs==10.16.1.11'
+#   python -m pip uninstall -y onnxruntime onnxruntime-gpu tensorrt tensorrt-cu13 tensorrt-cu13-bindings tensorrt-cu13-libs
+#   python -m pip install --extra-index-url https://pypi.nvidia.com spandrel onnx 'onnxruntime-gpu==1.31.0' 'tensorrt-cu13-libs==10.14.1.48'
+#   python -m pip uninstall -y onnxruntime
+#   python -m pip install --no-deps 'tensorrt-cu13==10.14.1.48'
 # --install-suite installs those packages and converts the default model.
-# ORT 1.31 loads nvinfer_10. tensorrt-cu13 resolves to TensorRT 11, which does not.
+# ORT 1.31 loads nvinfer_10. The CPU onnxruntime wheel must not stay installed.
+# An unpinned tensorrt-cu13 resolves to TensorRT 11, which does not.
 #
 # The cu126 index and the R560 driver branch are not used.
 # Do not install spandrel_extra_arches. The converter never imports it.

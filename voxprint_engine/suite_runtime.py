@@ -35,7 +35,9 @@ PYTHON_VERSION = "3.14"
 GPU_VERSION = "cu130"
 TORCH_INDEX = "https://download.pytorch.org/whl/cu130"
 ORT_GPU_SPEC = "onnxruntime-gpu==1.31.0"
-TRT_LIBS_SPEC = "tensorrt_cu13_libs==10.16.1.11"
+TRT_LIBS_SPEC = "tensorrt-cu13-libs==10.14.1.48"
+TRT_META_SPEC = "tensorrt-cu13==10.14.1.48"
+NVIDIA_INDEX = "https://pypi.nvidia.com"
 SPANDREL_SPEC = "spandrel>=0.4,<0.5"
 ONNX_SPEC = "onnx>=1.16,<2"
 
@@ -56,14 +58,28 @@ import importlib.metadata as meta
 import importlib.util as util
 import sys
 missing = [name for name in ("torch", "onnxruntime", "spandrel", "onnx") if util.find_spec(name) is None]
+names = {
+    dist.metadata["Name"].lower()
+    for dist in meta.distributions()
+    if dist.metadata and dist.metadata.get("Name")
+}
+if "onnxruntime" in names:
+    missing.append("cpu-onnxruntime")
 try:
-    version = meta.version("tensorrt_cu13_libs")
+    libs = meta.version("tensorrt-cu13-libs")
 except meta.PackageNotFoundError:
-    missing.append("tensorrt_cu13_libs")
+    missing.append("tensorrt-cu13-libs")
 else:
-    if not version.startswith("10.16."):
-        missing.append("tensorrt_cu13_libs")
-for banned in ("tensorrt", "tensorrt-cu13"):
+    if not str(libs).startswith("10.14.1.48"):
+        missing.append("tensorrt-cu13-libs")
+try:
+    meta_version = meta.version("tensorrt-cu13")
+except meta.PackageNotFoundError:
+    missing.append("tensorrt-cu13")
+else:
+    if not str(meta_version).startswith("10.14.1.48"):
+        missing.append("tensorrt-cu13")
+for banned in ("tensorrt", "tensorrt-cu13-bindings"):
     try:
         meta.version(banned)
     except meta.PackageNotFoundError:
@@ -274,36 +290,53 @@ def release_runtime(
 
 
 def install_gpu_wheels(python: str, progress: Progress | None = None) -> None:
-    """Install torch for CUDA 13, ONNX Runtime GPU 1.31, TensorRT 10.16, spandrel, and onnx.
+    """Install torch for CUDA 13, ONNX Runtime GPU 1.31, and TensorRT 10.14.
 
-    ORT 1.31 loads ``nvinfer_10``. ``tensorrt-cu13`` resolves to TensorRT 11, so
-    that package is removed and ``tensorrt_cu13_libs`` 10.16 is installed with
-    ``--no-deps`` (there is no cp314 build of the TensorRT 10 Python bindings).
+    The CPU ``onnxruntime`` wheel shadows ``onnxruntime-gpu`` and leaves only
+    the CPU and Azure providers. Unpinned ``tensorrt-cu13`` is TensorRT 11
+    (``nvinfer_11``). ONNX Runtime 1.31 loads ``nvinfer_10`` from
+    ``tensorrt-cu13-libs`` 10.14.1.48. Bindings for that TensorRT have no
+    cp314 wheel, so the meta package is recorded with ``--no-deps``.
     """
     if getattr(sys, "frozen", False):
         raise SuiteInstallError("install the app directory, then run voxprint-enlarge --install-gpu")
     if not python:
         raise SuiteInstallError("a Python executable is required")
     _pip(python, ["install", "torch", "--index-url", TORCH_INDEX], "Installing torch for CUDA 13", progress, required=True)
-    _pip(python, ["uninstall", "-y", "onnxruntime"], "Removing the CPU ONNX Runtime wheel", progress, required=False)
     _pip(
         python,
-        ["uninstall", "-y", "tensorrt", "tensorrt-cu13"],
-        "Removing TensorRT 11",
+        [
+            "uninstall",
+            "-y",
+            "onnxruntime",
+            "onnxruntime-gpu",
+            "tensorrt",
+            "tensorrt-cu13",
+            "tensorrt-cu13-bindings",
+            "tensorrt-cu13-libs",
+        ],
+        "Removing the CPU ONNX Runtime wheel and TensorRT 11",
         progress,
         required=False,
     )
     _pip(
         python,
-        ["install", ORT_GPU_SPEC, SPANDREL_SPEC, ONNX_SPEC],
-        "Installing ONNX Runtime GPU and the ONNX converter",
+        ["install", "--extra-index-url", NVIDIA_INDEX, ORT_GPU_SPEC, TRT_LIBS_SPEC, SPANDREL_SPEC, ONNX_SPEC],
+        "Installing ONNX Runtime GPU 1.31 and TensorRT 10.14",
         progress,
         required=True,
     )
     _pip(
         python,
-        ["install", "--no-deps", TRT_LIBS_SPEC],
-        "Installing TensorRT 10.16 libraries",
+        ["uninstall", "-y", "onnxruntime"],
+        "Removing the CPU ONNX Runtime wheel",
+        progress,
+        required=False,
+    )
+    _pip(
+        python,
+        ["install", "--no-deps", TRT_META_SPEC],
+        "Recording the TensorRT 10.14 package without its bindings",
         progress,
         required=True,
     )
@@ -552,10 +585,12 @@ def _remove_gpu(root: Path) -> None:
                 "uninstall",
                 "-y",
                 "torch",
+                "onnxruntime",
                 "onnxruntime-gpu",
                 "tensorrt-cu13",
                 "tensorrt",
-                "tensorrt_cu13_libs",
+                "tensorrt-cu13-bindings",
+                "tensorrt-cu13-libs",
                 "spandrel",
                 "onnx",
             ],
