@@ -30,7 +30,6 @@ nav:
   - GPU test: TESTING-GPU.md
   - API:
       - Engine: api/engine.md
-      - Splash: api/splash.md
       - App: api/app.md
 exclude_docs: |
   DECISIONS.md

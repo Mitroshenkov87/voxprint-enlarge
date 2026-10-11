@@ -1,25 +1,22 @@
 # Shared inference engine
 
 `voxprint_engine` is the image upscaler Voxprint AI Enlarge owns and Voxprint AI
-Clarity imports. The installable distribution is `voxprint-engine` 1.3.0.
-Importing the package or `voxprint_engine.api` does not import Qt.
-`voxprint_engine.ui.splash` imports PySide6 when an app imports that module.
-`API` is 1. The package version and `API` are different
+Clarity imports. The installable distribution is `voxprint-engine` 1.2.1. It
+does not import Qt. `API` is 1. The package version and `API` are different
 numbers: the version marks this release, and `API` stays 1 until a breaking
 change. 1.1.0 adds `ensure_onnx`, `iter_tile_frames`, and the optional
 manifest fields `onnx_url`, `onnx_sha256`, and `execution`. 1.2.0 adds
 `in_channels` (default 3) so a 4-channel network such as DRUNet exports and
-runs with RGB plus a noise-level map. 1.3.0 adds `voxprint_engine.shared_manifest`,
-the schema 1 file Canvas and Clarity use for the shared runtime, and
-`voxprint_engine.ui.splash`.
+runs with RGB plus a noise-level map. 1.2.1 drops the CPU `onnxruntime` wheel.
+The `gpu` extra pins `onnxruntime-gpu==1.31.0` and `tensorrt-cu13-libs==10.14.1.48`.
 
-The 1.3.0 pin is:
+The 1.2.1 pin is:
 
 ```text
-voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.3.0
+voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.2.1
 ```
 
-The 1.2.0 pin stays valid for the surface before `shared_manifest`:
+The 1.2.0 pin stays valid for the surface before that dependency change:
 
 ```text
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.2.0
@@ -67,11 +64,6 @@ names below are that addition.
 | `gpu_job` | Hold `%TEMP%/voxprint-gpu.lock` for one job. `owner` defaults to `enlarge` |
 | `decide` | Suite thermal pause rule |
 | `shared_dir`, `read_manifest` | `%LOCALAPPDATA%\Voxprint\shared` or `~/.local/share/voxprint/shared`, and its refcounted manifest |
-| `load`, `save`, `update` | Read the schema 1 manifest (migrating an old file), write it atomically, or hold `manifest.lock` across a read-modify-write |
-| `find_reusable`, `reserve` | Reuse a component when id, version, and sha256 match. Otherwise record a side-by-side path. A component another app refs is not overwritten |
-| `add_ref`, `remove_ref` | Add an app id, or remove it. `remove_ref` returns true when `refs` is now empty and the payload may be deleted |
-| `lock_hash` | SHA-256 of a pin string (`python==3.14`, `torch@cu130`, `onnxruntime-gpu==1.31.0`, `tensorrt-cu13-libs==10.14.1.48`) |
-| `SharedManifest`, `SharedManifestError` | The document, and a lock, schema, or shape failure |
 | `ensure_runtime`, `release_runtime` | Install or repair Python 3.14, torch cu130, ONNX Runtime GPU, TensorRT 10, and the default model; drop one app and delete a payload only when `refs` is empty |
 | `ComponentStatus`, `RuntimeReport`, `SuiteInstallError` | One component, the check result (`as_dict` is the `--selftest --json` object), and a failed install |
 
@@ -90,51 +82,7 @@ from voxprint_engine.api import (
 Clarity should keep using the worker for a long job. `upscale_file` is the
 same function the worker calls, for a benchmark or a one-off frame. `tests/test_api.py`
 fails when a name in this table disappears. Clarity's video calls are on this
-list and in the Video API below. `API` stays 1. `SplashScreen` is not in this
-table: importing `voxprint_engine.api` does not import Qt.
-
-## Splash
-
-```python
-from pathlib import Path
-
-from voxprint_engine.ui.splash import SplashScreen
-
-splash = SplashScreen(
-    "Voxprint AI Enlarge",
-    Path("assets/splash.jpg"),
-    "#ff6b8a",
-    Path("BUILD.json"),
-)
-with splash:
-    splash.set_stage("Loading UI")
-    splash.set_progress(0.2)
-    splash.finish(window)
-```
-
-`SplashScreen(app_id, art_path, identity_color, build_json_path=None)` reads
-the app name from `app_id`. The version line comes from `BUILD.json`:
-`X.Y.Z RC N build B "Codename"` while `version` matches `X.Y.Z-rc.N`, and the
-same line without `RC N` for a final version. `build` in that file wins, then
-a sibling `build_info.json`, then `VOXPRINT_BUILD`, then
-`GITHUB_RUN_NUMBER` plus `offset`.
-
-The window is 960 by 540, borderless, and centred. Corners are rounded to
-12 px, with a drop shadow. The artwork is scaled to cover. When the screen
-device pixel ratio is at least 2 and `<stem>@2x<suffix>` exists beside the 1x
-file, that file is used.
-
-The left third is inset 48 px. The name is semibold 40 px, off-white. The
-version line is 16 px at 70% off-white. The stage line is 14 px. The bar sits
-at the bottom of that column. Its width is the left third minus the padding,
-and it is 4 px tall with rounded ends. The track is 20% off-white. The fill
-is `identity_color`. The bar shimmers until `set_progress` is given a fraction
-from 0 to 1. `None` returns it to the shimmer.
-
-`show` starts the clock. `finish(main_window)` shows that window, waits until
-600 ms have passed since `show`, fades the splash out over 200 ms, and closes
-it. Time already spent counts toward the 600 ms. The context manager calls
-`show` on enter and closes the splash on exit when `finish` has not run.
+list and in the Video API below. `API` stays 1.
 
 ## What Run does
 
@@ -270,7 +218,9 @@ Unregister returns the other programs that are still true, so an uninstaller
 can leave the folder alone while someone else uses it.
 
 The suite runtime is a second refcount, in `shared/manifest.json` under
-`shared_dir()`. Schema 1 has exactly `schema` and `components`. Unknown keys
+`shared_dir()`. `ensure_runtime` reads and writes that file through
+`enlarge._vendor.voxprint_common.manifest`. That module is not part of this
+package. Schema 1 has exactly `schema` and `components`. Unknown keys
 are kept. Each component is `kind` (`runtime`, `wheels`, `model`, or `tool`),
 `version`, `path`, `sha256`, `installed_at` (ISO-8601 with a numeric offset),
 and `refs` (app ids such as `enlarge` and `canvas`). Ids look like

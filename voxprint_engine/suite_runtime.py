@@ -22,11 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, assert_never
 
-from voxprint_engine.hardware import ci_lanczos
-from voxprint_engine.onnx_export import OnnxExportError, cached_onnx, ensure_onnx
-from voxprint_engine.paths import models_dir, shared_dir, voxprint_home, voxprint_home_source, voxprint_home_warning
-from voxprint_engine.registry import DEFAULT_MODEL_ID, ModelManifest, load_builtin
-from voxprint_engine.shared_manifest import (
+from enlarge._vendor.voxprint_common.manifest import (
     ORT_LOCK,
     PYTHON_LOCK,
     TRT_LOCK,
@@ -40,6 +36,10 @@ from voxprint_engine.shared_manifest import (
     reserve,
     update,
 )
+from voxprint_engine.hardware import ci_lanczos
+from voxprint_engine.onnx_export import OnnxExportError, cached_onnx, ensure_onnx
+from voxprint_engine.paths import models_dir, shared_dir, voxprint_home, voxprint_home_source, voxprint_home_warning
+from voxprint_engine.registry import DEFAULT_MODEL_ID, ModelManifest, load_builtin
 from voxprint_engine.store import StoreError, register, unregister, weight_report
 
 PYTHON_VERSION = "3.14"

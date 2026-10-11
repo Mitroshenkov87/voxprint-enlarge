@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
-from voxprint_engine.shared_manifest import (
+from enlarge._vendor.voxprint_common.manifest import (
     SharedManifestError,
     _pid_alive,
     add_ref,

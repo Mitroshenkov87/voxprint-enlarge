@@ -309,7 +309,7 @@ def _gui(_argv: list[str]) -> int:
 
     from enlarge.appinfo import resource_dir
     from enlarge.ui.splash import BAR
-    from voxprint_engine.ui.splash import SplashScreen
+    from enlarge._vendor.voxprint_common.splash import SplashScreen
 
     running = QApplication.instance()
     app = running if isinstance(running, QApplication) else QApplication(sys.argv)

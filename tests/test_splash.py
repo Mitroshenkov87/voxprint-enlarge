@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image
 from PySide6.QtWidgets import QApplication, QWidget
 
-from voxprint_engine.ui.splash import (
+from enlarge._vendor.voxprint_common.splash import (
     FADE_MS,
     MIN_VISIBLE_S,
     SplashScreen,
@@ -150,12 +150,12 @@ import os, sys
 sys.path.insert(0, os.environ["VOXPRINT_ROOT"])
 import voxprint_engine
 import voxprint_engine.api
-import voxprint_engine.ui
 from main import main
 if main(["--version"]) != 0:
     raise SystemExit("version failed")
-if "PySide6" in sys.modules:
-    raise SystemExit("PySide6 was imported")
+loaded = [name for name in sys.modules if name.startswith("PySide6") or name.startswith("voxprint_engine.ui") or name == "voxprint_engine.shared_manifest"]
+if loaded:
+    raise SystemExit("suite modules were imported: " + ", ".join(loaded))
 """
     env = os.environ.copy()
     env["VOXPRINT_ROOT"] = str(ROOT)
