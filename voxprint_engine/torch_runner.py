@@ -8,15 +8,30 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
-try:
-    import torch
-    from spandrel import ModelLoader
-except ImportError:  # torch and spandrel are optional; the ONNX path does not need them
-    torch = None
-    ModelLoader = None
+# Loaded on first use. Importing torch at module level slows every worker
+# start, and CI installs torch for the export test.
+torch: Any = None
+ModelLoader: Any = None
+_loaded = False
+
+
+def _load_torch() -> None:
+    """Import torch and spandrel once. A missing package stays None."""
+    global torch, ModelLoader, _loaded
+    if _loaded:
+        return
+    _loaded = True
+    try:
+        import torch as torch_mod
+        from spandrel import ModelLoader as loader_cls
+    except ImportError:
+        return
+    torch = torch_mod
+    ModelLoader = loader_cls
 
 
 class TorchFallbackError(RuntimeError):
@@ -25,6 +40,7 @@ class TorchFallbackError(RuntimeError):
 
 def torch_available() -> bool:
     """True when PyTorch imports in this process."""
+    _load_torch()
     return torch is not None and ModelLoader is not None
 
 
@@ -33,6 +49,7 @@ class TorchUpscaler:
 
     def __init__(self, weight: Path, device: str) -> None:
         """Load a spandrel weight onto this device."""
+        _load_torch()
         if torch is None or ModelLoader is None:
             raise TorchFallbackError("PyTorch fallback needs torch and spandrel (the MIT package, not spandrel_extra_arches)")
         if "spandrel_extra_arches" in sys.modules:
@@ -53,6 +70,7 @@ class TorchUpscaler:
 
     def __call__(self, tile: np.ndarray) -> np.ndarray:
         """Run the network on one NCHW tensor and return the image."""
+        _load_torch()
         if torch is None:
             raise TorchFallbackError("torch is not installed")
         array = np.transpose(tile, (2, 0, 1))[None, ...]

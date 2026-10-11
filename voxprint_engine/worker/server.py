@@ -10,9 +10,11 @@ from typing import Any, TextIO
 from voxprint_engine.formats import DEFAULT_FORMAT
 from voxprint_engine.gpu_lock import GpuLockTimeout, gpu_job
 from voxprint_engine.infer import JobOutcome, preflight, upscale_file, uses_lanczos
+from voxprint_engine.onnx_export import OnnxExportError, ensure_onnx
+from voxprint_engine.paths import models_dir
 from voxprint_engine.registry import combined_catalog
 from voxprint_engine.registry.schema import ModelManifest
-from voxprint_engine.store import StoreError, ensure_weight, register_quietly
+from voxprint_engine.store import StoreError, register_quietly
 from voxprint_engine.worker.lanczos import ImageJobError
 from voxprint_engine.worker.restore import handle_restore
 
@@ -90,13 +92,18 @@ def _job(message: dict[str, Any]) -> dict[str, Any]:
     # Reject a bad image before a download, and download before the GPU lock.
     preflight(src, dst, scale, image_format, quality, double, lossless)
     weight: Path | None = None
+    network: Path | None = None
     if not uses_lanczos(model, device, engine):
         register_quietly()
         progress(0.05, "checking the model file")
         try:
-            weight = ensure_weight(model, on_progress=progress)
-        except StoreError as exc:
+            network = ensure_onnx(model, on_progress=progress)
+        except (StoreError, OnnxExportError) as exc:
             raise ImageJobError(str(exc)) from exc
+        if model.filename and "/" not in model.filename and "\\" not in model.filename:
+            candidate = models_dir() / model.filename
+            if candidate.is_file():
+                weight = candidate
     with gpu_job(f"enlarge:{model.id}", eta_s=600.0, timeout=30.0):
         outcome = upscale_file(
             src,
@@ -112,6 +119,7 @@ def _job(message: dict[str, Any]) -> dict[str, Any]:
             engine=engine,
             on_progress=progress,
             weight=weight,
+            onnx_path=network,
             lossless=lossless,
         )
     return _result(job_id, model.id, dst, outcome)

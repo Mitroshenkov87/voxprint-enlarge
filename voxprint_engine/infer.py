@@ -22,6 +22,7 @@ from PIL import Image
 
 from voxprint_engine.formats import open_rgb, require_output_format, save_image
 from voxprint_engine.hardware import ci_lanczos
+from voxprint_engine.onnx_export import OnnxExportError, cached_onnx, ensure_onnx
 from voxprint_engine.providers import TRT, choices_for, cpu_ep_requested, cuda_fallback_choices, gpu_provider_names
 from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.session import (
@@ -32,7 +33,7 @@ from voxprint_engine.session import (
     run_tile,
     trt_build_message,
 )
-from voxprint_engine.store import StoreError, ensure_weight
+from voxprint_engine.store import StoreError
 from voxprint_engine.tile import upscale_tiled
 from voxprint_engine.torch_runner import TorchFallbackError, TorchUpscaler, torch_available
 from voxprint_engine.vram import choose_tile, halve_tile, is_memory_error, measure, note_spill, overlap_for
@@ -317,28 +318,29 @@ def upscale_file(
             scale=factor,
         )
 
-    network = onnx_path
-    if network is None:
-        if weight is None:
-            if on_progress is not None:
-                on_progress(0.1, "checking the model file")
-            try:
-                weight = ensure_weight(model, models_root, on_progress)
-            except StoreError as exc:
-                raise ImageJobError(str(exc)) from exc
+    network = onnx_path or cached_onnx(model, models_root)
+    if network is None and weight is not None:
         sibling = weight.with_suffix(".onnx")
         if sibling.is_file():
             network = sibling
+    if network is None:
+        if on_progress is not None:
+            on_progress(0.1, "checking the model file")
+        try:
+            network = ensure_onnx(model, models_root, on_progress, weight=weight)
+        except (StoreError, OnnxExportError) as exc:
+            raise ImageJobError(str(exc)) from exc
     if on_progress is not None:
         on_progress(0.35, f"tile {tile}, overlap {overlap_for(tile)}")
 
     image = _load(src)
     gpu, driver, trt = _gpu_label()
     installed = available_providers()
-    attempts = [choices_for(installed, device, gpu=gpu, driver=driver, trt=trt)]
-    fallback = cuda_fallback_choices(installed, device, gpu=gpu, driver=driver, trt=trt)
-    if fallback:
-        attempts.append(fallback)
+    attempts = [choices_for(installed, device, gpu=gpu, driver=driver, trt=trt, execution=model.execution)]
+    if model.execution.strip().lower() != "cuda":
+        fallback = cuda_fallback_choices(installed, device, gpu=gpu, driver=driver, trt=trt)
+        if fallback:
+            attempts.append(fallback)
     native = model.scale if model.scale > 1 else factor
     ran: np.ndarray | None = None
     used = ""

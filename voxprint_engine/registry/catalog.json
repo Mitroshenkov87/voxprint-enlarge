@@ -34,7 +34,8 @@
       "vram_mb": 5000,
       "tile": 128,
       "filename": "4xNomos2_hq_dat2.pth",
-      "summary": "Highest-quality 4x photo model in this set. Heavier than the fast default, for clean input.",
+      "summary": "Highest-quality 4x photo model in this set. Heavier than the fast default, for clean input. Runs on CUDA because TensorRT cannot execute this network.",
+      "execution": "cuda",
       "selectable": true
     },
     {

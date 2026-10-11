@@ -13,6 +13,7 @@ from voxprint_engine.registry.schema import ModelManifest
 
 ROLES = ("upscale", "restore", "face", "generative")
 SCALES = (1, 2, 4)
+EXECUTIONS = ("auto", "cuda", "tensorrt")
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,80}$")
 _ARCH = re.compile(r"^[a-z0-9][a-z0-9._+-]{0,40}$")
 _SHA = re.compile(r"^[a-f0-9]{64}$")
@@ -190,6 +191,40 @@ def validate_manifest(data: Mapping[str, Any], *, release: bool) -> ModelManifes
         errors.append("download_url is longer than 300 characters")
     if download and not sha:
         errors.append("sha256 is required when download_url is set")
+    onnx_url = data.get("onnx_url", "")
+    if onnx_url is None:
+        onnx_url = ""
+    if not isinstance(onnx_url, str):
+        errors.append("onnx_url must be a string")
+        onnx_url = ""
+    onnx_url = onnx_url.strip()
+    if onnx_url and not onnx_url.startswith("https://"):
+        errors.append("onnx_url must be an https URL")
+    if len(onnx_url) > 300:
+        errors.append("onnx_url is longer than 300 characters")
+    onnx_sha = data.get("onnx_sha256", "")
+    if onnx_sha is None:
+        onnx_sha = ""
+    if not isinstance(onnx_sha, str):
+        errors.append("onnx_sha256 must be a string")
+        onnx_sha = ""
+    onnx_sha = onnx_sha.strip().lower()
+    if onnx_sha and not _SHA.match(onnx_sha):
+        errors.append("onnx_sha256 must be 64 lowercase hex characters")
+    if onnx_url and not onnx_sha:
+        errors.append("onnx_sha256 is required when onnx_url is set")
+    if onnx_sha and not onnx_url:
+        errors.append("onnx_url is required when onnx_sha256 is set")
+    execution = data.get("execution", "auto")
+    if execution is None or execution == "":
+        execution = "auto"
+    if not isinstance(execution, str):
+        errors.append("execution must be auto, cuda, or tensorrt")
+        execution = "auto"
+    else:
+        execution = execution.strip().lower()
+        if execution not in EXECUTIONS:
+            errors.append("execution must be auto, cuda, or tensorrt")
     selectable = data.get("selectable", True)
     if not isinstance(selectable, bool):
         errors.append("selectable must be true or false")
@@ -213,4 +248,7 @@ def validate_manifest(data: Mapping[str, Any], *, release: bool) -> ModelManifes
         summary=summary,
         selectable=selectable,
         download_url=download,
+        onnx_url=onnx_url,
+        onnx_sha256=onnx_sha,
+        execution=execution,
     )

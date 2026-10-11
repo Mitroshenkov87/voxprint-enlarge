@@ -12,6 +12,6 @@ or the worker JSON lines bumps it.
 from __future__ import annotations
 
 API = 1
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = ["API", "__version__"]

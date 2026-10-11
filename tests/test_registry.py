@@ -128,6 +128,37 @@ def test_custom_folder_skips_a_blocked_manifest(tmp_path: Path) -> None:
     assert DEFAULT_MODEL_ID in {model.id for model in catalog.models}
 
 
+def test_onnx_source_is_optional_and_dat2_uses_cuda() -> None:
+    digest = "b" * 64
+    model = validate_manifest(
+        _manifest(
+            download_url="https://example.com/a.pth",
+            sha256="a" * 64,
+            onnx_url="https://example.com/a.onnx",
+            onnx_sha256=digest,
+            execution="cuda",
+        ),
+        release=True,
+    )
+    assert model.execution == "cuda"
+    assert model.onnx_url == "https://example.com/a.onnx"
+    assert model.onnx_sha256 == digest
+    plain = validate_manifest(_manifest(), release=True)
+    assert plain.execution == "auto" and plain.onnx_url == "" and plain.onnx_sha256 == ""
+    with pytest.raises(ManifestError, match="onnx_sha256"):
+        validate_manifest(_manifest(onnx_url="https://example.com/a.onnx"), release=True)
+    with pytest.raises(ManifestError, match="onnx_url"):
+        validate_manifest(_manifest(onnx_sha256=digest), release=True)
+    with pytest.raises(ManifestError, match="execution"):
+        validate_manifest(_manifest(execution="directml"), release=True)
+    catalog = load_builtin(release=True)
+    hq = catalog.get("4x-nomos2-hq-dat2")
+    fast = catalog.get(DEFAULT_MODEL_ID)
+    assert hq is not None and hq.execution == "cuda"
+    assert "CUDA" in hq.summary
+    assert fast is not None and fast.execution == "auto" and fast.onnx_url == ""
+
+
 def test_duplicate_custom_id_does_not_replace_builtin(tmp_path: Path) -> None:
     stolen = _manifest(id=DEFAULT_MODEL_ID, licence="MIT", author="Not the author")
     (tmp_path / "override.json").write_text(json.dumps(stolen), encoding="utf-8")

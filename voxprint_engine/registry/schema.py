@@ -12,6 +12,8 @@ class ModelManifest:
     until that file is pinned; a non-empty value must already be 64 hex chars.
     ``vram_mb`` and ``tile`` are hints for the tiler, not measurements.
     ``tile`` 0 means the worker may pick a tile from the VRAM budget.
+    ``onnx_url`` and ``onnx_sha256`` name a prebuilt ONNX file when a mirror
+    publishes one. ``execution`` is ``auto``, ``cuda``, or ``tensorrt``.
     """
 
     id: str
@@ -30,6 +32,9 @@ class ModelManifest:
     summary: str
     selectable: bool
     download_url: str = ""
+    onnx_url: str = ""
+    onnx_sha256: str = ""
+    execution: str = "auto"
 
     def requires_credit(self) -> bool:
         """CC-BY (any version) needs a line on the credits screen. NC never reaches here."""

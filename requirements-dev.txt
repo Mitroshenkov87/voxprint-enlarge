@@ -1,5 +1,7 @@
 pytest>=8
 onnx>=1.16,<2
+# CPU torch so the tiny ONNX export test runs in CI. The GPU install uses the cu130 index.
+torch>=2.14,<2.15
 ruff>=0.8
 mypy>=1.13
 bandit>=1.8

@@ -14,8 +14,9 @@ from pathlib import Path
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
 from voxprint_engine.gpu_lock import gpu_job
 from voxprint_engine.infer import preflight, upscale_file, uses_lanczos
+from voxprint_engine.onnx_export import OnnxExportError, ensure_onnx
 from voxprint_engine.registry import load_builtin
-from voxprint_engine.store import StoreError, ensure_weight
+from voxprint_engine.store import StoreError
 from voxprint_engine.worker.lanczos import ImageJobError
 
 
@@ -37,8 +38,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         preflight(args.image, dest, args.scale, DEFAULT_FORMAT, DEFAULT_QUALITY, False)
         weight = None
+        network = None
         if not uses_lanczos(model, args.device, "auto"):
-            weight = ensure_weight(model)
+            network = ensure_onnx(model)
         started = time.perf_counter()
         with gpu_job(f"enlarge:bench:{model.id}", eta_s=600.0, timeout=30.0):
             outcome = upscale_file(
@@ -54,8 +56,9 @@ def main(argv: list[str] | None = None) -> int:
                 batch=1,
                 engine="auto",
                 weight=weight,
+                onnx_path=network,
             )
-    except (ImageJobError, StoreError, TimeoutError, OSError) as exc:
+    except (ImageJobError, StoreError, OnnxExportError, TimeoutError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     elapsed_ms = (time.perf_counter() - started) * 1000.0
