@@ -332,7 +332,7 @@ def _gui(_argv: list[str]) -> int:
     app.setApplicationName(APP_DISPLAY_NAME)
     app.setOrganizationName("Voxprint")
     root = resource_dir()
-    splash = Splash(root / "assets" / "splash.jpg", BAR, load_build(root / "BUILD.json", app="enlarge"))
+    splash = Splash(root / "assets" / "splash.jpg", BAR, load_build(root, app="enlarge"))
     splash.set_stage("Loading UI")
     from enlarge.ui.window import MainWindow
 

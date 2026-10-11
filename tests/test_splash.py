@@ -11,7 +11,7 @@ from PIL import Image
 from PySide6.QtWidgets import QApplication
 
 from voxprint_common.buildinfo import label, parse
-from voxprint_common.ui.splash import FADE_MS, HEIGHT, MIN_VISIBLE_S, WIDTH, Splash
+from voxprint_common.ui.splash import FADE_MS, HEIGHT, MIN_VISIBLE_S, WIDTH, Splash, SplashEvent
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -38,6 +38,23 @@ def test_label_reads_an_rc_build_and_a_final_build() -> None:
     assert rc == '0.2.0 RC 6 build 12 "Emunah"'
     final = label(parse({"version": "1.0.0", "codename": "Emunah", "build": 12}, app="enlarge", env={}))
     assert final == '1.0.0 build 12 "Emunah"'
+
+
+def test_a_missing_build_is_dev_not_zero() -> None:
+    text = label(parse({"version": "0.2.0-rc.6", "codename": "Emunah"}, app="enlarge", env={}))
+    assert text == '0.2.0 RC 6 dev "Emunah"'
+    assert "build 0" not in text
+
+
+def test_click_uses_the_public_hook(tmp_path: Path) -> None:
+    _app()
+    seen: list[SplashEvent] = []
+    art = tmp_path / "splash.jpg"
+    _art(art)
+    splash = Splash(art, "#ff6b8a", _info(), on_click=seen.append)
+    splash.mouse_press(SplashEvent(3, 4, "left"))
+    assert seen == [SplashEvent(3, 4, "left")]
+    splash.finish()
 
 
 def test_layout_is_the_suite_splash() -> None:

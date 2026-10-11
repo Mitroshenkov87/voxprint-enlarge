@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata as importlib_metadata
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -258,8 +259,8 @@ def _reserve(
     if kind not in _KIND_OK:
         raise _ManifestTxError(f"component kind {kind!r} is not allowed")
     _check_ref_app(app)
-    if not path or path.startswith(("/", "\\")) or ".." in Path(path).parts:
-        raise _ManifestTxError("component path must stay inside the shared directory")
+    if not _path_allowed(path, kind):
+        raise _ManifestTxError("component path must stay inside the shared directory or the shared models directory")
     found = _find_reusable(manifest, component_id, version, sha256)
     if found is not None:
         _add_ref(manifest, component_id, app)
@@ -278,8 +279,8 @@ def _reserve(
             raise _ManifestTxError(f"{component_id} is in use under another app")
         occupied = str(current.get("path") or "")
         side_path = path if path and path != occupied else _side_path(occupied or path, sha256)
-        if not side_path or ".." in Path(side_path).parts:
-            raise _ManifestTxError("component path must stay inside the shared directory")
+        if not _path_allowed(side_path, kind):
+            raise _ManifestTxError("component path must stay inside the shared directory or the shared models directory")
         if app in _ref_names(current.get("refs")):
             _drop_ref(manifest, component_id, app)
         record = _stamp(kind, version, side_path, sha256, installed_at, [app], existing if isinstance(existing, dict) else None)
@@ -401,10 +402,49 @@ class _Pin:
     unit: ComponentId
 
 
+def _model_roots() -> tuple[Path, ...]:
+    """Directories a model component path may use, matching ``voxprint_common`` 0.1.1."""
+    roots = [models_dir(), shared_dir()]
+    cache = os.environ.get("VOXPRINT_MODEL_CACHE", "").strip()
+    if cache:
+        folder = Path(os.path.expandvars(os.path.expanduser(cache)))
+        if folder.is_absolute():
+            roots.append(folder)
+    return tuple(roots)
+
+
+def _inside_model_root(candidate: Path) -> bool:
+    cand = os.path.normcase(str(candidate.absolute()))
+    for root in _model_roots():
+        base = os.path.normcase(str(root.absolute()))
+        if cand == base or cand.startswith(base + os.sep):
+            return True
+    return False
+
+
+def _path_allowed(path: str, kind: str) -> bool:
+    """Relative paths stay in the shared tree. A model may be absolute under the models root."""
+    if not path or ".." in Path(path).parts:
+        return False
+    candidate = Path(path)
+    if candidate.is_absolute() or path.startswith(("/", "\\")):
+        return kind == "model" and _inside_model_root(candidate)
+    return True
+
+
+def _model_payload_path() -> str:
+    """Absolute path of the default weight under the shared models directory."""
+    model = _default_model()
+    filename = model.filename.strip()
+    if filename and "/" not in filename and "\\" not in filename:
+        return str((models_dir() / filename).absolute())
+    return str(models_dir().absolute())
+
+
 def _model_pin() -> _Pin:
     digest = _default_model().sha256.lower()
     prefix = digest[:12]
-    return _Pin(f"model-{prefix}", "model", DEFAULT_MODEL_ID, f"model/{prefix}", digest, "model")
+    return _Pin(f"model-{prefix}", "model", DEFAULT_MODEL_ID, _model_payload_path(), digest, "model")
 
 
 def default_model_component_id() -> str:

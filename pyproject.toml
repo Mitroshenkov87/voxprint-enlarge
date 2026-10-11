@@ -13,7 +13,7 @@ dependencies = [
     "Pillow>=12.3.0,<13",
     "numpy>=2,<3",
     "imagecodecs==2026.10.10",
-    "voxprint-common @ git+https://github.com/Mitroshenkov87/voxprint-common.git@v0.1.0",
+    "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl",
 ]
 
 # The CPU distribution named onnxruntime installs the same import as

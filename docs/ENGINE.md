@@ -11,7 +11,7 @@ exports and runs with RGB plus a noise-level map. 1.2.1 drops the CPU
 `onnxruntime` wheel. The `gpu` extra pins `onnxruntime-gpu==1.31.0` and
 `tensorrt-cu13-libs==10.14.1.48`. 1.3.0 added `app_id` on the runtime installer.
 1.4.0 removes that installer and the other suite helpers from this package.
-They live in `voxprint-common` 0.1 (`voxprint_common`). `API` stays 1 because
+They live in `voxprint-common` 0.1.1 Menuchah (`voxprint_common`). `API` stays 1 because
 `voxprint-common` 0.1 does not require an engine API bump and the inference
 names below are unchanged.
 
@@ -41,11 +41,13 @@ The 1.4.0 pin is:
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.4.0
 ```
 
-Install `voxprint-common` from the `v0.1.0` tag beside it:
+Install `voxprint-common` 0.1.1 (Menuchah) from the release wheel beside it:
 
 ```text
-voxprint-common @ git+https://github.com/Mitroshenkov87/voxprint-common.git@v0.1.0
+voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl
 ```
+
+The wheel SHA256 is `c9361d5d00913faf39497fc55124e682ba15b2098c775068c49582c0520cd4d1`.
 
 The 1.3.0 pin stays valid for the surface before those removals:
 

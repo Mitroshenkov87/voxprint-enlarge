@@ -11,7 +11,7 @@ from tools.generate_cli_reference import generate, render
 
 
 def test_build_number_uses_the_run_and_the_offset() -> None:
-    assert build_number({}) == 0
+    assert build_number({}) is None
     assert build_number({"GITHUB_RUN_NUMBER": "4"}) == 4
     assert build_number({"VOXPRINT_BUILD": "9", "GITHUB_RUN_NUMBER": "4"}) == 9
     assert codename() == "Emunah"

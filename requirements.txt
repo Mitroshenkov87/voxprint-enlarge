@@ -7,8 +7,9 @@
 PySide6>=6.8,<7
 Pillow>=12.3.0,<13
 numpy>=2,<3
-# voxprint-common 0.1.x from the v0.1.0 tag. The ui extra is PySide6 for the splash.
-voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common.git@v0.1.0
+# voxprint-common 0.1.1 Menuchah. The wheel is the release asset. The ui extra is PySide6.
+# SHA256 c9361d5d00913faf39497fc55124e682ba15b2098c775068c49582c0520cd4d1
+voxprint-common[ui] @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl
 onnxruntime-gpu==1.31.0
 # 2026.10.10 publishes a cp312-abi3 wheel, which installs on Python 3.14.
 imagecodecs==2026.10.10

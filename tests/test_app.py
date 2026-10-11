@@ -84,6 +84,8 @@ def test_primary_actions_are_yellow_and_the_splash_stays_pink() -> None:
 def test_stylesheet_has_no_leftover_braces() -> None:
     css = build_style(True)
     assert "{{" not in css and "QPushButton" in css
+    assert "QPushButton#gear" in css
+    assert "QPushButton#disclosure" in css
 
 
 def test_platform_names() -> None:
@@ -91,7 +93,9 @@ def test_platform_names() -> None:
     assert MIN_BUILD == 26100
     assert check_os(build=26100, is_windows=True).ok
     assert not check_os(build=22000, is_windows=True).ok
-    assert "0.2.0-rc.6" in version_line()
+    assert "0.2.0 RC 6" in version_line()
+    assert "Emunah" in version_line()
+    assert "build 0" not in version_line()
     assert "run from source" in version_line()
     assert "pre-alpha" in format_version("0.1.0-pre")
     source = Path("enlarge/platform_win.py").read_text(encoding="utf-8")

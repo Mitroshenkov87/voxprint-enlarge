@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from main import main
-from voxprint_common.paths import shared_dir
+from voxprint_common.paths import models_dir, shared_dir
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
 from voxprint_engine.store import register
 from enlarge.suite_runtime import (
@@ -384,6 +384,9 @@ def test_default_model_download_is_enlarge_only(tmp_path: Path) -> None:
     assert list(components) == [default_model_component_id()]
     assert components[default_model_component_id()]["kind"] == "model"
     assert components[default_model_component_id()]["refs"] == ["enlarge"]
+    recorded = Path(str(components[default_model_component_id()]["path"]))
+    assert recorded.is_absolute()
+    assert recorded.is_relative_to(models_dir())
 
 
 def test_windows_bundle_python_is_the_python_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

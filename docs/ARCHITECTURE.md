@@ -79,7 +79,9 @@ Weights are not in the installer or the tarball.
 | Linux | `$XDG_DATA_HOME/voxprint/enlarge/voxprint-enlarge` (`~/.local/share` when unset) |
 
 `BUILD.json` holds `version`, the build-number `offset`, and the codename.
-The release workflow adds `GITHUB_RUN_NUMBER` to the offset. The installer
+`voxprint_common.buildinfo` adds `GITHUB_RUN_NUMBER` to the offset. Without that
+variable, a missing recorded build stays null and the label says `dev`, not
+build 0. The installer
 runs `--install-suite`, which copies Python 3.14 into the shared suite folder,
 installs torch plus the CUDA 13 ONNX Runtime and TensorRT wheels, and downloads
 the default model. `--uninstall-suite` drops this app's hold and deletes a

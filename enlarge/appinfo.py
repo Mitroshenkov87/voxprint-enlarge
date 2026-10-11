@@ -7,6 +7,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from voxprint_common.buildinfo import label, load
+
 APP_NAME = "VoxprintEnlarge"
 APP_DISPLAY_NAME = "Voxprint AI Enlarge"
 APP_VERSION = "0.1.0-pre"
@@ -67,17 +69,14 @@ def status_label() -> str:
 
 
 def version_label() -> str:
-    """Human version line, including the build number and codename when they are set."""
-    stamped = build_info()
-    catalog = catalog_info()
-    version = product_version()
-    raw_build = stamped.get("build", APP_BUILD)
+    """Human version line from ``voxprint_common.buildinfo``.
+
+    A missing recorded build is ``dev``. It is not reported as build 0.
+    """
     try:
-        build = int(raw_build)
-    except (TypeError, ValueError):
-        build = APP_BUILD
-    codename = str(stamped.get("codename") or catalog.get("codename") or CODENAME)
-    return format_version(version, build, codename)
+        return label(load(resource_dir(), app="enlarge"))
+    except (OSError, ValueError):
+        return format_version()
 
 
 def resource_dir() -> Path:
