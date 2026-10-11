@@ -154,6 +154,8 @@ def test_gpu_install_includes_the_converter(monkeypatch: pytest.MonkeyPatch) -> 
     flat = " ".join(" ".join(args) for args in calls)
     assert "spandrel>=0.4,<0.5" in flat
     assert "onnx>=1.16,<2" in flat
+    assert "onnxruntime-gpu==1.31.0" in flat
+    assert "--no-deps tensorrt_cu13_libs==10.16.1.11" in flat
     assert "torch" in flat
 
 

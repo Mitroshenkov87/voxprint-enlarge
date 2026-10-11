@@ -88,6 +88,20 @@ setting in the app. A user job never takes that path.
 `VOXPRINT_ORT_DEVICE=cpu`, `device` `cpu-onnx`, or `engine` `onnx` runs the
 CPU execution provider. That is the smoke test. It is not a user mode.
 
+`--install-suite` pins `onnxruntime-gpu==1.31.0` and `tensorrt_cu13_libs==10.16.1.11`
+(`--no-deps`). ORT 1.31 loads `nvinfer_10`. An unpinned `tensorrt-cu13` install
+is TensorRT 11, and that provider does not load. The worker adds that library
+directory with `os.add_dll_directory` on Windows and `LD_LIBRARY_PATH` plus
+`RTLD_GLOBAL` on Linux before ONNX Runtime is imported. `--selftest` checks
+that the TensorRT execution provider actually loads. The CI stand-in skips
+that check.
+
+Native `EP Error` text from ONNX Runtime is not protocol traffic. The worker
+keeps JSON on a duplicated stdout and sends those prints to
+`logs/worker-native.log`. The client also skips a line that does not start
+with `{`. A TensorRT kernel that fails after the engine builds
+(`InferenceError`) is retried on the CUDA execution provider.
+
 Otherwise the session is:
 
 1. TensorRT EP, fp16, engine cache enabled, unless the manifest says `execution: cuda` or `execution: tensorrt`

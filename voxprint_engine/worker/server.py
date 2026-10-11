@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from voxprint_engine.formats import DEFAULT_FORMAT
+from voxprint_engine.paths import voxprint_home
 from voxprint_engine.gpu_lock import GpuLockTimeout, gpu_job
 from voxprint_engine.infer import JobOutcome, preflight, upscale_file, uses_lanczos
 from voxprint_engine.onnx_export import OnnxExportError, ensure_onnx
@@ -145,12 +146,34 @@ def handle(message: dict[str, Any]) -> dict[str, Any] | None:
         return {"op": "error", "id": str(message.get("id") or ""), "ok": False, "message": str(exc)}
 
 
+def isolate_native_stdio() -> TextIO:
+    """Keep JSON on the original stdout. Native prints go to the worker log.
+
+    ONNX Runtime writes ``EP Error`` banners with ``printf``. Those bytes
+    share fd 1 with the protocol unless this runs first. Tests pass their own
+    ``stdout`` and must not call this.
+    """
+    folder = voxprint_home() / "logs"
+    folder.mkdir(parents=True, exist_ok=True)
+    log_path = folder / "worker-native.log"
+    protocol_fd = os.dup(1)
+    log_fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        os.dup2(log_fd, 1)
+        os.dup2(log_fd, 2)
+    finally:
+        os.close(log_fd)
+    return os.fdopen(protocol_fd, "w", encoding="utf-8", buffering=1, closefd=True)
+
+
 def serve(stdin: TextIO | None = None, stdout: TextIO | None = None) -> int:
     """Read worker commands from stdin until shutdown."""
     global _stdout
     source = stdin or sys.stdin
     if stdout is not None:
         _stdout = stdout
+    else:
+        _stdout = isolate_native_stdio()
     register_quietly()
     emit({"op": "ready", "engine": "voxprint", "pid": os.getpid()})
     for line in source:

@@ -202,6 +202,7 @@ def test_selftest_json_and_uninstall_command(capsys: pytest.CaptureFixture[str])
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
     assert payload["skipped"] is True
+    assert payload["tensorrt_ep"]["detail"] == "skipped"
     assert {item["id"] for item in payload["components"]} == set(COMPONENTS)
     assert main(["--install-suite"]) == 0
     assert "shared suite: skipped" in capsys.readouterr().out

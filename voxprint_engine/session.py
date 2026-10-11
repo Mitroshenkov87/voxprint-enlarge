@@ -4,9 +4,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-import onnxruntime as ort
 
 from voxprint_engine.providers import CPU, ProviderChoice
+from voxprint_engine.trt_libs import register_tensorrt_libraries
+
+# TensorRT 10 has to be on the DLL path before this import. ORT 1.31 loads nvinfer_10.
+register_tensorrt_libraries()
+
+import onnxruntime as ort  # noqa: E402
+
 from voxprint_engine.video import run_batch as _video_run_batch
 
 
@@ -21,6 +27,11 @@ class InferenceError(RuntimeError):
 def available_providers() -> list[str]:
     """ONNX Runtime providers this process can actually load."""
     return list(ort.get_available_providers())
+
+
+def tensorrt_ep_loaded() -> bool:
+    """True when this process can open the TensorRT execution provider."""
+    return "TensorrtExecutionProvider" in available_providers()
 
 
 def cache_is_warm(folder: Path) -> bool:
