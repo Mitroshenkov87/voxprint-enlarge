@@ -33,6 +33,7 @@ class UpscaleRequest:
     engine: str = "auto"
     custom_models_dir: str = ""
     lossless: bool = False
+    app_name: str = ""
 
     def to_message(self) -> dict[str, Any]:
         """The upscale JSON line for this request."""
@@ -53,6 +54,7 @@ class UpscaleRequest:
             "device": self.device,
             "engine": self.engine,
             "custom_models_dir": self.custom_models_dir,
+            "app_name": self.app_name,
         }
 
 

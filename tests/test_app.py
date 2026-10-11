@@ -267,6 +267,7 @@ def test_cli_refuses_without_a_cuda_gpu(
 ) -> None:
     monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
     monkeypatch.setattr("main.ensure_runtime", lambda *_args, **_kwargs: SimpleNamespace(ok=True, skipped=True, components=()))
+    monkeypatch.setattr("main.ensure_default_model", lambda *_args, **_kwargs: SimpleNamespace(ok=True, skipped=True, components=()))
     monkeypatch.setattr("voxprint_engine.hardware.query_gpus", lambda runner=None: [])
     source = tmp_path / "in.png"
     dest = tmp_path / "out.avif"
@@ -274,7 +275,7 @@ def test_cli_refuses_without_a_cuda_gpu(
     code = main(["--upscale", str(source), "--out", str(dest), "--scale", "2"])
     captured = capsys.readouterr()
     assert code == 1
-    assert NO_GPU_MESSAGE in captured.err
+    assert NO_GPU_MESSAGE.format(app_name=APP_DISPLAY_NAME) in captured.err
     assert not dest.exists()
 
 
@@ -283,6 +284,7 @@ def test_cli_refuses_a_driver_below_600(
 ) -> None:
     monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
     monkeypatch.setattr("main.ensure_runtime", lambda *_args, **_kwargs: SimpleNamespace(ok=True, skipped=True, components=()))
+    monkeypatch.setattr("main.ensure_default_model", lambda *_args, **_kwargs: SimpleNamespace(ok=True, skipped=True, components=()))
     monkeypatch.setattr(
         "voxprint_engine.hardware.query_gpus",
         lambda runner=None: [GpuInfo("NVIDIA GeForce RTX 4090", "560.35.03", (8, 9))],
@@ -293,13 +295,14 @@ def test_cli_refuses_a_driver_below_600(
     code = main(["--upscale", str(source), "--out", str(dest), "--scale", "2"])
     captured = capsys.readouterr()
     assert code == 1
-    assert captured.err.strip() == OLD_DRIVER_MESSAGE.format(driver="560.35.03")
+    assert captured.err.strip() == OLD_DRIVER_MESSAGE.format(app_name=APP_DISPLAY_NAME, driver="560.35.03")
     assert not dest.exists()
 
 
 def test_gui_refuses_without_a_cuda_gpu(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
     monkeypatch.setattr("main.ensure_runtime", lambda *_args, **_kwargs: SimpleNamespace(ok=True, skipped=True, components=()))
+    monkeypatch.setattr("main.ensure_default_model", lambda *_args, **_kwargs: SimpleNamespace(ok=True, skipped=True, components=()))
     monkeypatch.setattr("voxprint_engine.hardware.query_gpus", lambda runner=None: [])
     shown: list[str] = []
 
@@ -311,5 +314,5 @@ def test_gui_refuses_without_a_cuda_gpu(monkeypatch: pytest.MonkeyPatch, capsys:
     code = main([])
     captured = capsys.readouterr()
     assert code == 1
-    assert NO_GPU_MESSAGE in captured.err
-    assert shown == [f"Voxprint AI Enlarge: {NO_GPU_MESSAGE}"]
+    assert NO_GPU_MESSAGE.format(app_name=APP_DISPLAY_NAME) in captured.err
+    assert shown == [f"Voxprint AI Enlarge: {NO_GPU_MESSAGE.format(app_name=APP_DISPLAY_NAME)}"]

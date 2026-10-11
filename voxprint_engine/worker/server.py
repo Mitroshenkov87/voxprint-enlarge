@@ -126,6 +126,7 @@ def _job(message: dict[str, Any]) -> dict[str, Any]:
             weight=weight,
             onnx_path=network,
             lossless=lossless,
+            app_name=str(message.get("app_name") or ""),
         )
     return _result(job_id, model.id, dst, outcome)
 

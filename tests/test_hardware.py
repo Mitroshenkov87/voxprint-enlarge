@@ -67,7 +67,7 @@ def test_gate_refuses_when_cuda_cannot_see_a_gpu(monkeypatch: pytest.MonkeyPatch
     monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
     gate = assess_gpu(runner=_smi("", code=1))
     assert gate.ok is False
-    assert gate.message == NO_GPU_MESSAGE
+    assert gate.message == NO_GPU_MESSAGE.format(app_name="This program")
     assert gate.warning == ""
 
 
@@ -75,7 +75,7 @@ def test_gate_refuses_a_driver_below_600(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
     gate = assess_gpu(runner=_smi("NVIDIA GeForce RTX 4090, 580.88, 8.9\n"))
     assert gate.ok is False
-    assert gate.message == OLD_DRIVER_MESSAGE.format(driver="580.88")
+    assert gate.message == OLD_DRIVER_MESSAGE.format(app_name="This program", driver="580.88")
     assert gate.warning == ""
 
 
@@ -93,6 +93,23 @@ def test_gate_is_quiet_on_ada_with_a_600_driver(monkeypatch: pytest.MonkeyPatch)
     assert gate.ok is True
     assert gate.message == ""
     assert gate.warning == ""
+
+
+def test_gpu_refusal_uses_the_caller_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    missing = assess_gpu(runner=_smi("", code=1), app_name="Voxprint AI Canvas")
+    assert missing.message == NO_GPU_MESSAGE.format(app_name="Voxprint AI Canvas")
+    assert "Enlarge" not in missing.message
+    old = assess_gpu(runner=_smi("NVIDIA GeForce RTX 4090, 580.88, 8.9\n"), app_name="Voxprint AI Canvas")
+    assert old.message == OLD_DRIVER_MESSAGE.format(app_name="Voxprint AI Canvas", driver="580.88")
+    warned = assess_gpu(runner=_smi("NVIDIA GeForce RTX 3090, 610.73.01, 8.6\n"), app_name="Voxprint AI Canvas")
+    assert "Voxprint AI Canvas is built for RTX 40" in warned.warning
+    root = Path(__file__).resolve().parents[1]
+    hardware = (root / "voxprint_engine" / "hardware.py").read_text(encoding="utf-8")
+    infer = (root / "voxprint_engine" / "infer.py").read_text(encoding="utf-8")
+    assert "Voxprint AI Enlarge" not in hardware
+    assert "Enlarge needs" not in hardware
+    assert "Enlarge needs" not in infer
 
 
 def test_ci_flag_skips_the_gate(monkeypatch: pytest.MonkeyPatch) -> None:

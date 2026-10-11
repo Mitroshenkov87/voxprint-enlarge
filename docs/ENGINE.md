@@ -1,22 +1,29 @@
 # Shared inference engine
 
 `voxprint_engine` is the image upscaler Voxprint AI Enlarge owns and Voxprint AI
-Clarity imports. The installable distribution is `voxprint-engine` 1.3.0. It
+Clarity imports. The installable distribution is `voxprint-engine` 1.2.1. It
 does not import Qt. `API` is 1. The package version and `API` are different
 numbers: the version marks this release, and `API` stays 1 until a breaking
 change. 1.1.0 adds `ensure_onnx`, `iter_tile_frames`, and the optional
 manifest fields `onnx_url`, `onnx_sha256`, and `execution`. 1.2.0 adds
 `in_channels` (default 3) so a 4-channel network such as DRUNet exports and
-runs with RGB plus a noise-level map. 1.3.0 adds `voxprint_engine.shared_manifest`,
-the schema 1 file Canvas and Clarity use for the shared runtime.
+runs with RGB plus a noise-level map. 1.2.1 drops the CPU `onnxruntime` wheel.
+The `gpu` extra pins `onnxruntime-gpu==1.31.0` and `tensorrt-cu13-libs==10.14.1.48`.
+`ensure_runtime(app_id, ...)` and `release_runtime(app_id, ...)` take the
+caller's app id and write it into `refs` on each runtime or wheel component
+that the call installs. `ensure_runtime` does not download Enlarge's default
+model. Enlarge calls `ensure_default_model("enlarge")` from its installer and
+its first-run check. Any other `app_id` skips that download.
+`assess_gpu(..., app_name="")` and `upscale_file(..., app_name="")` place
+`app_name` in the GPU refusal text. Enlarge passes `Voxprint AI Enlarge`.
 
-The 1.3.0 pin is:
+The 1.2.1 pin is:
 
 ```text
-voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.3.0
+voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.2.1
 ```
 
-The 1.2.0 pin stays valid for the surface before `shared_manifest`:
+The 1.2.0 pin stays valid for the surface before that dependency change:
 
 ```text
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.2.0
@@ -64,12 +71,8 @@ names below are that addition.
 | `gpu_job` | Hold `%TEMP%/voxprint-gpu.lock` for one job. `owner` defaults to `enlarge` |
 | `decide` | Suite thermal pause rule |
 | `shared_dir`, `read_manifest` | `%LOCALAPPDATA%\Voxprint\shared` or `~/.local/share/voxprint/shared`, and its refcounted manifest |
-| `load`, `save`, `update` | Read the schema 1 manifest (migrating an old file), write it atomically, or hold `manifest.lock` across a read-modify-write |
-| `find_reusable`, `reserve` | Reuse a component when id, version, and sha256 match. Otherwise record a side-by-side path. A component another app refs is not overwritten |
-| `add_ref`, `remove_ref` | Add an app id, or remove it. `remove_ref` returns true when `refs` is now empty and the payload may be deleted |
-| `lock_hash` | SHA-256 of a pin string (`python==3.14`, `torch@cu130`, `onnxruntime-gpu==1.31.0`, `tensorrt-cu13-libs==10.14.1.48`) |
-| `SharedManifest`, `SharedManifestError` | The document, and a lock, schema, or shape failure |
-| `ensure_runtime`, `release_runtime` | Install or repair Python 3.14, torch cu130, ONNX Runtime GPU, TensorRT 10, and the default model; drop one app and delete a payload only when `refs` is empty |
+| `ensure_runtime`, `release_runtime` | Install or repair Python 3.14, torch cu130, ONNX Runtime GPU, and TensorRT 10 for `app_id`, writing that id into `refs`. Drop that id and delete a payload only when `refs` is empty. The default model is not part of this call |
+| `ensure_default_model` | Download Enlarge's default model when `app_id` is `enlarge`, and write that id into the model component's `refs`. Any other `app_id` returns without installing |
 | `ComponentStatus`, `RuntimeReport`, `SuiteInstallError` | One component, the check result (`as_dict` is the `--selftest --json` object), and a failed install |
 
 ```python
@@ -223,7 +226,9 @@ Unregister returns the other programs that are still true, so an uninstaller
 can leave the folder alone while someone else uses it.
 
 The suite runtime is a second refcount, in `shared/manifest.json` under
-`shared_dir()`. Schema 1 has exactly `schema` and `components`. Unknown keys
+`shared_dir()`. `ensure_runtime` reads and writes that file through
+`enlarge._vendor.voxprint_common.manifest`. That module is not part of this
+package. Schema 1 has exactly `schema` and `components`. Unknown keys
 are kept. Each component is `kind` (`runtime`, `wheels`, `model`, or `tool`),
 `version`, `path`, `sha256`, `installed_at` (ISO-8601 with a numeric offset),
 and `refs` (app ids such as `enlarge` and `canvas`). Ids look like
@@ -246,8 +251,11 @@ The runtime holds torch from the CUDA 13 index and `onnxruntime-gpu` only.
 Installing the CPU `onnxruntime` wheel is forbidden. TensorRT 10 libs are the
 `tensorrt-10` component, for ONNX Runtime 1.31.
 
-`ensure_runtime("enlarge")` installs whatever is missing and adds the ref.
-`ensure_runtime("clarity")` reuses the same files when the pin matches.
+`ensure_runtime("enlarge")` installs any missing runtime or wheel and adds
+`enlarge` to `refs`. `ensure_runtime("clarity")` reuses the same files when
+the pin matches and adds `clarity` to `refs`. Neither call downloads the
+default model. `ensure_default_model("enlarge")` does, and records `enlarge`
+on that model component. `ensure_default_model("clarity")` does not install it.
 `release_runtime` removes that one ref and deletes a payload only when the
 list is empty. The default weight stays in the models folder above; the
 manifest is what decides whether this app may delete it.
@@ -304,13 +312,14 @@ from voxprint_engine.worker.protocol import RestoreBatchRequest
 
 ### Startup and the GPU lock
 
-`assess_gpu(index=0, runner=None, refuse_below=None)` is the Enlarge gate.
-Omit `refuse_below` and a card below compute capability 8.9 still starts, with
-the warning from the section above. Clarity passes `refuse_below=(8, 9)`. A
-missing capability, or a card below that pair, then refuses to start. The
-driver check still comes first: a driver below the 600 series refuses with the
-same message as Enlarge. `VOXPRINT_CI_LANCZOS=1` still skips the gate. Clarity
-does not honour that flag.
+`assess_gpu(index=0, runner=None, refuse_below=None, app_name="")` is the
+startup gate. `app_name` is the display name in a refusal or a warning. Omit
+`refuse_below` and a card below compute capability 8.9 still starts, with the
+warning from the section above. Clarity passes `refuse_below=(8, 9)` and its
+own `app_name`. A missing capability, or a card below that pair, then refuses
+to start. The driver check still comes first: a driver below the 600 series
+refuses with the same text, using that `app_name`. `VOXPRINT_CI_LANCZOS=1`
+still skips the gate. Clarity does not honour that flag.
 
 `try_acquire`, `release`, and `gpu_job` take `owner`. The default is
 `enlarge`. Clarity passes `owner="clarity"`. One process has one owner.
@@ -381,8 +390,8 @@ Weights stay in the shared store. Clarity's refcount key is `clarity`
 ## ONNX conversion
 
 The store downloads a `.pth`. The runtime needs a `.onnx`. `ensure_onnx`
-produces it. The shared installer converts the default model after torch and
-spandrel are installed. The Model step converts the others when they are
+produces it. Enlarge's installer converts the default model after torch and
+spandrel are installed. `ensure_runtime` does not. The Model step converts the others when they are
 downloaded. A worker job converts too, when the weight is already on disk,
 and it does that before taking the GPU lock. A headless job still refuses
 with `model_missing` when the weight itself is absent. It does not download.
