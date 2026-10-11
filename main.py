@@ -40,6 +40,7 @@ from voxprint_engine.suite_runtime import (
     release_runtime,
 )
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
+from voxprint_engine.session import tensorrt_ep_loaded
 from voxprint_engine.store import register_quietly
 from voxprint_engine.worker import UpscaleRequest
 from voxprint_engine.worker.server import serve
@@ -165,12 +166,22 @@ def _refuse_if_broken() -> int:
     return 1
 
 
-def _print_suite(report: RuntimeReport, lines: list[str], as_json: bool, *, done: str) -> None:
+def _print_suite(
+    report: RuntimeReport,
+    lines: list[str],
+    as_json: bool,
+    *,
+    done: str,
+    extra: dict[str, object] | None = None,
+) -> None:
     """Human lines on stdout, or one JSON object. Progress already collected stays on stderr for JSON."""
     if as_json:
         if lines:
             print("\n".join(lines), file=sys.stderr)
-        print(json.dumps(report.as_dict()))
+        payload = report.as_dict()
+        if extra:
+            payload.update(extra)
+        print(json.dumps(payload))
         return
     for line in lines:
         print(line, flush=True)
@@ -186,6 +197,15 @@ def _print_suite(report: RuntimeReport, lines: list[str], as_json: bool, *, done
             print(f"{item.id}: {item.detail}", file=sys.stderr)
 
 
+def _tensorrt_status(report: RuntimeReport) -> tuple[bool, str]:
+    """Skip the provider check in CI. A real install must load the TensorRT EP."""
+    if report.skipped or not report.ok:
+        return True, "skipped"
+    if tensorrt_ep_loaded():
+        return True, "loaded"
+    return False, "TensorRT execution provider did not load (nvinfer_10)"
+
+
 def _selftest(as_json: bool) -> int:
     """Re-check the shared install without opening a window."""
     lines: list[str] = []
@@ -194,8 +214,20 @@ def _selftest(as_json: bool) -> int:
     except SuiteInstallError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    _print_suite(report, lines, as_json, done="shared suite: ready")
-    return 0 if report.ok else 1
+    trt_ok, trt_detail = _tensorrt_status(report)
+    extra: dict[str, object] = {"tensorrt_ep": {"ok": trt_ok, "detail": trt_detail}}
+    if not trt_ok:
+        extra["ok"] = False
+    _print_suite(
+        report,
+        lines,
+        as_json,
+        done="shared suite: ready" if trt_ok else "shared suite: incomplete",
+        extra=extra,
+    )
+    if not trt_ok:
+        print(trt_detail, file=sys.stderr)
+    return 0 if report.ok and trt_ok else 1
 
 
 def _install_suite() -> int:

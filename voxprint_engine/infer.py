@@ -345,6 +345,7 @@ def upscale_file(
     ran: np.ndarray | None = None
     used = ""
     spilled = False
+    runtime_error: InferenceError | None = None
     if network is not None:
         for choices in attempts:
             if not choices:
@@ -368,13 +369,19 @@ def upscale_file(
             except (InferenceError, RuntimeError, OSError, ValueError) as exc:
                 if is_memory_error(exc):
                     raise ImageJobError(f"out of memory at tile {tile}") from exc
+                # A TensorRT engine can build and then fail the kernel. Try CUDA.
+                if isinstance(exc, InferenceError):
+                    runtime_error = exc
+                    continue
                 raise ImageJobError(str(exc)) from exc
             finally:
                 _close_session(session)
             break
     if ran is None:
         if weight is None or not torch_available():
-            if weight is None:
+            if runtime_error is not None:
+                detail = str(runtime_error)
+            elif weight is None:
                 detail = "no ONNX file and no PyTorch fallback"
             else:
                 detail = "the ONNX session did not build and PyTorch is not installed"

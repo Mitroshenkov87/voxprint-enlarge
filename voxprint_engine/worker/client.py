@@ -8,8 +8,9 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
+from voxprint_engine.trt_libs import apply_library_path
 from voxprint_engine.worker.protocol import UpscaleRequest, UpscaleResult
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -17,6 +18,25 @@ _ROOT = Path(__file__).resolve().parents[2]
 
 class WorkerError(RuntimeError):
     """The worker process failed, timed out, or returned an error result."""
+
+
+def parse_worker_line(line: str) -> dict[str, Any] | None:
+    """One protocol object, or ``None`` when the line is not JSON traffic.
+
+    Native provider banners (``EP Error``) are skipped. A line that starts
+    with ``{`` but is not JSON still raises, so a truncated message is not
+    treated as noise.
+    """
+    text = line.strip()
+    if not text or not text.startswith("{"):
+        return None
+    try:
+        message = json.loads(text)
+    except ValueError as exc:
+        raise WorkerError(f"worker sent malformed json: {text[:200]}") from exc
+    if not isinstance(message, dict):
+        raise WorkerError("worker sent a non-object")
+    return message
 
 
 class WorkerClient:
@@ -47,6 +67,7 @@ class WorkerClient:
         env["PYTHONUNBUFFERED"] = "1"
         previous = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = str(_ROOT) + (os.pathsep + previous if previous else "")
+        apply_library_path(env)
         command = [self.python, "-m", "voxprint_engine.worker"]
         if os.name == "nt":
             self.proc = subprocess.Popen(
@@ -138,21 +159,19 @@ class WorkerClient:
         proc.stdin.flush()
 
     def _read(self, timeout: float) -> dict[str, object]:
-        try:
-            line = self._lines.get(timeout=timeout)
-        except queue.Empty as exc:
-            detail = self.stderr_text()
-            raise WorkerError("worker timed out" + (f": {detail}" if detail else "")) from exc
-        if line is None:
-            detail = self.stderr_text()
-            raise WorkerError("worker closed the pipe" + (f": {detail}" if detail else ""))
-        try:
-            message = json.loads(line)
-        except ValueError as exc:
-            raise WorkerError(f"worker sent malformed json: {line[:200]}") from exc
-        if not isinstance(message, dict):
-            raise WorkerError("worker sent a non-object")
-        return message
+        while True:
+            try:
+                line = self._lines.get(timeout=timeout)
+            except queue.Empty as exc:
+                detail = self.stderr_text()
+                raise WorkerError("worker timed out" + (f": {detail}" if detail else "")) from exc
+            if line is None:
+                detail = self.stderr_text()
+                raise WorkerError("worker closed the pipe" + (f": {detail}" if detail else ""))
+            message = parse_worker_line(line)
+            if message is None:
+                continue
+            return message
 
     def _pump(self) -> None:
         proc = self.proc

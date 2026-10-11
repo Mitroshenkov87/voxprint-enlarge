@@ -14,18 +14,56 @@ from voxprint_engine.gpu_lock import gpu_job
 from voxprint_engine.providers import ProviderChoice, choices_for, cuda_fallback_choices
 from voxprint_engine.session import EngineBuildError, available_providers, open_session
 from voxprint_engine.video import restore_frames, run_batch
+from voxprint_engine.vram import is_memory_error
 
 
-def _open_session(onnx: Path, attempts: list[list[ProviderChoice]]) -> tuple[Any, str]:
-    """TensorRT, then CUDA when that engine does not build. Same order as an image job."""
+def _restore_with_fallback(
+    attempts: list[list[ProviderChoice]],
+    onnx: Path,
+    frames: np.ndarray,
+    *,
+    tile: int,
+    overlap: int,
+    scale: int,
+    batch: int,
+    length: int,
+    window_overlap: int,
+) -> tuple[np.ndarray, str]:
+    """TensorRT, then CUDA when the engine does not build or the kernel fails."""
     errors: list[str] = []
     for choices in attempts:
         if not choices:
             continue
         try:
-            return open_session(onnx, choices)
+            session, provider = open_session(onnx, choices)
         except EngineBuildError as exc:
             errors.append(str(exc))
+            continue
+
+        def infer(batch_nchw: np.ndarray, _session: Any = session) -> np.ndarray:
+            return run_batch(_session, batch_nchw)
+
+        try:
+            restored = restore_frames(
+                frames,
+                infer,
+                tile=tile,
+                overlap=overlap,
+                scale=scale,
+                batch=batch,
+                length=length,
+                window_overlap=window_overlap,
+            )
+        except RuntimeError as exc:
+            if is_memory_error(exc):
+                raise
+            errors.append(str(exc))
+            continue
+        finally:
+            closer = getattr(session, "close", None)
+            if callable(closer):
+                closer()
+        return restored, provider
     raise RuntimeError("; ".join(errors) or "the ONNX session did not load")
 
 
@@ -61,26 +99,17 @@ def handle_restore(message: dict[str, Any]) -> dict[str, Any]:
         attempts.append(fallback)
 
     with gpu_job(f"{owner}:restore", eta_s=600.0, timeout=30.0, owner=owner):
-        session, provider = _open_session(onnx, attempts)
-
-        def infer(batch_nchw: np.ndarray) -> np.ndarray:
-            return run_batch(session, batch_nchw)
-
-        try:
-            restored = restore_frames(
-                frames.astype(np.float32, copy=False),
-                infer,
-                tile=tile,
-                overlap=overlap,
-                scale=scale,
-                batch=batch,
-                length=length,
-                window_overlap=window_overlap,
-            )
-        finally:
-            closer = getattr(session, "close", None)
-            if callable(closer):
-                closer()
+        restored, provider = _restore_with_fallback(
+            attempts,
+            onnx,
+            frames.astype(np.float32, copy=False),
+            tile=tile,
+            overlap=overlap,
+            scale=scale,
+            batch=batch,
+            length=length,
+            window_overlap=window_overlap,
+        )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(out_path, restored)
     return {
