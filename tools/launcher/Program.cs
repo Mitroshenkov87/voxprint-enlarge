@@ -1,7 +1,12 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 string dir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 bool console = args.Length > 0;
+if (console)
+{
+    NativeConsole.AttachParent();
+}
 string python = ResolvePython(dir, console);
 string main = Path.Combine(dir, "main.py");
 if (!File.Exists(python) || !File.Exists(main))
@@ -13,6 +18,7 @@ var start = new ProcessStartInfo(python)
 {
     UseShellExecute = false,
     WorkingDirectory = dir,
+    CreateNoWindow = !console,
 };
 start.ArgumentList.Add(main);
 foreach (string arg in args)
@@ -44,4 +50,22 @@ static string ResolvePython(string dir, bool console)
         bundled = Path.Combine(folder, "python.exe");
     }
     return bundled;
+}
+
+static class NativeConsole
+{
+    public static void AttachParent()
+    {
+        const int parent = -1;
+        if (!AttachConsole(parent))
+        {
+            AllocConsole();
+        }
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool AttachConsole(int processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool AllocConsole();
 }

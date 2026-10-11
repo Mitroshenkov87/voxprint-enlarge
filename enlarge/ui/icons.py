@@ -7,7 +7,7 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QPushButton
 
 from enlarge.appinfo import resource_dir
-from enlarge.ui.theme import TEXT, TEXT_ON_PRIMARY
+from voxprint_common.ui.theme import TEXT, TEXT_ON_PRIMARY
 
 _NAMES = ("save", "save-as", "save-copy", "export", "download")
 

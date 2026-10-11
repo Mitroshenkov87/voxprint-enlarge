@@ -12,8 +12,8 @@ import numpy as np
 import pytest
 
 from voxprint_engine import API
-from voxprint_engine.gpu_lock import GpuLockTimeout, gpu_job, lock_path, read_lock, release, try_acquire
-from voxprint_engine.hardware import OLD_DRIVER_MESSAGE, assess_gpu
+from voxprint_common.gpu_lock import Acquired, GpuLockTimeout, Holder, gpu_job, lock_path, read_holder, release, try_acquire
+from voxprint_common.gpu_probe import assess, old_driver_message
 from voxprint_engine.providers import CPU, CUDA, TRT
 from voxprint_engine.session import EngineBuildError, InferenceError, run_batch as session_run_batch, run_tile
 from voxprint_engine.tile import upscale_tiled
@@ -299,26 +299,26 @@ def test_read_shared_usage_parses_typeperf(monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_refuse_below_is_optional(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
-    quiet = assess_gpu(runner=_smi("NVIDIA GeForce RTX 4090, 610.73.01, N/A\n"))
+    quiet = assess("This program", runner=_smi("NVIDIA GeForce RTX 4090, 610.73.01, N/A, 24564\n"))
     assert quiet.ok is True
     assert quiet.message == ""
-    missing = assess_gpu(runner=_smi("NVIDIA GeForce RTX 4090, 610.73.01, N/A\n"), refuse_below=(8, 9))
+    missing = assess("This program", runner=_smi("NVIDIA GeForce RTX 4090, 610.73.01, N/A, 24564\n"), refuse_below=(8, 9))
     assert missing.ok is False
     assert "did not report" in missing.message
     assert missing.warning == ""
-    refused = assess_gpu(runner=_smi("NVIDIA GeForce RTX 3090, 610.73.01, 8.6\n"), refuse_below=(8, 9))
+    refused = assess("This program", runner=_smi("NVIDIA GeForce RTX 3090, 610.73.01, 8.6, 24576\n"), refuse_below=(8, 9))
     assert refused.ok is False
     assert "8.6" in refused.message
     assert "8.9" in refused.message
-    warned = assess_gpu(runner=_smi("NVIDIA GeForce RTX 3090, 610.73.01, 8.6\n"))
+    warned = assess("This program", runner=_smi("NVIDIA GeForce RTX 3090, 610.73.01, 8.6, 24576\n"))
     assert warned.ok is True
     assert "8.6" in warned.warning
-    allowed = assess_gpu(runner=_smi("NVIDIA GeForce RTX 4090, 610.73.01, 8.9\n"), refuse_below=(8, 9))
+    allowed = assess("This program", runner=_smi("NVIDIA GeForce RTX 4090, 610.73.01, 8.9, 24564\n"), refuse_below=(8, 9))
     assert allowed.ok is True
     assert allowed.warning == ""
-    old = assess_gpu(runner=_smi("NVIDIA GeForce RTX 4090, 580.88, 8.9\n"), refuse_below=(8, 9))
+    old = assess("This program", runner=_smi("NVIDIA GeForce RTX 4090, 580.88, 8.9, 24564\n"), refuse_below=(8, 9))
     assert old.ok is False
-    assert old.message == OLD_DRIVER_MESSAGE.format(app_name="This program", driver="580.88")
+    assert old.message == old_driver_message("This program", "580.88")
 
 
 def test_ci_flag_skips_refuse_below(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -327,38 +327,40 @@ def test_ci_flag_skips_refuse_below(monkeypatch: pytest.MonkeyPatch) -> None:
     def runner(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         raise AssertionError("nvidia-smi must not run")
 
-    gate = assess_gpu(runner=runner, refuse_below=(8, 9))
-    assert gate.ok is True
-    assert gate.message == ""
+    monkeypatch.setattr("voxprint_common.gpu_probe.query_gpus", runner)
+    from main import _gpu_block
+
+    assert _gpu_block() == ""
 
 
 def test_gpu_lock_owner_defaults_to_enlarge() -> None:
-    with gpu_job("preview"):
-        held = read_lock()
+    with gpu_job("enlarge", "preview"):
+        held = read_holder()
         assert held is not None
-        assert held["owner"] == "enlarge"
-    assert read_lock() is None
+        assert held.app == "enlarge"
+        assert held.stage == "preview"
+    assert read_holder() is None
 
-    assert try_acquire("clip", owner="clarity") is None
-    held = read_lock()
-    assert held is not None and held["owner"] == "clarity"
-    blocked = try_acquire("photo")
-    assert blocked is not None and blocked["owner"] == "clarity"
-    release()
-    assert read_lock() is not None
+    assert isinstance(try_acquire("clarity", "clip"), Acquired)
+    held = read_holder()
+    assert held is not None and held.app == "clarity"
+    blocked = try_acquire("enlarge", "photo")
+    assert isinstance(blocked, Holder) and blocked.app == "clarity"
+    release(app="enlarge")
+    assert read_holder() is not None
     with pytest.raises(TimeoutError):
-        with gpu_job("photo", timeout=0.05, poll=0.01):
+        with gpu_job("enlarge", "photo", timeout=0.05, poll=0.01):
             pass
-    release(owner="clarity")
-    assert read_lock() is None
+    release(app="clarity")
+    assert read_holder() is None
 
-    with gpu_job("clip", owner="clarity"):
-        with gpu_job("inner"):
-            nested = read_lock()
+    with gpu_job("clarity", "clip"):
+        with gpu_job("clarity", "inner"):
+            nested = read_holder()
             assert nested is not None
-            assert nested["owner"] == "clarity"
-            assert nested["job"] == "clip"
-    assert read_lock() is None
+            assert nested.app == "clarity"
+            assert nested.stage == "clip"
+    assert read_holder() is None
 
 
 def test_a_child_shares_a_parent_lock_only_for_the_same_owner() -> None:
@@ -376,14 +378,14 @@ def test_a_child_shares_a_parent_lock_only_for_the_same_owner() -> None:
         ),
         encoding="utf-8",
     )
-    assert try_acquire("child", owner="clarity") is None
-    release(owner="clarity")
-    held = read_lock()
-    assert held is not None and held.get("pid") == os.getppid()
-    blocked = try_acquire("photo")
-    assert blocked is not None and blocked["owner"] == "clarity"
-    release()
-    assert read_lock() is not None
+    assert isinstance(try_acquire("clarity", "child"), Acquired)
+    release(app="clarity")
+    held = read_holder()
+    assert held is not None and held.pid == os.getppid()
+    blocked = try_acquire("enlarge", "photo")
+    assert isinstance(blocked, Holder) and blocked.app == "clarity"
+    release(app="enlarge")
+    assert read_holder() is not None
 
 
 def test_restore_batch_uses_the_session_lock_and_trt_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -401,10 +403,10 @@ def test_restore_batch_uses_the_session_lock_and_trt_cache(tmp_path: Path, monke
             return [_Input("input", "tensor(float)")]
 
         def run(self, _names: object, feeds: dict[str, np.ndarray]) -> list[np.ndarray]:
-            lock = read_lock()
+            lock = read_holder()
             assert lock is not None
-            assert lock["owner"] == "clarity"
-            assert lock["job"] == "clarity:restore"
+            assert lock.app == "clarity"
+            assert lock.stage == "restore"
             assert feeds["input"].shape[0] == 1
             return [feeds["input"]]
 
@@ -452,7 +454,7 @@ def test_restore_batch_uses_the_session_lock_and_trt_cache(tmp_path: Path, monke
     cache = Path(str(opened["cache"]))
     assert cache.is_dir()
     assert opened["closed"] is True
-    assert read_lock() is None
+    assert read_holder() is None
     assert np.allclose(np.load(dst), frames, atol=1e-5)
 
     request = RestoreBatchRequest(id="clip-1", frames_npy=str(src), out_npy=str(dst), onnx=str(onnx))
@@ -547,9 +549,9 @@ def test_restore_batch_defaults_a_missing_tile_and_owner(tmp_path: Path, monkeyp
 
         def run(self, _names: object, feeds: dict[str, np.ndarray]) -> list[np.ndarray]:
             seen["shape"] = feeds["input"].shape
-            lock = read_lock()
+            lock = read_holder()
             assert lock is not None
-            seen["owner"] = lock["owner"]
+            seen["owner"] = lock.app
             return [feeds["input"]]
 
         def close(self) -> None:
@@ -573,7 +575,7 @@ def test_restore_batch_defaults_a_missing_tile_and_owner(tmp_path: Path, monkeyp
     assert reply is not None and reply["ok"] is True
     assert seen["shape"] == (1, 3, 512, 512)
     assert seen["owner"] == "clarity"
-    assert read_lock() is None
+    assert read_holder() is None
 
 
 def test_restore_batch_uses_cuda_when_tensorrt_does_not_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -597,8 +599,8 @@ def test_restore_batch_uses_cuda_when_tensorrt_does_not_build(tmp_path: Path, mo
             tried.append("closed")
 
     def opener(_path: Path, choices: list[object]) -> tuple[_CudaSession, str]:
-        lock = read_lock()
-        assert lock is not None and lock["owner"] == "clarity"
+        lock = read_holder()
+        assert lock is not None and lock.app == "clarity"
         name = str(choices[0].name)
         tried.append(name)
         if name == TRT:
@@ -625,7 +627,7 @@ def test_restore_batch_uses_cuda_when_tensorrt_does_not_build(tmp_path: Path, mo
     assert tried[:2] == [TRT, CUDA]
     assert tried[-1] == "closed"
     assert CUDA in str(reply["message"])
-    assert read_lock() is None
+    assert read_holder() is None
 
     def fail(_path: Path, choices: list[object]) -> tuple[_CudaSession, str]:
         raise EngineBuildError(str(choices[0].name))
@@ -645,7 +647,7 @@ def test_restore_batch_uses_cuda_when_tensorrt_does_not_build(tmp_path: Path, mo
     assert failed is not None and failed["op"] == "error"
     assert TRT in failed["message"]
     assert CUDA in failed["message"]
-    assert read_lock() is None
+    assert read_holder() is None
 
 
 def test_restore_batch_reports_errors_and_leaves_upscale_dispatch(tmp_path: Path) -> None:

@@ -157,10 +157,14 @@ def progress_message(
         "eta_s": eta,
     }
     if stage == "waiting_gpu" and lock_holder is not None:
+        app = lock_holder.get("app", lock_holder.get("owner"))
+        stage_name = lock_holder.get("stage", lock_holder.get("job"))
         body["lock_holder"] = {
-            "owner": lock_holder.get("owner"),
+            "app": app,
+            "stage": stage_name,
+            "owner": app,
             "pid": lock_holder.get("pid"),
-            "job": lock_holder.get("job"),
+            "job": stage_name,
         }
     return body
 

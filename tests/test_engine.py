@@ -15,7 +15,7 @@ from PIL import Image
 from voxprint_engine.errors import ImageJobError
 from voxprint_engine.formats import open_rgb
 from voxprint_engine.infer import _passes, _run_network, upscale_file, uses_lanczos
-from voxprint_engine.paths import cache_key, models_dir, trt_cache_dir
+from voxprint_common.paths import models_dir, trt_cache_dir
 from voxprint_engine.providers import CPU, CUDA, TRT, choices_for, cuda_fallback_choices, gpu_provider_names
 from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.store import StoreError, download, ensure_weight, register, unregister
@@ -158,8 +158,7 @@ def test_trt_options_use_the_cache_dir(tmp_path: Path, monkeypatch: pytest.Monke
     assert choice.options["device_id"] == "1"
     folder = Path(choice.options["trt_engine_cache_path"])
     assert folder.is_dir()
-    assert folder == trt_cache_dir("RTX 4090", "560.70", "10.0.1")
-    assert cache_key("a/b", "c d", "e") == "a-b-c-d-e"
+    assert folder == trt_cache_dir()
 
 
 def test_cpu_onnx_mode_does_not_ask_for_tensorrt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -180,6 +179,7 @@ class _Body:
         self._payload = payload
         self._url = url
         self.headers = {"Content-Length": str(len(payload))}
+        self.status = 200
 
     def read(self, size: int) -> bytes:
         chunk = self._payload[:size]
@@ -203,12 +203,12 @@ def test_download_checks_https_hash_and_users(tmp_path: Path) -> None:
     target = root / "example.pth"
     with pytest.raises(StoreError, match="https"):
         download("http://example.com/example.pth", target, digest)
-    with mock.patch("voxprint_engine.store.urllib.request.urlopen", return_value=_Body(payload, "http://evil.example/x")):
-        with pytest.raises(StoreError, match="redirected"):
+    wrong = b"not-the-weight"
+    with mock.patch("voxprint_common.download._urlopen", return_value=_Body(wrong, "https://example.com/example.pth")):
+        with pytest.raises(StoreError, match="does not match"):
             download("https://example.com/example.pth", target, digest)
     assert not target.exists()
-    assert not target.with_name(target.name + ".partial").exists()
-    with mock.patch("voxprint_engine.store.urllib.request.urlopen", return_value=_Body(payload, "https://example.com/example.pth")):
+    with mock.patch("voxprint_common.download._urlopen", side_effect=lambda *_args, **_kwargs: _Body(payload, "https://example.com/example.pth")):
         download("https://example.com/example.pth", target, digest)
     assert target.read_bytes() == payload
     model = _manifest(sha256=digest)

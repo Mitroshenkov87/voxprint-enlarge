@@ -35,29 +35,41 @@ def tensorrt_ep_loaded() -> bool:
 
 
 def cache_is_warm(folder: Path) -> bool:
-    """True when the TensorRT cache folder already holds an engine file.
+    """True when this cache already holds a TensorRT ``.engine`` file.
 
-    ORT sometimes writes the engine one directory down from the cache path.
-    A warm file at that depth is still a cache hit.
+    ORT 1.31 writes ``<cache>/<node>_smXX.engine``. A node name that contains
+    a slash nests that file. A ``.profile`` or ``.timing`` file alone is not
+    a hit: ORT still builds the engine. One unreadable entry does not hide
+    a sibling engine.
     """
-    def hit(path: Path) -> bool:
-        try:
-            return path.is_file() and path.stat().st_size > 0
-        except OSError:
-            return False
+    return _engine_file(folder) is not None
 
+
+def _engine_file(folder: Path, depth: int = 0) -> Path | None:
+    if depth > 6:
+        return None
     try:
-        for path in folder.iterdir():
-            if hit(path):
-                return True
+        if not folder.is_dir():
+            return None
+        children = list(folder.iterdir())
+    except OSError:
+        return None
+    for path in children:
+        try:
+            if path.is_file() and path.name.lower().endswith(".engine") and path.stat().st_size > 0:
+                return path
+        except OSError:
+            continue
+    for path in children:
+        try:
             if not path.is_dir():
                 continue
-            for child in path.iterdir():
-                if hit(child):
-                    return True
-    except OSError:
-        return False
-    return False
+        except OSError:
+            continue
+        found = _engine_file(path, depth + 1)
+        if found is not None:
+            return found
+    return None
 
 
 def trt_build_message(folder: Path) -> str:

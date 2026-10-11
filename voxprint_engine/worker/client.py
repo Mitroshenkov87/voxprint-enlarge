@@ -10,6 +10,7 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
+from voxprint_engine.process_win import gui_python, no_window_flags
 from voxprint_engine.trt_libs import apply_library_path
 from voxprint_engine.worker.protocol import UpscaleRequest, UpscaleResult
 
@@ -68,28 +69,17 @@ class WorkerClient:
         previous = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = str(_ROOT) + (os.pathsep + previous if previous else "")
         apply_library_path(env)
-        command = [self.python, "-m", "voxprint_engine.worker"]
-        if os.name == "nt":
-            self.proc = subprocess.Popen(
-                command,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=str(_ROOT),
-                env=env,
-                creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0)),
-            )
-        else:
-            self.proc = subprocess.Popen(
-                command,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=str(_ROOT),
-                env=env,
-            )
+        command = [gui_python(self.python), "-m", "voxprint_engine.worker"]
+        self.proc = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(_ROOT),
+            env=env,
+            creationflags=no_window_flags(),
+        )
         self._reader = threading.Thread(target=self._pump, name="enlarge-worker-stdout", daemon=True)
         self._reader.start()
         threading.Thread(target=self._pump_err, name="enlarge-worker-stderr", daemon=True).start()

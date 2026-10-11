@@ -11,8 +11,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from voxprint_engine.gpu_lock import gpu_job, is_stale, lock_path, read_lock, release, try_acquire
-from voxprint_engine.thermal import decide
+from voxprint_common.gpu_lock import Acquired, Holder, gpu_job, is_stale, lock_path, read_holder, release, try_acquire
+from voxprint_common.thermal import decide
 from voxprint_engine.vram import choose_tile, note_spill, parse_nvidia_smi, vram_budget_gb
 from voxprint_engine.worker import UpscaleRequest, WorkerClient
 from voxprint_engine.worker.lanczos import lanczos_resize
@@ -56,16 +56,15 @@ def test_vram_budget_and_tiles() -> None:
 def test_gpu_lock_blocks_a_live_owner_and_takes_a_stale_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = tmp_path / "voxprint-gpu.lock"
     monkeypatch.setenv("VOXPRINT_GPU_LOCK", str(target))
-    assert try_acquire("preview", eta_s=60) is None
-    held = read_lock()
+    assert isinstance(try_acquire("enlarge", "preview", eta=60), Acquired)
+    held = read_holder()
     assert held is not None
-    assert held["owner"] == "enlarge"
-    assert held["pid"] == os.getpid()
-    assert str(held["started"]).endswith("Z")
-    # Re-entrant for this process.
-    assert try_acquire("again") is None
+    assert held.app == "enlarge"
+    assert held.pid == os.getpid()
+    assert str(held.started).endswith("Z")
+    assert isinstance(try_acquire("enlarge", "again"), Acquired)
     release()
-    assert read_lock() is None
+    assert read_holder() is None
 
     future = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     target.write_text(json.dumps({
@@ -75,10 +74,10 @@ def test_gpu_lock_blocks_a_live_owner_and_takes_a_stale_one(tmp_path: Path, monk
         "started": future,
         "eta": future,
     }), encoding="utf-8")
-    holder = try_acquire("preview")
-    assert holder is not None and holder["owner"] == "movie-dubber"
+    holder = try_acquire("enlarge", "preview")
+    assert isinstance(holder, Holder) and holder.app == "movie-dubber"
     with pytest.raises(TimeoutError):
-        with gpu_job("preview", timeout=0.05, poll=0.01):
+        with gpu_job("enlarge", "preview", timeout=0.05, poll=0.01):
             pass
 
     old = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -89,8 +88,9 @@ def test_gpu_lock_blocks_a_live_owner_and_takes_a_stale_one(tmp_path: Path, monk
         "started": old,
         "eta": old,
     }), encoding="utf-8")
-    assert is_stale(read_lock() or {})
-    assert try_acquire("preview") is None
+    stale = read_holder()
+    assert stale is not None and is_stale(stale.as_dict())
+    assert isinstance(try_acquire("enlarge", "preview"), Acquired)
     release()
 
     target.write_text(json.dumps({
@@ -100,7 +100,7 @@ def test_gpu_lock_blocks_a_live_owner_and_takes_a_stale_one(tmp_path: Path, monk
         "started": future,
         "eta": future,
     }), encoding="utf-8")
-    assert try_acquire("preview") is None
+    assert isinstance(try_acquire("enlarge", "preview"), Acquired)
     release()
     assert lock_path() == target
 
@@ -114,8 +114,8 @@ def test_worker_process_resizes_and_releases_the_lock(tmp_path: Path, monkeypatc
 
     def watch() -> None:
         for _ in range(30):
-            data = read_lock()
-            if data and data.get("owner") == "enlarge":
+            data = read_holder()
+            if data is not None and data.app == "enlarge":
                 seen.append(True)
                 return
             time.sleep(0.05)
@@ -145,7 +145,7 @@ def test_worker_process_resizes_and_releases_the_lock(tmp_path: Path, monkeypatc
     assert result.tile == 128  # cpu budget is 0, so the ladder picks the smallest tile
     assert result.next_batch == 1
     assert seen == [True]
-    assert read_lock() is None
+    assert read_holder() is None
     assert not (Path(os.environ["VOXPRINT_HOME"]) / "models" / "4xNomos2_realplksr_dysample.pth").exists()
 
 
@@ -164,10 +164,10 @@ def test_a_child_worker_shares_the_parent_lock() -> None:
         ),
         encoding="utf-8",
     )
-    assert try_acquire("child") is None
-    release()
-    data = read_lock()
-    assert data is not None and data.get("pid") == os.getppid()
+    assert isinstance(try_acquire("enlarge", "child"), Acquired)
+    release(app="enlarge")
+    data = read_holder()
+    assert data is not None and data.pid == os.getppid()
     assert target.is_file()
 
 

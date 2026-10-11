@@ -11,23 +11,21 @@ is fetched.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import time
-import urllib.error
-import urllib.request
 import uuid
 from collections.abc import Callable
 from pathlib import Path
 
-from voxprint_engine.paths import models_dir
+from voxprint_common.download import DownloadError, download as fetch
+from voxprint_common.hashing import sha256_file as hash_file
+from voxprint_common.licence import is_noncommercial, is_unlicensed
+from voxprint_common.paths import models_dir
 from voxprint_engine.registry.schema import ModelManifest
-from voxprint_engine.registry.validate import is_noncommercial, is_unlicensed
 
 USERS_FILE = ".users.json"
 ENLARGE_USER = "enlarge"
-MAX_BYTES = 512 * 1024 * 1024
 
 
 class StoreError(RuntimeError):
@@ -104,7 +102,7 @@ def weight_report(model: ModelManifest, root: Path | None = None) -> tuple[str, 
     target = (root or models_dir()) / model.filename
     if not target.is_file():
         return "missing", "not downloaded"
-    found = sha256_file(target)
+    found = hash_file(target)
     if found != model.sha256.lower():
         return "mismatch", "the file does not match the pinned sha256"
     return "ready", "sha256 matches"
@@ -123,15 +121,8 @@ def delete_weight(model: ModelManifest, root: Path | None = None, *, user: str =
 
 
 def sha256_file(path: Path) -> str:
-    """Lowercase sha256 of a file, read in chunks."""
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while True:
-            block = handle.read(1024 * 1024)
-            if not block:
-                break
-            digest.update(block)
-    return digest.hexdigest()
+    """Lowercase sha256 of a file. The implementation is ``voxprint_common.hashing``."""
+    return hash_file(path)
 
 
 def _reject_licence(model: ModelManifest) -> None:
@@ -153,7 +144,7 @@ def ensure_weight(
     folder = root or models_dir()
     target = folder / model.filename
     if target.is_file():
-        found = sha256_file(target)
+        found = hash_file(target)
         if found != model.sha256:
             raise StoreError(f"{target.name} does not match the pinned sha256")
         return target
@@ -167,45 +158,24 @@ def download(
     expected_sha256: str,
     on_progress: Callable[[float, str], None] | None = None,
 ) -> None:
-    """Stream ``url`` to ``target``. The file is kept only when the hash matches."""
+    """Stream ``url`` to ``target`` through ``voxprint_common.download``.
+
+    Model weights stay on HTTPS. The shared downloader checks the digest,
+    resumes a partial file, and refuses the transfer when the disk is short.
+    """
     if not url.startswith("https://"):
         raise StoreError("downloads must use https")
-    expected = expected_sha256.strip().lower()
-    if len(expected) != 64:
-        raise StoreError("sha256 must be 64 hex characters")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(target.name + ".partial")
-    request = urllib.request.Request(url, headers={"User-Agent": "voxprint-engine"})
-    digest = hashlib.sha256()
-    written = 0
+
+    def _progress(notice: object) -> None:
+        if on_progress is None:
+            return
+        fraction = getattr(notice, "fraction", None)
+        if isinstance(fraction, (int, float)) and not isinstance(fraction, bool):
+            on_progress(float(fraction), f"downloading {target.name}")
+
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 - https is checked
-            final = str(response.geturl())
-            if not final.startswith("https://"):
-                raise StoreError("the download was redirected off https")
-            total = int(response.headers.get("Content-Length") or 0)
-            with partial.open("wb") as handle:
-                while True:
-                    block = response.read(1024 * 256)
-                    if not block:
-                        break
-                    written += len(block)
-                    if written > MAX_BYTES:
-                        raise StoreError("the download is larger than 512 MB")
-                    digest.update(block)
-                    handle.write(block)
-                    if on_progress is not None and total > 0:
-                        on_progress(min(1.0, written / total), f"downloading {target.name}")
-    except StoreError:
-        partial.unlink(missing_ok=True)
-        raise
-    except (OSError, urllib.error.URLError, TimeoutError) as exc:
-        partial.unlink(missing_ok=True)
-        raise StoreError(f"download failed: {exc}") from exc
-    found = digest.hexdigest()
-    if found != expected:
-        partial.unlink(missing_ok=True)
-        raise StoreError(f"sha256 mismatch for {target.name}")
-    os.replace(partial, target)
+        fetch(target, [url], sha256=expected_sha256, progress=_progress)
+    except DownloadError as exc:
+        raise StoreError(str(exc)) from exc
     if on_progress is not None:
         on_progress(1.0, f"saved {target.name}")

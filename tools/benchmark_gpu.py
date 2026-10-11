@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
-from voxprint_engine.gpu_lock import gpu_job
+from voxprint_common.gpu_lock import gpu_job
 from voxprint_engine.infer import preflight, upscale_file, uses_lanczos
 from voxprint_engine.onnx_export import OnnxExportError, ensure_onnx
 from voxprint_engine.registry import load_builtin
@@ -42,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
         if not uses_lanczos(model, args.device, "auto"):
             network = ensure_onnx(model)
         started = time.perf_counter()
-        with gpu_job(f"enlarge:bench:{model.id}", eta_s=600.0, timeout=30.0):
+        with gpu_job("enlarge", f"bench:{model.id}", eta=600.0, timeout=30.0):
             outcome = upscale_file(
                 args.image,
                 dest,

@@ -1,119 +1,49 @@
-"""Shared ``suite.json`` (schema 1), the same file Audiobook Builder and Movie Dubber use.
+"""Shared ``suite.json`` (schema 1).
 
-Enlarge reads and writes ``gpu`` and ``models_dir``. It leaves ``ui_language`` and
-``theme`` alone, including values it does not use, so opening Enlarge does not
-reset another app's language. Unknown keys are preserved.
+``gpu`` and ``models_dir`` are read and written through
+``voxprint_common.suite_settings``. Unknown keys stay in the file.
 """
 from __future__ import annotations
 
-import json
-import os
-import re
-import time
-import uuid
 from pathlib import Path
-from typing import Any
 
-from enlarge.paths import voxprint_home
-from voxprint_engine.paths import models_dir as engine_models_dir
+from voxprint_common.paths import models_dir as resolved_models_folder
+from voxprint_common.suite_settings import file
+from voxprint_common.suite_settings import gpu as shared_gpu
+from voxprint_common.suite_settings import models_dir as shared_models_dir
+from voxprint_common.suite_settings import set_gpu as store_gpu
+from voxprint_common.suite_settings import set_models_dir as store_models_dir
 
 SCHEMA = 1
 FILENAME = "suite.json"
 DEFAULT_GPU = "auto"
-_GPU_RE = re.compile(r"^cuda:(\d{1,2})$")
 
 
 def path() -> Path:
     """Path of the shared suite.json."""
-    return voxprint_home() / "state" / FILENAME
-
-
-def read_raw() -> dict[str, Any]:
-    """The suite file as a dict, or empty when it is missing or unreadable."""
-    try:
-        data = json.loads(path().read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def normalize_gpu(value: object) -> str | None:
-    """Auto or cuda:N. Any other value, including cpu, is dropped."""
-    if not isinstance(value, str):
-        return None
-    text = value.strip().lower()
-    if text == "auto":
-        return text
-    if text == "cpu":
-        return None
-    if text in ("cuda", "gpu"):
-        return "cuda:0"
-    match = _GPU_RE.match(text)
-    if match is None:
-        return None
-    return f"cuda:{int(match.group(1))}"
+    return file()
 
 
 def gpu() -> str:
     """The saved GPU choice, or auto when the file has none."""
-    value = read_raw().get("gpu")
-    if isinstance(value, dict):
-        value = value.get("device", value.get("gpu"))
-    return normalize_gpu(value) or DEFAULT_GPU
+    return shared_gpu()
 
 
 def models_dir() -> Path | None:
     """Absolute folder from the file, or None when the key is missing, null, or relative."""
-    value = read_raw().get("models_dir")
-    if not isinstance(value, str) or not value.strip():
-        return None
-    folder = Path(os.path.expandvars(os.path.expanduser(value.strip().strip('"'))))
-    return folder if folder.is_absolute() else None
+    return shared_models_dir()
 
 
 def resolved_models_dir() -> Path:
     """``VOXPRINT_MODELS_DIR``, else the suite value, else the default shared folder."""
-    return engine_models_dir()
-
-
-def _write(data: dict[str, Any]) -> None:
-    target = path()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_name(f"{target.name}.{uuid.uuid4().hex[:8]}.tmp")
-    tmp.write_text(json.dumps(data, indent=1, ensure_ascii=True) + "\n", encoding="utf-8")
-    try:
-        for attempt in range(10):
-            try:
-                os.replace(tmp, target)
-                return
-            except PermissionError:
-                time.sleep(0.05 * (attempt + 1))
-        raise PermissionError(f"cannot replace {target}")
-    finally:
-        if tmp.exists():
-            tmp.unlink()
+    return resolved_models_folder()
 
 
 def set_gpu(value: str) -> str:
     """Store a GPU choice and leave every other suite key alone."""
-    stored = normalize_gpu(value)
-    if stored is None:
-        raise ValueError(f"gpu must be auto or cuda:N, got {value!r}")
-    data = read_raw()
-    data["schema"] = SCHEMA
-    data["gpu"] = stored
-    _write(data)
-    return stored
+    return store_gpu(value)
 
 
 def set_models_dir(folder: Path | None) -> None:
     """None stores JSON null, which means the default shared folder."""
-    data = read_raw()
-    data["schema"] = SCHEMA
-    if folder is None:
-        data["models_dir"] = None
-    else:
-        if not folder.is_absolute():
-            raise ValueError("models_dir must be an absolute path")
-        data["models_dir"] = str(folder)
-    _write(data)
+    store_models_dir(folder)

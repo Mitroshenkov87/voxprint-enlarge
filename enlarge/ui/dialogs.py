@@ -26,9 +26,10 @@ from enlarge.appinfo import APP_DISPLAY_NAME, status_label, version_label
 from enlarge.credits import credit_sections
 from enlarge.suite import gpu, resolved_models_dir, set_gpu, set_models_dir
 from enlarge.ui.icons import apply_suite_icon
-from enlarge.ui.theme import build_style
+from voxprint_common.gpu_probe import assess
+from voxprint_common.ui.theme import build_style
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY, choices, normalize_format
-from voxprint_engine.hardware import assess_gpu
+from voxprint_engine.providers import ci_lanczos
 from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.vram import device_index
 
@@ -171,7 +172,9 @@ class SettingsDialog(QDialog):
         root.addLayout(buttons)
 
     def _capability_warning(self, device: str) -> str:
-        return assess_gpu(device_index(device), app_name=APP_DISPLAY_NAME).warning
+        if ci_lanczos():
+            return ""
+        return assess(APP_DISPLAY_NAME, index=device_index(device)).warning
 
     def _on_gpu_choice(self) -> None:
         choice = str(self.gpu_box.currentData() or "auto")

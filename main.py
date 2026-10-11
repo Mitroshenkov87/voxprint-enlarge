@@ -28,12 +28,12 @@ from enlarge.batch import run_batch
 from enlarge.cli import run_capabilities, run_contract
 from enlarge.cli_parser import parse_cli
 from enlarge.ipc.register import register_install, unregister_install
-from enlarge.paths import logs_dir
+from enlarge.paths import logs_dir, voxprint_home, voxprint_home_source
+from enlarge.ui.splash import BAR
+from voxprint_common.buildinfo import load as load_build
+from voxprint_common.ui.splash import Splash
 from enlarge.suite import gpu
-from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
-from voxprint_engine.hardware import assess_gpu, ci_lanczos
-from voxprint_engine.paths import voxprint_home, voxprint_home_source
-from voxprint_engine.suite_runtime import (
+from enlarge.suite_runtime import (
     RuntimeReport,
     SuiteInstallError,
     cpu_onnxruntime_shadows_gpu,
@@ -42,6 +42,9 @@ from voxprint_engine.suite_runtime import (
     install_gpu_wheels,
     release_runtime,
 )
+from voxprint_common.gpu_probe import assess
+from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
+from voxprint_engine.providers import ci_lanczos
 from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
 from voxprint_engine.session import available_providers
 from voxprint_engine.store import register_quietly
@@ -90,7 +93,9 @@ def _setup_logging() -> None:
 
 def _gpu_block() -> str:
     """Empty when the machine may run. Otherwise the sentence to show and exit on."""
-    return assess_gpu(app_name=APP_DISPLAY_NAME).message
+    if ci_lanczos():
+        return ""
+    return assess(APP_DISPLAY_NAME).message
 
 
 def _upscale(argv: list[str]) -> int:
@@ -321,16 +326,13 @@ def _gui(_argv: list[str]) -> int:
     from PySide6.QtWidgets import QApplication, QMessageBox
 
     from enlarge.appinfo import resource_dir
-    from enlarge.ui.splash import BAR
-    from enlarge._vendor.voxprint_common.splash import SplashScreen
 
     running = QApplication.instance()
     app = running if isinstance(running, QApplication) else QApplication(sys.argv)
     app.setApplicationName(APP_DISPLAY_NAME)
     app.setOrganizationName("Voxprint")
     root = resource_dir()
-    splash = SplashScreen(APP_DISPLAY_NAME, root / "assets" / "splash.jpg", BAR, root / "BUILD.json")
-    splash.show()
+    splash = Splash(root / "assets" / "splash.jpg", BAR, load_build(root / "BUILD.json", app="enlarge"))
     splash.set_stage("Loading UI")
     from enlarge.ui.window import MainWindow
 
@@ -343,20 +345,21 @@ def _gui(_argv: list[str]) -> int:
         splash.set_stage("Checking GPU")
         message = _ensure_shared(on_progress)
         if message:
-            splash.close()
+            splash.finish()
             print(message, file=sys.stderr)
             QMessageBox.critical(None, APP_DISPLAY_NAME, message)
             return 1
     blocked = _gpu_block()
     if blocked:
-        splash.close()
+        splash.finish()
         print(blocked, file=sys.stderr)
         QMessageBox.critical(None, APP_DISPLAY_NAME, blocked)
         return 1
     splash.set_stage("Loading registry")
     register_quietly()
     window = MainWindow()
-    splash.finish(window)
+    splash.finish()
+    window.show()
     return int(app.exec())
 
 

@@ -20,7 +20,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from voxprint_engine.paths import models_dir
+from voxprint_common.paths import models_dir
 from voxprint_engine.registry import combined_catalog
 from voxprint_engine.registry.schema import ModelManifest, checked_in_channels
 from voxprint_engine.store import StoreError, download, ensure_weight, sha256_file

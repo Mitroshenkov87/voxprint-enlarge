@@ -7,12 +7,12 @@ import sys
 from pathlib import Path
 from typing import Any, TextIO
 
+from voxprint_common.gpu_lock import GpuLockTimeout, gpu_job
+from voxprint_common.paths import home as suite_home
+from voxprint_common.paths import models_dir
 from voxprint_engine.formats import DEFAULT_FORMAT
-from voxprint_engine.paths import voxprint_home
-from voxprint_engine.gpu_lock import GpuLockTimeout, gpu_job
 from voxprint_engine.infer import JobOutcome, preflight, upscale_file, uses_lanczos
 from voxprint_engine.onnx_export import OnnxExportError, ensure_onnx_in_child
-from voxprint_engine.paths import models_dir
 from voxprint_engine.registry import combined_catalog
 from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.store import StoreError, register_quietly
@@ -109,7 +109,7 @@ def _job(message: dict[str, Any]) -> dict[str, Any]:
             candidate = models_dir() / model.filename
             if candidate.is_file():
                 weight = candidate
-    with gpu_job(f"enlarge:{model.id}", eta_s=600.0, timeout=30.0):
+    with gpu_job("enlarge", model.id, eta=600.0, timeout=30.0):
         outcome = upscale_file(
             src,
             dst,
@@ -158,7 +158,7 @@ def isolate_native_stdio() -> TextIO:
     share fd 1 with the protocol unless this runs first. Tests pass their own
     ``stdout`` and must not call this.
     """
-    folder = voxprint_home() / "logs"
+    folder = suite_home() / "logs"
     folder.mkdir(parents=True, exist_ok=True)
     log_path = folder / "worker-native.log"
     protocol_fd = os.dup(1)
