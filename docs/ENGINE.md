@@ -153,9 +153,11 @@ those directories with `prepare_native_runtime()` before ONNX Runtime is importe
 in every process (the worker, the CLI, and `--selftest`). That function finds
 the `nvidia-*-cu13` wheel `bin` and `lib` directories (cuBLAS, cuDNN, the CUDA
 runtime, nvJitLink, and the rest) plus `tensorrt-cu13-libs`, calls
-`os.add_dll_directory` on Windows and keeps those handles, prepends the same
-directories to `PATH` for child processes, and on Linux prepends
-`LD_LIBRARY_PATH` and preloads the shared objects. An inherited environment is
+`os.add_dll_directory` on Windows and keeps those handles, and prepends the same
+directories to `PATH` or `LD_LIBRARY_PATH` for child processes. On Linux a
+process that was started without those directories re-executes once so glibc
+sees them. The CUDA wheels are not forced in with `RTLD_GLOBAL`: that crashes
+torch in the same process. An inherited environment is
 not consulted. `--selftest` starts the worker the way a job does, opens a tiny
 session, and reports `session.get_providers()`. `ok` is false when the GPU
 provider is not the one that stayed active. A job that falls back to CPU emits

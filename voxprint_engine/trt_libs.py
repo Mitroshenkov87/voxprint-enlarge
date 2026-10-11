@@ -8,12 +8,13 @@ started without a console does not see them unless this module adds them.
 
 ``os.add_dll_directory`` handles are kept alive for the life of the process.
 Child environments get the same directories prepended to ``PATH`` or
-``LD_LIBRARY_PATH``. Linux also preloads the shared objects, because glibc
-reads ``LD_LIBRARY_PATH`` only at process start.
+``LD_LIBRARY_PATH``. On Linux, glibc reads ``LD_LIBRARY_PATH`` only at process
+start, so a process that was not given those directories re-executes once.
+Forcing the CUDA wheels in with ``RTLD_GLOBAL`` crashes torch in the same
+process, which is what the audit hit.
 """
 from __future__ import annotations
 
-import ctypes
 import importlib.metadata as metadata
 import os
 import sys
@@ -25,15 +26,6 @@ TRT_LIBS_VERSION = "10.14.1.48"
 TRT_LIBS_PACKAGE = "tensorrt-cu13-libs"
 _LIB_NAMES = ("nvinfer_10.dll", "libnvinfer.so.10")
 _EXTRA_LIBS = ("libnvinfer_plugin.so.10", "libnvonnxparser.so.10", "nvinfer_plugin_10.dll", "nvonnxparser_10.dll")
-_PRELOAD_PREFIXES = (
-    "nvjitlink",
-    "cudart",
-    "cublaslt",
-    "cublas",
-    "cudnn",
-    "nvinfer",
-    "nvonnxparser",
-)
 _ORDER = (
     "nvjitlink",
     "cuda_runtime",
@@ -55,7 +47,6 @@ _dirs_ready = False
 _dirs: list[Path] = []
 _dll_handles: list[object] = []
 _added: set[str] = set()
-_loaded: list[object] = []
 _prepared = False
 
 
@@ -92,9 +83,11 @@ def prepare_native_runtime() -> list[Path]:
     folders = native_library_dirs()
     if _prepared:
         return folders
-    _register(folders)
+    if sys.platform == "win32":
+        _register_windows(folders)
     _prepend(os.environ, folders)
     _prepared = True
+    _reexec_for_linux(folders)
     return folders
 
 
@@ -109,27 +102,42 @@ def apply_library_path(env: dict[str, str]) -> None:
     _prepend(env, native_library_dirs())
 
 
-def _register(folders: list[Path]) -> None:
-    if sys.platform == "win32":
-        add = getattr(os, "add_dll_directory", None)
-        if add is None:
-            return
-        for folder in folders:
-            key = str(folder)
-            if key in _added:
-                continue
-            try:
-                _dll_handles.append(add(key))
-            except OSError:
-                continue
-            _added.add(key)
+def _register_windows(folders: list[Path]) -> None:
+    """Keep ``os.add_dll_directory`` handles so the CUDA provider can open them."""
+    add = getattr(os, "add_dll_directory", None)
+    if add is None:
         return
     for folder in folders:
-        for path in _preload_paths(folder):
-            try:
-                _loaded.append(ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL))
-            except OSError:
-                continue
+        key = str(folder)
+        if key in _added:
+            continue
+        try:
+            _dll_handles.append(add(key))
+        except OSError:
+            continue
+        _added.add(key)
+
+
+def _reexec_for_linux(folders: list[Path]) -> None:
+    """Restart this process once so glibc sees the CUDA 13 library directories.
+
+    Pytest and the CI stand-in skip this. ``RTLD_GLOBAL`` is not used: loading
+    the CUDA wheels that way crashes torch later in the same process.
+    """
+    if not _should_reexec(folders):
+        return
+    os.environ["VOXPRINT_NATIVE_REEXEC"] = "1"
+    os.execv(sys.executable, [sys.executable, *sys.argv])
+
+
+def _should_reexec(folders: list[Path]) -> bool:
+    if sys.platform == "win32" or not folders:
+        return False
+    if os.environ.get("VOXPRINT_NATIVE_REEXEC") == "1":
+        return False
+    if os.environ.get("VOXPRINT_CI_LANCZOS") or "pytest" in sys.modules:
+        return False
+    return True
 
 
 def _prepend(env: MutableMapping[str, str], folders: list[Path]) -> None:
@@ -243,22 +251,6 @@ def _unique(folders: list[Path]) -> list[Path]:
         seen.add(resolved)
         result.append(folder)
     return result
-
-
-def _preload_paths(folder: Path) -> list[Path]:
-    try:
-        files = [path for path in folder.iterdir() if path.is_file() and ".so" in path.name]
-    except OSError:
-        return []
-
-    def rank(path: Path) -> tuple[int, str]:
-        text = path.name.lower()
-        for index, token in enumerate(_PRELOAD_PREFIXES):
-            if token in text:
-                return index, text
-        return len(_PRELOAD_PREFIXES), text
-
-    return sorted(files, key=rank)
 
 
 def _find_library_dir() -> Path | None:

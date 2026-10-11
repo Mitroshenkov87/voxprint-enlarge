@@ -128,6 +128,20 @@ def test_native_dirs_keep_cu13_bins_and_tensorrt(tmp_path: Path, monkeypatch: py
     assert found.index(cublas.resolve()) < found.index(trt.resolve())
 
 
+def test_pytest_does_not_reexec_for_linux_libraries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("VOXPRINT_NATIVE_REEXEC", raising=False)
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    assert trt_libs._should_reexec([tmp_path]) is False
+    pytest_mod = sys.modules.pop("pytest")
+    try:
+        assert trt_libs._should_reexec([tmp_path]) is True
+    finally:
+        sys.modules["pytest"] = pytest_mod
+    monkeypatch.setenv("VOXPRINT_NATIVE_REEXEC", "1")
+    assert trt_libs._should_reexec([tmp_path]) is False
+
+
 def test_library_path_prepends_the_tensorrt_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     folder = tmp_path / "trt"
     monkeypatch.setattr("voxprint_engine.trt_libs.native_library_dirs", lambda: [folder])
