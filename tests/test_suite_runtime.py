@@ -203,11 +203,39 @@ def test_selftest_json_and_uninstall_command(capsys: pytest.CaptureFixture[str])
     assert payload["ok"] is True
     assert payload["skipped"] is True
     assert payload["tensorrt_ep"]["detail"] == "skipped"
+    assert payload["cuda_ep"]["detail"] == "skipped"
     assert {item["id"] for item in payload["components"]} == set(COMPONENTS)
     assert main(["--install-suite"]) == 0
     assert "shared suite: skipped" in capsys.readouterr().out
     assert main(["--uninstall-suite"]) == 0
     assert main(["--selftest"]) == 0
+
+
+def test_selftest_requires_tensorrt_and_cuda(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+
+    def ready(_app: str, **_kwargs: object) -> RuntimeReport:
+        return RuntimeReport(True, False, ())
+
+    monkeypatch.setattr("main.ensure_runtime", ready)
+    monkeypatch.setattr("main.available_providers", lambda: ["CUDAExecutionProvider"])
+    assert main(["--selftest", "--json"]) == 1
+    failed = capsys.readouterr()
+    payload = json.loads(failed.out)
+    assert payload["ok"] is False
+    assert payload["tensorrt_ep"]["ok"] is False
+    assert payload["cuda_ep"]["ok"] is True
+    assert "TensorrtExecutionProvider did not load" in failed.err
+
+    monkeypatch.setattr(
+        "main.available_providers",
+        lambda: ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
+    )
+    assert main(["--selftest", "--json"]) == 0
+    loaded = json.loads(capsys.readouterr().out)
+    assert loaded["ok"] is True
+    assert loaded["tensorrt_ep"]["detail"] == "loaded"
+    assert loaded["cuda_ep"]["detail"] == "loaded"
 
 
 def test_selftest_failure_is_nonzero(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

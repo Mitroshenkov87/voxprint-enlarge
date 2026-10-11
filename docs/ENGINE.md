@@ -88,13 +88,16 @@ setting in the app. A user job never takes that path.
 `VOXPRINT_ORT_DEVICE=cpu`, `device` `cpu-onnx`, or `engine` `onnx` runs the
 CPU execution provider. That is the smoke test. It is not a user mode.
 
-`--install-suite` pins `onnxruntime-gpu==1.31.0` and `tensorrt_cu13_libs==10.16.1.11`
-(`--no-deps`). ORT 1.31 loads `nvinfer_10`. An unpinned `tensorrt-cu13` install
-is TensorRT 11, and that provider does not load. The worker adds that library
-directory with `os.add_dll_directory` on Windows and `LD_LIBRARY_PATH` plus
-`RTLD_GLOBAL` on Linux before ONNX Runtime is imported. `--selftest` checks
-that the TensorRT execution provider actually loads. The CI stand-in skips
-that check.
+`--install-suite` pins `onnxruntime-gpu==1.31.0` and `tensorrt-cu13-libs==10.14.1.48`.
+The CPU `onnxruntime` wheel is uninstalled, because it shadows the GPU wheel
+and leaves only the CPU and Azure providers. ORT 1.31 loads `nvinfer_10`.
+An unpinned `tensorrt-cu13` install is TensorRT 11, and that provider does
+not load. `tensorrt-cu13==10.14.1.48` is recorded with `--no-deps` because
+the TensorRT 10 Python bindings have no cp314 wheel. The worker adds that
+library directory with `os.add_dll_directory` on Windows and
+`LD_LIBRARY_PATH` plus `RTLD_GLOBAL` on Linux before ONNX Runtime is
+imported. `--selftest` checks that `TensorrtExecutionProvider` and
+`CUDAExecutionProvider` both load. The CI stand-in skips that check.
 
 Native `EP Error` text from ONNX Runtime is not protocol traffic. The worker
 keeps JSON on a duplicated stdout and sends those prints to

@@ -10,7 +10,7 @@ from onnx import TensorProto, helper
 
 from voxprint_engine.onnx_export import OnnxExportError, ensure_onnx, export_module, onnx_cache_path
 from voxprint_engine.registry.schema import ModelManifest
-from voxprint_engine.suite_runtime import _model_ready, install_gpu_wheels
+from voxprint_engine.suite_runtime import _GPU_PROBE, _model_ready, install_gpu_wheels
 
 
 def _manifest(**overrides: object) -> ModelManifest:
@@ -142,6 +142,13 @@ def test_prebuilt_onnx_is_preferred(tmp_path: Path) -> None:
     assert fetched == ["https://example.com/mirror.onnx"]
 
 
+def test_gpu_probe_rejects_the_cpu_wheel_and_requires_tensorrt_10_14() -> None:
+    assert "10.14.1.48" in _GPU_PROBE
+    assert 'if "onnxruntime" in names' in _GPU_PROBE
+    assert "cpu-onnxruntime" in _GPU_PROBE
+    compile(_GPU_PROBE, "<gpu-probe>", "exec")
+
+
 def test_gpu_install_includes_the_converter(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[list[str]] = []
 
@@ -155,7 +162,10 @@ def test_gpu_install_includes_the_converter(monkeypatch: pytest.MonkeyPatch) -> 
     assert "spandrel>=0.4,<0.5" in flat
     assert "onnx>=1.16,<2" in flat
     assert "onnxruntime-gpu==1.31.0" in flat
-    assert "--no-deps tensorrt_cu13_libs==10.16.1.11" in flat
+    assert "--extra-index-url https://pypi.nvidia.com" in flat
+    assert "tensorrt-cu13-libs==10.14.1.48" in flat
+    assert "--no-deps tensorrt-cu13==10.14.1.48" in flat
+    assert "uninstall -y onnxruntime " in flat
     assert "torch" in flat
 
 

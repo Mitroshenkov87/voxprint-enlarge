@@ -22,7 +22,7 @@ voxprint-enlarge upscale --input samples/sample.png --scale 2 --format avif --js
 
 `--version` exits 0, prints `0.2.0-rc.3` and `Marpe`, and says `installed build`. It does not say `run from source`.
 
-`--selftest --json` exits 0. `ok` is true and `tensorrt_ep.detail` is `loaded`.
+`--selftest --json` exits 0. `ok` is true. `tensorrt_ep.detail` and `cuda_ep.detail` are both `loaded`.
 
 `--capabilities --json` exits 0. On this machine `gpu.status` is `ok` and `gpu.reason` is null. `version` matches `--version`. The default model is `installed` true.
 
@@ -50,7 +50,7 @@ The job writes an AVIF file. It does not stop on `EP_FAIL`. Record wall time, `d
 
 ## 4. Regressions
 
-These passed on the same 4090 against `v0.2.0-rc.2` once an ONNX file and TensorRT 10.16 were available. They must pass from this stock install with neither step done by hand.
+These passed on the same 4090 against `v0.2.0-rc.2` once an ONNX file and TensorRT 10.14.1.48 were available. They must pass from this stock install with neither step done by hand.
 
 **Line art.** An anime or line-art image, x4, RealESRGAN anime 6B. The previous run took 77 s, peak 1.6 GB, and wrote 3200×2152 AVIF from an 800×538 source (first run, including the TensorRT build, `done.ms` 72017).
 
