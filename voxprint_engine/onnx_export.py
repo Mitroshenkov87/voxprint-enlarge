@@ -17,27 +17,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-try:
-    import torch
-except ImportError:  # optional until a weight is converted
-    torch = None  # type: ignore[assignment]
-
-try:
-    import onnx
-except ImportError:  # optional until a weight is converted
-    onnx = None  # type: ignore[assignment]
-
-try:
-    from onnxruntime.transformers.float16 import convert_float_to_float16
-except ImportError:  # optional until a weight is converted
-    convert_float_to_float16 = None
-
-try:
-    from spandrel import ModelLoader
-except ImportError:  # optional until a weight is converted; spandrel_extra_arches is never imported
-    ModelLoader = None
-
 from voxprint_engine.paths import models_dir
+
+# These imports stay inside the export functions. The worker imports this
+# module on every job, and importing torch at module level takes long enough
+# on Windows that the GPU lock is released before a test can see it.
+_torch: Any = None
+_onnx: Any = None
+_to_fp16: Any = None
+_loader: Any = None
 from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.store import StoreError, download, ensure_weight, sha256_file
 
@@ -85,9 +73,9 @@ def export_module(module: Any, dest: Path, *, height: int = 64, width: int = 64)
     """
     if height < 1 or width < 1:
         raise OnnxExportError("the export size must be at least 1 pixel")
-    _need(torch, "torch")
-    _need(onnx, "onnx")
-    _need(convert_float_to_float16, "onnxruntime")
+    torch = _load_torch()
+    onnx = _load_onnx()
+    to_fp16 = _load_fp16()
     module.eval()
     module = module.cpu().float()
     example = torch.rand(1, 3, height, width)
@@ -97,7 +85,7 @@ def export_module(module: Any, dest: Path, *, height: int = 64, width: int = 64)
     try:
         _legacy_export(torch, module, example, partial)
         graph = onnx.load(str(partial))
-        graph = convert_float_to_float16(graph, keep_io_types=False)
+        graph = to_fp16(graph, keep_io_types=False)
         onnx.checker.check_model(graph)
         onnx.save(graph, str(checked))
         os.replace(checked, dest)
@@ -114,10 +102,10 @@ def export_weight(weight: Path, dest: Path, on_progress: Progress | None = None)
     """Load ``weight`` with spandrel's MIT core and write a checked fp16 ONNX file."""
     if not weight.is_file():
         raise OnnxExportError(f"not a file: {weight.name}")
-    _need(ModelLoader, "spandrel")
+    loader_cls = _load_spandrel()
     _emit(on_progress, 0.2, "loading the weight")
     try:
-        descriptor = ModelLoader().load_from_file(str(weight))
+        descriptor = loader_cls().load_from_file(str(weight))
     except OnnxExportError:
         raise
     except Exception as exc:
@@ -222,7 +210,7 @@ def _adopt_sibling(sibling: Path, dest: Path) -> Path | None:
 
 
 def _check_saved(path: Path) -> None:
-    _need(onnx, "onnx")
+    onnx = _load_onnx()
     try:
         graph = onnx.load(str(path))
         onnx.checker.check_model(graph)
@@ -244,9 +232,49 @@ def _emit(on_progress: Progress | None, fraction: float, message: str) -> None:
         on_progress(fraction, message)
 
 
-def _need(module: Any, name: str) -> None:
-    if module is None:
-        raise OnnxExportError(f"export needs {name}. See docs/ENGINE.md.")
+def _load_torch() -> Any:
+    global _torch
+    if _torch is None:
+        try:
+            import torch
+        except ImportError as exc:
+            raise OnnxExportError("export needs torch. See docs/ENGINE.md.") from exc
+        _torch = torch
+    return _torch
+
+
+def _load_onnx() -> Any:
+    global _onnx
+    if _onnx is None:
+        try:
+            import onnx
+        except ImportError as exc:
+            raise OnnxExportError("export needs onnx. See docs/ENGINE.md.") from exc
+        _onnx = onnx
+    return _onnx
+
+
+def _load_fp16() -> Any:
+    global _to_fp16
+    if _to_fp16 is None:
+        try:
+            from onnxruntime.transformers.float16 import convert_float_to_float16
+        except ImportError as exc:
+            raise OnnxExportError("export needs onnxruntime. See docs/ENGINE.md.") from exc
+        _to_fp16 = convert_float_to_float16
+    return _to_fp16
+
+
+def _load_spandrel() -> Any:
+    """The MIT ``spandrel`` loader. ``spandrel_extra_arches`` is never imported."""
+    global _loader
+    if _loader is None:
+        try:
+            from spandrel import ModelLoader
+        except ImportError as exc:
+            raise OnnxExportError("export needs spandrel. See docs/ENGINE.md.") from exc
+        _loader = ModelLoader
+    return _loader
 
 
 def _legacy_export(torch_mod: Any, module: Any, example: Any, dest: Path) -> None:
