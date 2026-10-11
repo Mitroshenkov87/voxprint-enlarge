@@ -107,6 +107,8 @@ def test_capabilities_with_no_gpu(monkeypatch: pytest.MonkeyPatch, capsys: pytes
     assert payload["max_scale"] == 4
     assert payload["gpu"] == {"name": None, "cc": None, "status": "none", "reason": "no_nvidia"}
     assert payload["default_output_format"] == "avif"
+    assert payload["voxprint_home_source"] == "env"
+    assert payload["voxprint_home"].endswith("voxprint")
     assert "png" not in payload["output_formats"]
     expected = ["avif", "jxl", "webp", "jpeg"]
     if heic_backend() is not None:
@@ -172,7 +174,7 @@ def test_linux_discovery_files(tmp_path: Path) -> None:
     assert "X-Voxprint-Ipc=/run/user/1/voxprint/enlarge.sock" in text
     assert "X-Voxprint-Protocol=1" in text
     assert "X-Voxprint-Ipc-Base=voxprint-enlarge" in text
-    assert "X-Voxprint-Version=0.2.0-rc.4" in text
+    assert "X-Voxprint-Version=0.2.0-rc.5" in text
     assert f"X-Voxprint-Exe={exe}" in text
     launcher = tmp_path / "bin" / "voxprint-enlarge"
     assert os.access(launcher, os.X_OK)

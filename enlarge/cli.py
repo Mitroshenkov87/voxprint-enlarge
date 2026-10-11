@@ -20,6 +20,7 @@ from enlarge.ipc.discovery import resolve_exe
 from enlarge.ipc.jobs import JobControl, run_job
 from enlarge.ipc.protocol import ERROR_CODES, EnlargeRequest, dumps, error_message, exit_code, message_kind
 from voxprint_engine.formats import DEFAULT_QUALITY
+from voxprint_engine.paths import voxprint_home_warning
 
 _USAGE = (
     "usage: voxprint-enlarge --input FILE --output FILE (--scale 2|4 | --long-side PX) "
@@ -160,6 +161,9 @@ def _hello() -> dict[str, Any]:
 
 def run_capabilities() -> int:
     """Local capabilities, or the warm server's copy when one is listening."""
+    warning = voxprint_home_warning()
+    if warning:
+        print(warning, file=sys.stderr)
     remote = exchange([_hello(), {"op": "capabilities", "type": "capabilities"}], {"capabilities", "error"}, timeout=5.0)
     if remote:
         for message in remote:

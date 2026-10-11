@@ -7,6 +7,7 @@ from enlarge.appinfo import product_version
 from enlarge.ipc.protocol import PROTOCOL
 from voxprint_engine.formats import DEFAULT_FORMAT, heic_backend
 from voxprint_engine.hardware import MIN_DRIVER_MAJOR, capability_warning, driver_major, query_gpus
+from voxprint_engine.paths import voxprint_home, voxprint_home_source
 from voxprint_engine.registry import load_builtin
 from voxprint_engine.store import weight_report
 from voxprint_engine.worker.lanczos import IMAGE_EXTENSIONS
@@ -101,4 +102,6 @@ def capabilities() -> dict[str, Any]:
         "input_formats": input_formats(),
         "output_formats": output_formats(),
         "default_output_format": DEFAULT_FORMAT,
+        "voxprint_home": str(voxprint_home()),
+        "voxprint_home_source": voxprint_home_source(),
     }

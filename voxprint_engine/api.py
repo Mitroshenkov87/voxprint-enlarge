@@ -21,6 +21,18 @@ from voxprint_engine.registry import (
     load_builtin,
     validate_manifest,
 )
+from voxprint_engine.shared_manifest import (
+    SharedManifest,
+    SharedManifestError,
+    add_ref,
+    find_reusable,
+    load,
+    lock_hash,
+    remove_ref,
+    reserve,
+    save,
+    update,
+)
 from voxprint_engine.store import ensure_weight, register, unregister
 from voxprint_engine.suite_runtime import (
     ComponentStatus,
@@ -71,6 +83,16 @@ __all__ = [
     "models_dir",
     "note_spill",
     "read_manifest",
+    "SharedManifest",
+    "SharedManifestError",
+    "add_ref",
+    "find_reusable",
+    "load",
+    "lock_hash",
+    "remove_ref",
+    "reserve",
+    "save",
+    "update",
     "read_shared_usage",
     "release_runtime",
     "register",
