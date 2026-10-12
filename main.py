@@ -43,6 +43,7 @@ from enlarge.suite_runtime import (
     release_runtime,
 )
 from voxprint_engine.nvidia_smi import assess
+from voxprint_engine.trt_libs import prepare_native_runtime
 from voxprint_engine.worker.client import WorkerClient, WorkerError
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
 from voxprint_engine.providers import CUDA, TRT, ci_lanczos
@@ -219,6 +220,7 @@ def _print_suite(
 
 def probe_execution_providers() -> dict[str, object]:
     """Spawn the worker the way a job does and read the providers a tiny session keeps."""
+    prepare_native_runtime()
     with WorkerClient() as client:
         return client.probe()
 

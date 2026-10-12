@@ -128,6 +128,108 @@ def test_native_dirs_keep_cu13_bins_and_tensorrt(tmp_path: Path, monkeypatch: py
     assert found.index(cublas.resolve()) < found.index(trt.resolve())
 
 
+def test_native_dirs_walk_every_cuda13_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "site"
+    x86 = root / "nvidia" / "cuda_runtime" / "bin" / "x86_64"
+    x86.mkdir(parents=True)
+    (x86 / "cudart64_13.dll").write_bytes(b"x")
+    cufft = root / "nvidia" / "cufft" / "bin" / "x86_64"
+    cufft.mkdir(parents=True)
+    (cufft / "cufft64_13.dll").write_bytes(b"x")
+    cublas = root / "nvidia" / "cublas" / "bin"
+    cublas.mkdir(parents=True)
+    (cublas / "cublasLt64_13.dll").write_bytes(b"x")
+    cudnn = root / "nvidia" / "cudnn" / "lib"
+    cudnn.mkdir(parents=True)
+    (cudnn / "libcudnn.so.13").write_bytes(b"x")
+    nvjit = root / "nvidia" / "nvjitlink" / "lib" / "x64"
+    nvjit.mkdir(parents=True)
+    (nvjit / "nvJitLink_13.dll").write_bytes(b"x")
+    stale = root / "nvidia" / "cublas12" / "bin"
+    stale.mkdir(parents=True)
+    (stale / "cublas64_12.dll").write_bytes(b"x")
+    empty = root / "nvidia" / "curand" / "bin" / "x86_64"
+    empty.mkdir(parents=True)
+    (empty / "README.txt").write_bytes(b"x")
+    trt = root / "tensorrt_libs"
+    trt.mkdir()
+    (trt / "nvinfer_10.dll").write_bytes(b"x")
+    monkeypatch.setattr(trt_libs, "_site_roots", lambda: [root])
+    monkeypatch.setattr(trt_libs, "_distributions", lambda: [])
+    monkeypatch.setattr(trt_libs, "_searched", False)
+    monkeypatch.setattr(trt_libs, "_folder", None)
+    monkeypatch.setattr(trt_libs, "_dirs_ready", False)
+    monkeypatch.setattr(trt_libs, "_dirs", [])
+
+    def missing(_name: str) -> object:
+        raise trt_libs.metadata.PackageNotFoundError
+
+    monkeypatch.setattr(trt_libs.metadata, "distribution", missing)
+    found = [path.resolve() for path in trt_libs.native_library_dirs()]
+    expected = [x86, cufft, cublas, cudnn, nvjit, trt]
+    assert found == [path.resolve() for path in expected]
+    assert stale.resolve() not in found
+    assert empty.resolve() not in found
+
+
+def test_session_import_prepares_before_onnxruntime() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = """
+import sys
+sys.modules.pop("onnxruntime", None)
+import voxprint_engine.trt_libs as trt
+seen = {}
+real = trt.prepare_native_runtime
+def spy():
+    seen["loaded"] = "onnxruntime" in sys.modules
+    return real()
+trt.prepare_native_runtime = spy
+import voxprint_engine.session
+assert seen.get("loaded") is False
+print("ok")
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(root) + os.pathsep + env.get("PYTHONPATH", "")
+    env["VOXPRINT_CI_LANCZOS"] = "1"
+    proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, env=env, check=False)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "ok"
+
+
+def test_export_and_worker_prepare_before_onnxruntime() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = """
+import sys
+sys.modules.pop("onnxruntime", None)
+import voxprint_engine.trt_libs as trt
+seen = []
+real = trt.prepare_native_runtime
+def spy():
+    seen.append("onnxruntime" in sys.modules)
+    return real()
+trt.prepare_native_runtime = spy
+import voxprint_engine.onnx_export as export
+try:
+    export._load_fp16()
+except Exception:
+    pass
+assert seen and seen[0] is False
+for key in list(sys.modules):
+    if key == "onnxruntime" or key.startswith("onnxruntime."):
+        del sys.modules[key]
+seen.clear()
+import voxprint_engine.worker.server
+assert seen and seen[0] is False
+print("ok")
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(root) + os.pathsep + env.get("PYTHONPATH", "")
+    env["VOXPRINT_CI_LANCZOS"] = "1"
+    proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, env=env, check=False)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "ok"
+
+
 def test_pytest_does_not_reexec_for_linux_libraries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.delenv("VOXPRINT_NATIVE_REEXEC", raising=False)

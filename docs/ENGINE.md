@@ -1,10 +1,22 @@
 # Shared inference engine
 
 `voxprint_engine` is the image upscaler VOXPrint AI Enlarge owns and VOXPrint AI
-Clarity imports. The installable distribution is `voxprint-engine` 1.4.0. It
+Clarity imports. The installable distribution is `voxprint-engine` 1.5.0. It
 does not import Qt. `API` is 1. The package version and `API` are different
 numbers: the version marks this release, and `API` stays 1 until a breaking
-change to the inference surface. 1.1.0 adds `ensure_onnx`, `iter_tile_frames`,
+change to the inference surface. 1.5.0 adds `prepare_native_runtime` and
+`session_providers` to this surface. `prepare_native_runtime()` searches
+`nvidia/*/bin/x86_64` before `bin`, `lib`, and `lib/x64`, then the
+`tensorrt-cu13-libs` directory. The CUDA 13 wheels put `cudart64_13.dll` in
+`bin/x86_64`. Without that directory ONNX Runtime 1.31 logs
+`No registered plugin EP device found for CUDAExecutionProvider` and uses the
+CPU. Call `prepare_native_runtime()` before importing `onnxruntime`.
+`session_providers(name)` returns the providers a tiny session actually kept.
+Import them from `voxprint_engine.api`, from `voxprint_engine` (loaded on
+first use, so `import voxprint_engine` itself does not import ONNX Runtime),
+or from `voxprint_engine.trt_libs` and `voxprint_engine.session`.
+
+1.1.0 adds `ensure_onnx`, `iter_tile_frames`,
 and the optional manifest fields `onnx_url`, `onnx_sha256`, and `execution`.
 1.2.0 adds `in_channels` (default 3) so a 4-channel network such as DRUNet
 exports and runs with RGB plus a noise-level map. 1.2.1 drops the CPU
@@ -14,6 +26,21 @@ exports and runs with RGB plus a noise-level map. 1.2.1 drops the CPU
 They live in `voxprint-common` 0.1.1 Menuchah (`voxprint_common`). `API` stays 1 because
 `voxprint-common` 0.1 does not require an engine API bump and the inference
 names below are unchanged.
+
+The 1.5.0 pin is:
+
+```text
+voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.5.0
+```
+
+Clarity, for 1.5.0:
+
+* `prepare_native_runtime` and `session_providers` are public. `API` stays 1.
+* Call `prepare_native_runtime()` in every process before that process imports
+  `onnxruntime`. Enlarge does this in `voxprint_engine.session`, the worker,
+  ONNX export, and `--selftest`.
+* The native directory order is `nvidia/*/bin/x86_64`, `bin`, `lib`, `lib/x64`,
+  then `tensorrt-cu13-libs`. `cudart64_13.dll` is in the first of those.
 
 Clarity, for 1.4.0:
 
@@ -35,7 +62,8 @@ Clarity, for 1.4.0:
 * `.users.json` refcounting stays in `voxprint_engine.store`.
 * `upscale_file(..., app_name="")` still places `app_name` in the GPU refusal.
 
-The 1.4.0 pin is:
+The 1.4.0 pin stays valid for the surface before `prepare_native_runtime` and
+`session_providers`:
 
 ```text
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.4.0
@@ -105,6 +133,8 @@ names below are that addition.
 | `ensure_onnx` | Download a prebuilt ONNX file when the manifest pins one, otherwise convert the `.pth` to a checked fp16 ONNX file and cache it by sha256 |
 | `vram_budget_gb`, `choose_tile`, `halve_tile`, `note_spill`, `sysmem_spill` | Suite VRAM margin, the tile ladder, and the 256 MB spill check |
 | `read_shared_usage` | Windows shared GPU memory for one pid, or `None` |
+| `prepare_native_runtime` | Register CUDA 13 and TensorRT before `onnxruntime` is imported. Also `voxprint_engine.trt_libs.prepare_native_runtime` |
+| `session_providers` | Providers a tiny session kept, and why the requested one is absent. Also `voxprint_engine.session.session_providers` |
 
 ```python
 from voxprint_engine.api import (
@@ -150,9 +180,10 @@ An unpinned `tensorrt-cu13` install is TensorRT 11, and that provider does
 not load. `tensorrt-cu13==10.14.1.48` is recorded with `--no-deps` because
 the TensorRT 10 Python bindings have no cp314 wheel. Every process resolves
 those directories with `prepare_native_runtime()` before ONNX Runtime is imported
-in every process (the worker, the CLI, and `--selftest`). That function finds
-the `nvidia-*-cu13` wheel `bin` and `lib` directories (cuBLAS, cuDNN, the CUDA
-runtime, nvJitLink, and the rest) plus `tensorrt-cu13-libs`, calls
+in every process (the worker, ONNX export, and `--selftest`). That function finds
+the `nvidia-*-cu13` wheel directories in this order: `bin/x86_64` (where
+`cudart64_13.dll` lives), `bin`, `lib`, and `lib/x64` (cuBLAS, cuDNN, the CUDA
+runtime, nvJitLink, and the rest), then `tensorrt-cu13-libs`. It calls
 `os.add_dll_directory` on Windows and keeps those handles, and prepends the same
 directories to `PATH` or `LD_LIBRARY_PATH` for child processes. On Linux a
 process that was started without those directories re-executes once so glibc

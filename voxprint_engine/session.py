@@ -8,7 +8,8 @@ import numpy as np
 from voxprint_engine.providers import CPU, ProviderChoice
 from voxprint_engine.trt_libs import prepare_native_runtime
 
-# CUDA 13 and TensorRT 10 have to be on the DLL path before this import.
+# CUDA 13 (including nvidia/*/bin/x86_64/cudart64_13.dll) and TensorRT 10
+# have to be on the DLL path before this import.
 prepare_native_runtime()
 
 import onnxruntime as ort  # noqa: E402
