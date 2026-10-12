@@ -40,6 +40,14 @@ _ORDER = (
     "nvinfer",
     "tensorrt",
 )
+# CUDA 13 wheels place cudart64_13.dll in bin/x86_64. That directory has to
+# come before bin, lib, and lib/x64. TensorRT is appended after these.
+_CUDA_LAYOUTS = (
+    Path("bin") / "x86_64",
+    Path("bin"),
+    Path("lib"),
+    Path("lib") / "x64",
+)
 
 _searched = False
 _folder: Path | None = None
@@ -61,15 +69,21 @@ def library_dir() -> Path | None:
 
 
 def native_library_dirs() -> list[Path]:
-    """CUDA 13 wheel ``bin``/``lib`` directories, then the TensorRT 10 library directory."""
+    """CUDA 13 wheel directories, then the TensorRT 10 library directory.
+
+    Within the NVIDIA wheels the order is ``bin/x86_64``, ``bin``, ``lib``,
+    ``lib/x64``. CUDA 13 puts ``cudart64_13.dll`` in ``bin/x86_64``. Without
+    that directory ONNX Runtime 1.31 logs ``No registered plugin EP device
+    found for CUDAExecutionProvider`` and uses the CPU. TensorRT is last.
+    """
     global _dirs_ready, _dirs
     if _dirs_ready:
         return list(_dirs)
-    found = _cuda_wheel_dirs()
+    found = _unique(_ordered(_cuda_wheel_dirs()))
     trt = library_dir()
-    if trt is not None:
+    if trt is not None and not _same(found, trt):
         found.append(trt)
-    _dirs = _unique(_ordered(found))
+    _dirs = found
     _dirs_ready = True
     return list(_dirs)
 
@@ -174,7 +188,7 @@ def _cuda_wheel_dirs() -> list[Path]:
         for child in children:
             if not child.is_dir():
                 continue
-            for sub in ("bin", "lib", Path("lib") / "x64"):
+            for sub in _CUDA_LAYOUTS:
                 folder = child / sub
                 try:
                     resolved = folder.resolve()
@@ -227,15 +241,44 @@ def _has_cu13(folder: Path) -> bool:
     return any("_13" in name or ".so.13" in name or "cu13" in name for name in names)
 
 
+def _layout_rank(folder: Path) -> int:
+    text = str(folder).replace("\\", "/").rstrip("/").lower()
+    if text.endswith("/bin/x86_64"):
+        return 0
+    if text.endswith("/bin"):
+        return 1
+    if text.endswith("/lib"):
+        return 2
+    if text.endswith("/lib/x64"):
+        return 3
+    return 4
+
+
 def _ordered(folders: list[Path]) -> list[Path]:
-    def rank(folder: Path) -> tuple[int, str]:
+    def rank(folder: Path) -> tuple[int, int, str]:
         text = str(folder).lower().replace("\\", "/")
+        token_rank = len(_ORDER)
         for index, token in enumerate(_ORDER):
             if token in text:
-                return index, text
-        return len(_ORDER), text
+                token_rank = index
+                break
+        return (_layout_rank(folder), token_rank, text)
 
     return sorted(folders, key=rank)
+
+
+def _same(folders: list[Path], candidate: Path) -> bool:
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        return False
+    for folder in folders:
+        try:
+            if folder.resolve() == resolved:
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def _unique(folders: list[Path]) -> list[Path]:

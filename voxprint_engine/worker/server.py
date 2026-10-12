@@ -11,6 +11,11 @@ from voxprint_common.gpu_lock import GpuLockTimeout, gpu_job
 from voxprint_common.paths import home as suite_home
 from voxprint_common.paths import models_dir
 from voxprint_engine.formats import DEFAULT_FORMAT
+from voxprint_engine.trt_libs import prepare_native_runtime
+
+# cudart64_13.dll and the rest of CUDA 13 before infer imports onnxruntime.
+prepare_native_runtime()
+
 from voxprint_engine.infer import JobOutcome, preflight, upscale_file, uses_lanczos
 from voxprint_engine.providers import CUDA, TRT
 from voxprint_engine.session import session_providers

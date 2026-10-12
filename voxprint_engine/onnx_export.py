@@ -22,6 +22,7 @@ from typing import Any
 
 from voxprint_common.paths import models_dir
 from voxprint_engine.registry import combined_catalog
+from voxprint_engine.trt_libs import prepare_native_runtime
 from voxprint_engine.registry.schema import ModelManifest, checked_in_channels
 from voxprint_engine.store import StoreError, download, ensure_weight, sha256_file
 
@@ -313,6 +314,7 @@ def _load_fp16() -> Any:
     """The float16 module. Importing it pulls onnxruntime, so the worker waits until an export."""
     global _to_fp16
     if _to_fp16 is None:
+        prepare_native_runtime()
         try:
             from onnxruntime.transformers import float16 as fp16_module
         except ImportError as exc:
