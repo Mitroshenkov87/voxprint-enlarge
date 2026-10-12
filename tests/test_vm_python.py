@@ -1,6 +1,7 @@
 """The VM smoke script must not call the Microsoft Store python3 alias first."""
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -86,15 +87,48 @@ def test_py_launcher_is_before_python3(tmp_path: Path) -> None:
     assert found == "py -3"
 
 
-def test_python3_is_the_last_resort(tmp_path: Path) -> None:
-    found = _resolve({"PATH": "/usr/bin", "HOME": _bash_path(tmp_path / "empty")})
-    assert found == "python3"
+def test_python3_store_alias_is_not_used(tmp_path: Path) -> None:
+    merged = os.environ.copy()
+    for key in ("VOXPRINT_HOME", "LOCALAPPDATA", "XDG_DATA_HOME", "BASH_ENV", "SHELLOPTS", "BASHOPTS"):
+        merged.pop(key, None)
+    merged["PATH"] = "/usr/bin"
+    merged["HOME"] = _bash_path(tmp_path / "empty")
+    completed = subprocess.run(
+        [_bash_exe(), "--noprofile", "--norc", "-c", 'source "$1"; resolve_vm_python', "vosource", _bash_path(SCRIPT)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=merged,
+    )
+    assert completed.returncode != 0
+    assert completed.stdout.strip() != "python3"
+    assert "python3" not in completed.stdout
 
 
-def test_start_menu_script_uses_the_same_order() -> None:
+def test_interpreter_json_points_at_the_venv(tmp_path: Path) -> None:
+    local = tmp_path / "local"
+    pointer = local / "Voxprint" / "shared" / "python-c01ca6b459e5"
+    pointer.mkdir(parents=True)
+    venv = local / "Voxprint" / "shared" / "venv" / "bin"
+    venv.mkdir(parents=True)
+    chosen = venv / "python3"
+    chosen.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    payload = {"executable": chosen.as_posix(), "version": "3.14.8"}
+    (pointer / "interpreter.json").write_text(json.dumps(payload), encoding="utf-8")
+    found = _resolve(
+        {
+            "LOCALAPPDATA": str(local).replace("/", "\\"),
+            "PATH": "/usr/bin",
+            "HOME": _bash_path(tmp_path / "empty-home"),
+        }
+    )
+    assert found.replace("\\", "/") == chosen.as_posix()
+
+
+def test_start_menu_script_reads_interpreter_json_before_py() -> None:
     text = PS1.read_text(encoding="utf-8")
-    shared = text.index("shared\\python\\pythonw.exe")
+    pointer = text.index("interpreter.json")
     launcher = text.index("py.exe")
-    python3 = text.index("python3.exe")
-    assert shared < launcher < python3
+    assert pointer < launcher
     assert "WindowsApps" in text
+    assert "python3.exe" not in text

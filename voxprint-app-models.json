@@ -1,0 +1,45 @@
+{
+  "schema": "voxprint-app-models/1",
+  "app_id": "enlarge",
+  "tiers": {
+    "8gb": ["4x-nomos2-realplksr-dysample"],
+    "16gb": ["4x-nomos2-realplksr-dysample", "4x-nomos2-hq-dat2"],
+    "24gb": ["4x-nomos2-realplksr-dysample", "4x-nomos2-hq-dat2", "realesrgan-x4plus-anime6b"]
+  },
+  "runtimes": ["python-3.14", "torch-cu130", "onnxruntime-gpu-1.31", "tensorrt-10"],
+  "optional": [
+    {"id": "4x-nomos2-hq-dat2", "min_vram_gib": 5.0},
+    {"id": "realesrgan-x4plus-anime6b", "min_vram_gib": 2.0}
+  ],
+  "post_install": {
+    "argv": ["voxprint-enlarge-cli", "--prepare-model", "{id}"],
+    "timeout_s": 1800,
+    "produces": ["model.onnx"]
+  },
+  "hooks": [
+    {
+      "id": "4x-nomos2-realplksr-dysample",
+      "post_install": {
+        "argv": ["voxprint-enlarge-cli", "--prepare-model", "{id}"],
+        "timeout_s": 1800,
+        "produces": ["model.onnx"]
+      }
+    },
+    {
+      "id": "4x-nomos2-hq-dat2",
+      "post_install": {
+        "argv": ["voxprint-enlarge-cli", "--prepare-model", "{id}"],
+        "timeout_s": 1800,
+        "produces": ["model.onnx"]
+      }
+    },
+    {
+      "id": "realesrgan-x4plus-anime6b",
+      "post_install": {
+        "argv": ["voxprint-enlarge-cli", "--prepare-model", "{id}"],
+        "timeout_s": 1800,
+        "produces": ["model.onnx"]
+      }
+    }
+  ]
+}

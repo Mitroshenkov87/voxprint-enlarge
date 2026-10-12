@@ -136,6 +136,12 @@ def build_parser(json_errors: bool = False) -> CliParser:
         help="Install torch, the CUDA 13 ONNX Runtime, and TensorRT.",
     )
     parser.add_argument(
+        "--prepare-model",
+        default="",
+        metavar="ID",
+        help="Convert one shared model to ONNX. The MDL post_install hook runs this.",
+    )
+    parser.add_argument(
         "--install-suite",
         action="store_true",
         help="Install shared Python 3.14, the CUDA wheels, and the default model.",

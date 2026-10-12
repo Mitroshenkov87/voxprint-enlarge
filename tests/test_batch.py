@@ -77,12 +77,12 @@ def test_delete_respects_the_users_refcount(tmp_path: Path) -> None:
     target.write_bytes(b"tampered")
     assert weight_report(model, tmp_path)[0] == "mismatch"
     target.write_bytes(payload)
-    register("enlarge", tmp_path)
-    register("clarity", tmp_path)
+    register(model.id, tmp_path, app="enlarge")
+    register(model.id, tmp_path, app="clarity")
     with pytest.raises(StoreError, match="clarity"):
         delete_weight(model, tmp_path)
     assert target.is_file()
-    unregister("clarity", tmp_path)
+    unregister(model.id, tmp_path, app="clarity")
     delete_weight(model, tmp_path)
     assert not target.is_file()
 

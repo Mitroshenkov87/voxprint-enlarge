@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voxprint-engine"
-version = "1.5.0"
+version = "1.5.1"
 description = "Shared ONNX image-upscale engine for the VOXPrint suite. Clarity depends on this distribution."
 requires-python = ">=3.14,<3.15"
 readme = "docs/ENGINE.md"
@@ -13,7 +13,7 @@ dependencies = [
     "Pillow>=12.3.0,<13",
     "numpy>=2.5.3,<3",
     "imagecodecs==2026.10.10",
-    "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl",
+    "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.2.4/voxprint_common-0.2.4-py3-none-any.whl",
 ]
 
 # The CPU distribution named onnxruntime installs the same import as

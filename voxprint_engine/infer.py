@@ -1,7 +1,8 @@
 """Run one image through ONNX, then PyTorch.
 
-The worker calls :func:`upscale_file`. It downloads weights before taking the
-GPU lock, then passes ``weight`` so the locked section does not touch the network.
+The worker calls :func:`upscale_file`. Weights are already on disk (VOXPrint
+MDL downloaded them). The worker passes ``weight`` so the locked section does
+not touch the network.
 ``onnx_path`` overrides the sibling ``.onnx`` and is how the smoke test runs
 without a real weight file.
 
@@ -406,10 +407,12 @@ def upscale_file(
                 _close_session(session)
             break
     gpu_wanted = not _onnx_cpu(device, engine)
-    if gpu_wanted and (not used.startswith("onnx ") or CPU in used.split()):
-        if on_warning is not None and (failures or not used.startswith("onnx ")):
-            reason = "; ".join(failures) or "ONNX Runtime did not keep a GPU execution provider"
+    provider_missed = gpu_wanted and (not used.startswith("onnx ") or CPU in used.split())
+    if provider_missed:
+        reason = "; ".join(failures) or "ONNX Runtime did not keep a GPU execution provider"
+        if on_warning is not None:
             on_warning("gpu_provider_unavailable", reason)
+        raise ImageJobError(f"gpu_provider_unavailable: {reason}")
     if ran is None:
         if weight is None or not torch_available():
             if runtime_error is not None:

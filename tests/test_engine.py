@@ -3,9 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import time
-import urllib.request
 from pathlib import Path
-from unittest import mock
 
 import numpy as np
 import onnx
@@ -20,9 +18,8 @@ from voxprint_common.paths import models_dir, trt_cache_dir
 from voxprint_engine.providers import CPU, CUDA, TRT, choices_for, cuda_fallback_choices, gpu_provider_names
 from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.store import (
+    MDL_COMMAND,
     StoreError,
-    _SameRegistryRedirect,
-    download,
     ensure_weight,
     register,
     unregister,
@@ -182,98 +179,39 @@ def test_models_dir_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     assert models_dir() == tmp_path / "weights"
 
 
-class _Body:
-    def __init__(self, payload: bytes, url: str) -> None:
-        self._payload = payload
-        self._url = url
-        self.headers = {"Content-Length": str(len(payload))}
-        self.status = 200
-
-    def read(self, size: int) -> bytes:
-        chunk = self._payload[:size]
-        self._payload = self._payload[size:]
-        return chunk
-
-    def geturl(self) -> str:
-        return self._url
-
-    def __enter__(self) -> _Body:
-        return self
-
-    def __exit__(self, *_exc: object) -> bool:
-        return False
-
-
-def test_download_checks_https_hash_and_users(tmp_path: Path) -> None:
+def test_weight_is_located_not_downloaded_and_refs_are_per_model(tmp_path: Path) -> None:
     root = tmp_path / "models"
+    root.mkdir()
     payload = b"weight-bytes"
     digest = hashlib.sha256(payload).hexdigest()
-    target = root / "example.pth"
-    url = "https://huggingface.co/voxprint/models/resolve/main/example.pth"
-    with pytest.raises(StoreError, match="https"):
-        download("http://example.com/example.pth", target, digest)
-    with pytest.raises(StoreError, match="registry host"):
-        download("https://example.com/example.pth", target, digest)
-    wrong = b"not-the-weight"
-    public = mock.patch("voxprint_engine.store._addresses", return_value=["1.1.1.1"])
-    with public, mock.patch("voxprint_engine.store._open_registry", side_effect=lambda *_args, **_kwargs: _Body(wrong, url)):
-        with pytest.raises(StoreError, match="does not match"):
-            download(url, target, digest)
-    assert not target.exists()
-    with public, mock.patch("voxprint_engine.store._open_registry", side_effect=lambda *_args, **_kwargs: _Body(payload, url)):
-        download(url, target, digest)
-    assert target.read_bytes() == payload
     model = _manifest(sha256=digest)
+    with pytest.raises(StoreError, match=MDL_COMMAND):
+        ensure_weight(model, root)
+    target = root / "example.pth"
+    target.write_bytes(payload)
     assert ensure_weight(model, root) == target
-    target.write_bytes(b"tampered")
+    target.unlink()
+    blob = root / "blobs" / digest
+    blob.parent.mkdir()
+    blob.write_bytes(payload)
+    assert ensure_weight(model, root) == blob
+    blob.write_bytes(b"tampered")
     with pytest.raises(StoreError, match="sha256"):
         ensure_weight(model, root)
-    assert target.read_bytes() == b"tampered"
-    blocked = _manifest(id="4x-blocked", licence="CC-BY-NC-4.0", filename="blocked.pth")
+    blocked = _manifest(id="4x-blocked", licence="CC-BY-NC-4.0", filename="blocked.pth", sha256=digest)
     with pytest.raises(StoreError, match="not licensed"):
         ensure_weight(blocked, root)
-    assert not (root / "blocked.pth").exists()
-    (root / ".users.json").write_text('{"audiobook-builder": true, "movie-dubber": true}', encoding="utf-8")
-    users = register("enlarge", root)
+    (root / ".users.json").write_text('{"audiobook-builder": true, "gemma-4-12b-it-q4": ["audiobook-builder"]}', encoding="utf-8")
+    users = register(model.id, root, app="enlarge")
     assert users["audiobook-builder"] is True
-    assert users["enlarge"] is True
-    again = register("enlarge", root)
-    assert again == users
-    assert unregister("enlarge", root) == ["audiobook-builder", "movie-dubber"]
-
-
-def test_download_refuses_private_addresses_and_cross_registry_redirects(tmp_path: Path) -> None:
-    url = "https://github.com/Phhofm/models/releases/download/v1/model.pth"
-    digest = "ab" * 32
-    target = tmp_path / "model.pth"
-    for address in ("127.0.0.1", "10.1.2.3", "169.254.169.254", "::1", "::ffff:127.0.0.1"):
-        with mock.patch("voxprint_engine.store._addresses", return_value=[address]):
-            with pytest.raises(StoreError, match="private"):
-                download(url, target, digest)
-    handler = _SameRegistryRedirect()
-    request = urllib.request.Request(url)
-    with mock.patch("voxprint_engine.store._addresses", return_value=["1.1.1.1"]):
-        with pytest.raises(StoreError, match="another host"):
-            handler.redirect_request(request, None, 302, "Found", {}, "https://evil.example/model.pth")
-        with pytest.raises(StoreError, match="another host"):
-            handler.redirect_request(
-                request,
-                None,
-                302,
-                "Found",
-                {},
-                "https://huggingface.co/voxprint/models/resolve/main/model.pth",
-            )
-        allowed = handler.redirect_request(
-            request,
-            None,
-            302,
-            "Found",
-            {},
-            "https://release-assets.githubusercontent.com/github-production-release-asset/model.pth",
-        )
-    assert allowed is not None
-    assert urllib.parse.urlsplit(allowed.full_url).hostname == "release-assets.githubusercontent.com"
+    assert users["gemma-4-12b-it-q4"] == ["audiobook-builder"]
+    assert "enlarge" in users[model.id]
+    again = register(model.id, root, app="enlarge")
+    assert again[model.id] == users[model.id]
+    register(model.id, root, app="clarity")
+    with pytest.raises(StoreError, match="shared root"):
+        register("models", root)
+    assert unregister(model.id, root, app="enlarge") == ["clarity"]
 
 
 def test_converter_does_not_import_extra_arches() -> None:

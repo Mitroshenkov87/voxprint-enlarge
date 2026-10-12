@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 #if GUI_LAUNCHER
 using System.Runtime.InteropServices;
 #endif
@@ -47,17 +48,19 @@ static string ResolvePython(string dir, bool console, string[] args)
         Log($"bundled python for {string.Join(' ', args)}: {bundled}");
         return bundled;
     }
-    string sharedDir = SharedPythonDir();
-    string shared = SharedPython(sharedDir, console);
-    if (shared.Length == 0)
+    List<(string PointerDir, string Exe)> found = SharedInterpreters(console);
+    if (found.Count == 0)
     {
         Log($"bundled python, shared runtime is absent: {bundled}");
         return bundled;
     }
-    if (ImportsReady(sharedDir, Path.Combine(sharedDir, "python.exe")))
+    foreach ((string PointerDir, string Exe) candidate in found)
     {
-        Log($"shared python, import check passed: {shared}");
-        return shared;
+        if (ImportsReady(candidate.PointerDir, candidate.Exe))
+        {
+            Log($"shared python, import check passed: {candidate.Exe}");
+            return candidate.Exe;
+        }
     }
     Log($"bundled python, shared import check failed: {bundled}");
     return bundled;
@@ -75,21 +78,151 @@ static bool UsesBundledInterpreter(string[] args)
     return false;
 }
 
-static string SharedPythonDir()
+static List<(string PointerDir, string Exe)> SharedInterpreters(bool console)
 {
     string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-    return Path.Combine(local, "Voxprint", "shared", "python");
+    string shared = Path.Combine(local, "Voxprint", "shared");
+    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var found = new List<(string PointerDir, string Exe)>();
+    foreach (string relative in ManifestPythonPaths(shared))
+    {
+        AddCandidates(found, seen, Path.Combine(shared, relative), console);
+    }
+    if (!Directory.Exists(shared))
+    {
+        return found;
+    }
+    foreach (string dir in Directory.GetDirectories(shared))
+    {
+        string name = Path.GetFileName(dir);
+        bool pointer = name.Equals("python", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("python-", StringComparison.OrdinalIgnoreCase);
+        if (!pointer)
+        {
+            continue;
+        }
+        AddCandidates(found, seen, dir, console);
+    }
+    return found;
 }
 
-static string SharedPython(string shared, bool console)
+static List<string> ManifestPythonPaths(string shared)
 {
-    string preferred = Path.Combine(shared, console ? "python.exe" : "pythonw.exe");
+    var paths = new List<string>();
+    string manifest = Path.Combine(shared, "manifest.json");
+    if (!File.Exists(manifest))
+    {
+        return paths;
+    }
+    try
+    {
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(manifest));
+        if (!document.RootElement.TryGetProperty("components", out JsonElement components)
+            || components.ValueKind != JsonValueKind.Object)
+        {
+            return paths;
+        }
+        foreach (JsonProperty item in components.EnumerateObject())
+        {
+            JsonElement body = item.Value;
+            if (body.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+            string kind = body.TryGetProperty("kind", out JsonElement kindValue) ? kindValue.GetString() ?? "" : "";
+            bool python = item.Name.StartsWith("python", StringComparison.OrdinalIgnoreCase) || kind == "runtime";
+            if (!python || !body.TryGetProperty("path", out JsonElement pathValue))
+            {
+                continue;
+            }
+            string relative = pathValue.GetString() ?? "";
+            if (relative.Length == 0 || Path.IsPathRooted(relative) || relative.Contains("..", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            paths.Add(relative);
+        }
+    }
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException or IOException)
+    {
+        Log($"shared manifest could not be read: {ex.Message}");
+    }
+    return paths;
+}
+
+static void AddCandidates(List<(string PointerDir, string Exe)> found, HashSet<string> seen, string pointerDir, bool console)
+{
+    string fromJson = InterpreterExecutable(pointerDir);
+    if (fromJson.Length > 0)
+    {
+        Remember(found, seen, pointerDir, PreferWindowless(fromJson, console));
+        return;
+    }
+    string preferred = Path.Combine(pointerDir, console ? "python.exe" : "pythonw.exe");
     if (File.Exists(preferred))
     {
-        return preferred;
+        Remember(found, seen, pointerDir, preferred);
+        return;
     }
-    string fallback = Path.Combine(shared, "python.exe");
-    return File.Exists(fallback) ? fallback : "";
+    string fallback = Path.Combine(pointerDir, "python.exe");
+    if (File.Exists(fallback))
+    {
+        Remember(found, seen, pointerDir, fallback);
+    }
+}
+
+static string InterpreterExecutable(string pointerDir)
+{
+    string pointer = Path.Combine(pointerDir, "interpreter.json");
+    if (!File.Exists(pointer))
+    {
+        return "";
+    }
+    try
+    {
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(pointer));
+        JsonElement root = document.RootElement;
+        if (!root.TryGetProperty("executable", out JsonElement executableValue))
+        {
+            return "";
+        }
+        string executable = executableValue.GetString() ?? "";
+        string version = root.TryGetProperty("version", out JsonElement versionValue) ? versionValue.GetString() ?? "" : "";
+        bool python314 = version == "3.14" || version.StartsWith("3.14.", StringComparison.Ordinal);
+        if (!python314 || executable.Length == 0 || !File.Exists(executable))
+        {
+            return "";
+        }
+        return executable;
+    }
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException or IOException)
+    {
+        return "";
+    }
+}
+
+static string PreferWindowless(string executable, bool console)
+{
+    if (console)
+    {
+        return executable;
+    }
+    string? dir = Path.GetDirectoryName(executable);
+    if (dir is null)
+    {
+        return executable;
+    }
+    string windowless = Path.Combine(dir, "pythonw.exe");
+    return File.Exists(windowless) ? windowless : executable;
+}
+
+static void Remember(List<(string PointerDir, string Exe)> found, HashSet<string> seen, string pointerDir, string executable)
+{
+    if (!seen.Add(executable))
+    {
+        return;
+    }
+    found.Add((pointerDir, executable));
 }
 
 static string BundledPython(string dir, bool console)
@@ -110,7 +243,7 @@ static bool ImportsReady(string sharedDir, string pythonExe)
         return false;
     }
     string stampPath = Path.Combine(sharedDir, ".enlarge-import-probe");
-    string ticks = ProbeTicks(sharedDir, pythonExe);
+    string ticks = ProbeTicks(pythonExe);
     if (File.Exists(stampPath))
     {
         string text = File.ReadAllText(stampPath).Trim();
@@ -169,16 +302,36 @@ static bool ImportsReady(string sharedDir, string pythonExe)
     }
 }
 
-static string ProbeTicks(string sharedDir, string pythonExe)
+static string ProbeTicks(string pythonExe)
 {
     // python.exe alone does not change when pip adds or removes a wheel.
+    // The stamp follows the resolved interpreter, not the pointer folder.
     long ticks = File.GetLastWriteTimeUtc(pythonExe).Ticks;
-    string site = Path.Combine(sharedDir, "Lib", "site-packages");
+    string site = SitePackages(pythonExe);
     if (Directory.Exists(site))
     {
         ticks ^= Directory.GetLastWriteTimeUtc(site).Ticks;
     }
     return ticks.ToString();
+}
+
+static string SitePackages(string pythonExe)
+{
+    string? dir = Path.GetDirectoryName(pythonExe);
+    if (dir is null)
+    {
+        return "";
+    }
+    if (Path.GetFileName(dir).Equals("Scripts", StringComparison.OrdinalIgnoreCase)
+        || Path.GetFileName(dir).Equals("bin", StringComparison.OrdinalIgnoreCase))
+    {
+        string? parent = Path.GetDirectoryName(dir);
+        if (parent is not null)
+        {
+            return Path.Combine(parent, "Lib", "site-packages");
+        }
+    }
+    return Path.Combine(dir, "Lib", "site-packages");
 }
 
 static void Log(string message)

@@ -1,17 +1,27 @@
 # Shared inference engine
 
 `voxprint_engine` is the image upscaler VOXPrint AI Enlarge owns and VOXPrint AI
-Clarity imports. The installable distribution is `voxprint-engine` 1.5.0. It
+Clarity imports. The installable distribution is `voxprint-engine` 1.5.1. It
 does not import Qt. `API` is 1. The package version and `API` are different
 numbers: the version marks this release, and `API` stays 1 until a breaking
-change to the inference surface. 1.5.0 adds `prepare_native_runtime` and
-`session_providers` to this surface. `prepare_native_runtime()` searches
-`nvidia/*/bin/x86_64` before `bin`, `lib`, and `lib/x64`, then the
-`tensorrt-cu13-libs` directory. The CUDA 13 wheels put `cudart64_13.dll` in
-`bin/x86_64`. Without that directory ONNX Runtime 1.31 logs
-`No registered plugin EP device found for CUDAExecutionProvider` and uses the
-CPU. Call `prepare_native_runtime()` before importing `onnxruntime`.
-`session_providers(name)` returns the providers a tiny session actually kept.
+change to the inference surface. 1.5.1 keeps that surface and teaches
+`prepare_native_runtime()` to walk every directory under `site-packages/nvidia`
+that holds a CUDA 13 library, including `nvidia/cu13/bin/x86_64`, and to add
+`torch/lib` when that is where `cublas64_13.dll` and `cublasLt64_13.dll` live.
+`nvinfer_10` is still last. `session_providers(name)` returns the providers a
+tiny session actually kept. A GPU request that remains on
+`CPUExecutionProvider` fails as `gpu_provider_unavailable` (exit 4,
+`gpu_unsupported`) instead of continuing. Model files are no longer downloaded
+by this package: `ensure_weight` locates a file VOXPrint MDL already placed at
+`<models>/<filename>` or `<models>/blobs/<sha256>`. `register` records one
+model id, not an app-level root key.
+
+1.5.0 adds `prepare_native_runtime` and `session_providers` to this surface.
+`prepare_native_runtime()` searches `nvidia/*/bin/x86_64` before `bin`, `lib`,
+and `lib/x64`, then the `tensorrt-cu13-libs` directory. The CUDA 13 wheels put
+`cudart64_13.dll` in `bin/x86_64`. Without that directory ONNX Runtime 1.31
+logs `No registered plugin EP device found for CUDAExecutionProvider` and uses
+the CPU. Call `prepare_native_runtime()` before importing `onnxruntime`.
 Import them from `voxprint_engine.api`, from `voxprint_engine` (loaded on
 first use, so `import voxprint_engine` itself does not import ONNX Runtime),
 or from `voxprint_engine.trt_libs` and `voxprint_engine.session`.
@@ -23,11 +33,13 @@ exports and runs with RGB plus a noise-level map. 1.2.1 drops the CPU
 `onnxruntime` wheel. The `gpu` extra pins `onnxruntime-gpu==1.31.0` and
 `tensorrt-cu13-libs==10.14.1.48`. 1.3.0 added `app_id` on the runtime installer.
 1.4.0 removes that installer and the other suite helpers from this package.
-They live in `voxprint-common` 0.1.1 Menuchah (`voxprint_common`). `API` stays 1 because
-`voxprint-common` 0.1 does not require an engine API bump and the inference
-names below are unchanged.
+They live in `voxprint-common` 0.2.4 Malkhut (`voxprint_common`). `API` stays 1 because
+the inference names below are unchanged. 0.2.4 adds `model_users`, MDL, and a
+parent-lock borrow on `gpu_job` (`VOXPRINT_GPU_PARENT_PID`). `paths` also gains
+`cache_dir`, `projects_dir`, `runtime_dir`, and `voices_dir`. `runtime_manifest`
+refuses to register or delete a shared root.
 
-The 1.5.0 pin is:
+The 1.5.1 pin will be `engine-v1.5.1` on this commit. The 1.5.0 pin is:
 
 ```text
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.5.0
@@ -69,13 +81,13 @@ The 1.4.0 pin stays valid for the surface before `prepare_native_runtime` and
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.4.0
 ```
 
-Install `voxprint-common` 0.1.1 (Menuchah) from the release wheel beside it:
+Install `voxprint-common` 0.2.4 (Malkhut) from the release wheel beside it:
 
 ```text
-voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl
+voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.2.4/voxprint_common-0.2.4-py3-none-any.whl
 ```
 
-The wheel SHA256 is `c9361d5d00913faf39497fc55124e682ba15b2098c775068c49582c0520cd4d1`.
+The wheel SHA256 is `3051bc64700964705bf5cee5182829d1311560a38a9f7436195f26481e4fa239`.
 
 The 1.3.0 pin stays valid for the surface before those removals:
 
@@ -129,7 +141,7 @@ names below are that addition.
 | `RestoreBatchRequest` | Video worker op: NHWC frames in, restored frames out |
 | `upscale_file`, `uses_lanczos` | One image, and whether this job must skip the network |
 | `restore_frames`, `temporal_windows`, `tile_frames`, `iter_tile_frames` | Temporal windows, per-frame tiles, and a one-frame video iterator for Clarity |
-| `ensure_weight`, `register`, `unregister` | Pinned download, and the shared `.users.json` refcount |
+| `ensure_weight`, `register`, `unregister` | Locate a weight MDL already downloaded, and the per-model `.users.json` ref |
 | `ensure_onnx` | Download a prebuilt ONNX file when the manifest pins one, otherwise convert the `.pth` to a checked fp16 ONNX file and cache it by sha256 |
 | `vram_budget_gb`, `choose_tile`, `halve_tile`, `note_spill`, `sysmem_spill` | Suite VRAM margin, the tile ladder, and the 256 MB spill check |
 | `read_shared_usage` | Windows shared GPU memory for one pid, or `None` |

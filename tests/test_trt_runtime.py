@@ -172,6 +172,35 @@ def test_native_dirs_walk_every_cuda13_layout(tmp_path: Path, monkeypatch: pytes
     assert empty.resolve() not in found
 
 
+def test_native_dirs_find_nested_cu13_and_torch_lib(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The laptop layout: cudart under nvidia/cu13, cublas only in torch/lib."""
+    root = tmp_path / "site"
+    cudart = root / "nvidia" / "cu13" / "bin" / "x86_64"
+    cudart.mkdir(parents=True)
+    (cudart / "cudart64_13.dll").write_bytes(b"x")
+    torch_lib = root / "torch" / "lib"
+    torch_lib.mkdir(parents=True)
+    (torch_lib / "cublas64_13.dll").write_bytes(b"x")
+    (torch_lib / "cublasLt64_13.dll").write_bytes(b"x")
+    trt = root / "nvidia" / "tensorrt" / "lib"
+    trt.mkdir(parents=True)
+    (trt / "nvinfer_10.dll").write_bytes(b"x")
+    monkeypatch.setattr(trt_libs, "_site_roots", lambda: [root])
+    monkeypatch.setattr(trt_libs, "_distributions", lambda: [])
+    monkeypatch.setattr(trt_libs, "_searched", False)
+    monkeypatch.setattr(trt_libs, "_folder", None)
+    monkeypatch.setattr(trt_libs, "_dirs_ready", False)
+    monkeypatch.setattr(trt_libs, "_dirs", [])
+
+    def missing(_name: str) -> object:
+        raise trt_libs.metadata.PackageNotFoundError
+
+    monkeypatch.setattr(trt_libs.metadata, "distribution", missing)
+    found = [path.resolve() for path in trt_libs.native_library_dirs()]
+    assert found[:2] == [cudart.resolve(), torch_lib.resolve()]
+    assert found[-1] == trt.resolve()
+
+
 def test_session_import_prepares_before_onnxruntime() -> None:
     root = Path(__file__).resolve().parents[1]
     script = """
@@ -350,7 +379,7 @@ def test_cpu_fallback_warns(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     src = tmp_path / "in.png"
     Image.new("RGB", (8, 8), (4, 5, 6)).save(src)
     (tmp_path / "net.onnx").write_bytes(b"onnx")
-    with pytest.raises(Exception, match="PyTorch"):
+    with pytest.raises(Exception, match="gpu_provider_unavailable"):
         upscale_file(
             src,
             tmp_path / "out.avif",

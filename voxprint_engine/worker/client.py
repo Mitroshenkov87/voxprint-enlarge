@@ -66,6 +66,8 @@ class WorkerClient:
             return
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
+        if not env.get("VOXPRINT_GPU_PARENT_PID", "").strip():
+            env["VOXPRINT_GPU_PARENT_PID"] = str(os.getpid())
         previous = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = str(_ROOT) + (os.pathsep + previous if previous else "")
         apply_library_path(env)

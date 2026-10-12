@@ -30,7 +30,17 @@ def release_version() -> str:
         raise SystemExit("BUILD.json needs a version")
     return version
 DIRS = ("enlarge", "voxprint_engine", "assets", "samples", "docs")
-FILES = ("main.py", "LICENSE", "NOTICE", "README.md", "requirements.txt", "requirements-gpu.txt", "BUILD.json")
+FILES = (
+    "main.py",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "requirements.txt",
+    "requirements-gpu.txt",
+    "BUILD.json",
+    "mdl.json",
+    "voxprint-app-models.json",
+)
 SKIP_SUFFIXES = {".pth", ".onnx", ".pyc"}
 
 
@@ -80,15 +90,55 @@ def stamp_build_info(dest: Path, env: dict[str, str] | None = None) -> None:
 
 
 def _linux_launcher() -> str:
-    return """#!/bin/sh
+    return r"""#!/bin/sh
 ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
-SHARED="${XDG_DATA_HOME:-$HOME/.local/share}/voxprint/shared/python/bin/python3"
 BUNDLED="$ROOT/python/bin/python3"
-# A shared interpreter left by an older suite install can exist and still
-# lack voxprint_common or onnxruntime. Fall back to the bundle.
-if [ -x "$SHARED" ] && "$SHARED" -c "import voxprint_common, voxprint_engine, onnxruntime" >/dev/null 2>&1; then
-  exec "$SHARED" "$ROOT/main.py" "$@"
+# Setup stays on the bundled interpreter. Jobs use the shared one.
+case " $* " in
+  *" --install-suite "*|*" --uninstall-suite "*|*" --register "*|*" --unregister "*)
+    exec "$BUNDLED" "$ROOT/main.py" "$@"
+    ;;
+esac
+if [ -n "${VOXPRINT_HOME:-}" ]; then
+  SHARED_ROOT="$VOXPRINT_HOME/shared"
+else
+  SHARED_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/voxprint/shared"
 fi
+# Direct layout: ${XDG_DATA_HOME:-$HOME/.local/share}/voxprint/shared/python/bin/python3
+# interpreter.json is used when the pointer is python-<hash> and the real
+# interpreter is shared/venv/bin/python3.
+ready() {
+  [ -n "$1" ] && [ -x "$1" ] && "$1" -c "import voxprint_common, voxprint_engine, onnxruntime" >/dev/null 2>&1
+}
+consider() {
+  dir=$1
+  shift
+  if [ -f "$dir/interpreter.json" ]; then
+    exe=$(sed -n 's/.*"executable"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/interpreter.json" | head -n 1)
+    ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/interpreter.json" | head -n 1)
+    case "$ver" in
+      3.14|3.14.*)
+        if ready "$exe"; then
+          exec "$exe" "$ROOT/main.py" "$@"
+        fi
+        ;;
+    esac
+  fi
+  if ready "$dir/bin/python3"; then
+    exec "$dir/bin/python3" "$ROOT/main.py" "$@"
+  fi
+}
+if [ -f "$SHARED_ROOT/manifest.json" ]; then
+  rels=$(sed -n 's/.*"path"[[:space:]]*:[[:space:]]*"\(python[^"]*\)".*/\1/p' "$SHARED_ROOT/manifest.json")
+  for rel in $rels; do
+    consider "$SHARED_ROOT/$rel" "$@"
+  done
+fi
+consider "$SHARED_ROOT/python" "$@"
+for dir in "$SHARED_ROOT"/python-*; do
+  [ -d "$dir" ] || continue
+  consider "$dir" "$@"
+done
 exec "$BUNDLED" "$ROOT/main.py" "$@"
 """
 

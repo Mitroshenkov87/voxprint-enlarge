@@ -1,6 +1,6 @@
 # Install and configuration
 
-A checkout runs from source. A release build is a Windows installer or a Linux tarball. Neither one contains model weights. The installer runs `--install-suite` before it finishes: it copies Python 3.14 into the shared suite folder, installs the CUDA wheels, and downloads the default model, with progress on the console. A later launch repairs anything missing. `--selftest` runs that check without opening a window. The GPU checklist is `docs/TESTING-GPU.md`.
+A checkout runs from source. A release build is a Windows installer or a Linux tarball. Neither one contains model weights. The installer runs `--install-suite` before it finishes: it copies Python 3.14 into the shared suite folder, installs the CUDA wheels, then runs `voxprint-mdl download --app enlarge --json` in that shared interpreter. MDL's post_install hook is `voxprint-enlarge-cli --prepare-model {id}`, which converts the default model. Silent Setup writes stdout and stderr to `%LOCALAPPDATA%\Voxprint\logs\enlarge-install.log` and exits non-zero on failure without a message box. A later launch repairs anything missing. `--selftest` runs that check without opening a window. The GPU checklist is `docs/TESTING-GPU.md`.
 
 ## Requirements
 

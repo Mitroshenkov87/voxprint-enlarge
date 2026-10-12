@@ -75,7 +75,7 @@ An argument error on a job that passed `--json-progress` is one JSON object on s
 | `io_error` | no | 8 |
 | `cancelled` | no | 130 |
 
-Exit 0 is `done`. Exit 2 is also bad arguments, before a job id exists. `model_missing` means the id is unknown or the pinned weights are not on disk. A headless job does not download them. SIGINT and SIGTERM cancel the job, delete the partial file, and exit 130.
+Exit 0 is `done`. Exit 2 is also bad arguments, before a job id exists. `model_missing` means the id is unknown or the pinned weights are not on disk. The message names `voxprint-mdl download --app enlarge`. A headless job does not download them. `gpu_unsupported` (exit 4) is also used when a requested GPU provider stayed on CPU (`gpu_provider_unavailable`). SIGINT and SIGTERM cancel the job, delete the partial file, and exit 130.
 
 ## GPU lock
 
