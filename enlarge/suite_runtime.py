@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, Literal, assert_never
 
 from voxprint_common.atomic import LockTimeout, exclusive_lock, write_json
-from voxprint_common.paths import home, models_dir, shared_dir
+from voxprint_common.paths import cache_dir, home, models_dir, runtime_dir, shared_dir, voices_dir
 from voxprint_common.runtime_manifest import (
     ManifestError,
     load as load_manifest,
@@ -35,12 +35,13 @@ from voxprint_common.runtime_manifest import (
 )
 from enlarge.paths import voxprint_home_source, voxprint_home_warning
 from voxprint_engine.onnx_export import OnnxExportError, cached_onnx, ensure_onnx
+from voxprint_engine.process_win import no_window_flags
 from voxprint_engine.providers import ci_lanczos
 from voxprint_engine.registry import DEFAULT_MODEL_ID, ModelManifest, load_builtin
 from voxprint_engine.store import StoreError, register, unregister, weight_report
 
 # Pin text whose sha256 is the lock hash Enlarge writes for these components.
-# voxprint-common 0.1 records a component digest; it does not ship these pins.
+# voxprint-common records a component digest; it does not ship these pins.
 PYTHON_LOCK = "python==3.14"
 TORCH_LOCK = "torch@cu130"
 ORT_LOCK = "onnxruntime-gpu==1.31.0"
@@ -308,7 +309,7 @@ SPANDREL_SPEC = "spandrel>=0.4,<0.5"
 ONNX_SPEC = "onnx>=1.17,<2"
 COMMON_SPEC = (
     "voxprint-common[ui] @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/"
-    "v0.1.1/voxprint_common-0.1.1-py3-none-any.whl"
+    "v0.2.4/voxprint_common-0.2.4-py3-none-any.whl"
 )
 
 ComponentId = Literal["python", "gpu", "model"]
@@ -328,7 +329,7 @@ try:
 except meta.PackageNotFoundError:
     missing.append("voxprint-common")
 else:
-    if not str(common_version).startswith("0.1.1"):
+    if not str(common_version).startswith("0.2.4"):
         missing.append("voxprint-common")
 names = {
     dist.metadata["Name"].lower()
@@ -421,7 +422,7 @@ class _Pin:
 
 
 def _model_roots() -> tuple[Path, ...]:
-    """Directories a model component path may use, matching ``voxprint_common`` 0.1.1."""
+    """Directories a model component path may use, matching ``voxprint_common`` 0.2.4."""
     roots = [models_dir(), shared_dir()]
     cache = os.environ.get("VOXPRINT_MODEL_CACHE", "").strip()
     if cache:
@@ -451,12 +452,13 @@ def _path_allowed(path: str, kind: str) -> bool:
 
 
 def _model_payload_path() -> str:
-    """Absolute path of the default weight under the shared models directory."""
+    """Absolute path of the default weight blob. Never the models root itself."""
     model = _default_model()
+    digest = model.sha256.strip().lower()
     filename = model.filename.strip()
-    if filename and "/" not in filename and "\\" not in filename:
-        return str((models_dir() / filename).absolute())
-    return str(models_dir().absolute())
+    if not filename or "/" in filename or "\\" in filename or len(digest) != 64:
+        raise SuiteInstallError(f"{model.id} has no per-model payload path")
+    return str((models_dir() / "blobs" / digest).absolute())
 
 
 def _model_pin() -> _Pin:
@@ -738,11 +740,13 @@ def release_runtime(
                     for pin, _rel, _saved in rows:
                         removed.add(pin.id)
             for key, rel, saved in extras:
+                # Never delete another app's folder or a shared root. Enlarge
+                # only drops its own default-model files, and only when no
+                # other app still holds that model id.
+                if saved.get("kind") != "model" or _rel_is_shared_root(folder, rel):
+                    continue
                 try:
-                    if rel and not _path_used(manifest, rel):
-                        _delete_rel(folder, rel)
-                    if saved.get("kind") == "model" and not _model_still_held(manifest):
-                        _remove_model(app)
+                    _remove_model(app)
                 except (SuiteInstallError, StoreError, OSError):
                     failed = True
                     manifest.components[key] = saved
@@ -790,7 +794,7 @@ def install_gpu_wheels(python: str, progress: Progress | None = None) -> None:
     _pip(
         python,
         ["install", COMMON_SPEC],
-        "Installing voxprint-common 0.1.1",
+        "Installing voxprint-common 0.2.4",
         progress,
         required=True,
     )
@@ -957,25 +961,53 @@ def _path_used(manifest: _ManifestView, rel: str) -> bool:
     return False
 
 
-def _model_still_held(manifest: _ManifestView) -> bool:
-    for entry in manifest.components.values():
-        if isinstance(entry, dict) and entry.get("kind") == "model" and _entry_refs(entry):
-            return True
-    return False
-
-
 def _unregister_quietly(app: str) -> None:
     try:
-        unregister(app)
+        unregister(DEFAULT_MODEL_ID, app=app)
     except (OSError, StoreError):
         return
+
+
+def _rel_is_shared_root(root: Path, rel: str) -> bool:
+    if not rel:
+        return False
+    candidate = Path(rel)
+    if candidate.is_absolute() or rel.startswith(("/", "\\")):
+        return _is_shared_root(candidate)
+    try:
+        return _is_shared_root(_shared_child(root, rel))
+    except SuiteInstallError:
+        return True
+
+
+def _is_shared_root(path: Path) -> bool:
+    """True for models, runtime, voices, cache, blobs, or the shared directory."""
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return True
+    roots = (
+        shared_dir(),
+        models_dir(),
+        models_dir() / "blobs",
+        runtime_dir(),
+        voices_dir(),
+        cache_dir(),
+    )
+    for root in roots:
+        try:
+            if resolved == root.resolve():
+                return True
+        except OSError:
+            return True
+    return False
 
 
 def _delete_rel(root: Path, rel: str) -> None:
     dest = _shared_child(root, rel)
     base = root.resolve()
-    if dest == base:
-        raise SuiteInstallError("refusing to delete the shared folder itself")
+    if dest == base or _is_shared_root(dest):
+        raise SuiteInstallError("refusing to delete a shared root")
     if dest.is_symlink() or dest.is_file():
         dest.unlink()
         return
@@ -1073,7 +1105,7 @@ def _call_remover(
 
 def _register_model_user(app: str) -> None:
     try:
-        register(app)
+        register(DEFAULT_MODEL_ID, app=app)
     except (OSError, StoreError):
         return
 
@@ -1223,33 +1255,117 @@ def _model_ready() -> bool:
     return state == "ready"
 
 
+_SOURCE_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _runtime_python(root: Path | None = None) -> str:
+    """The shared interpreter, including one recorded by ``interpreter.json``."""
+    folder = root or shared_dir()
+    rels = ["python"]
+    if folder.is_dir():
+        for child in sorted(folder.iterdir()):
+            if child.is_dir() and child.name.startswith("python-"):
+                rels.append(child.name)
+    for rel in rels:
+        found = _python_executable(folder, rel)
+        if found:
+            return found
+    raise SuiteInstallError("the shared runtime interpreter is not installed")
+
+
+def _mdl_manifest() -> Path:
+    """Schema 1 manifest shipped beside the app. MDL executes this file."""
+    candidate = _SOURCE_ROOT / "mdl.json"
+    if not candidate.is_file():
+        raise SuiteInstallError("mdl.json is not in the Enlarge install folder")
+    return candidate
+
+
 def _install_model(progress: Progress) -> None:
-    model = _default_model()
+    """Ask VOXPrint MDL to fetch the default model and run its post_install hook.
+
+    The hook is ``voxprint-enlarge-cli --prepare-model {id}``. That launcher
+    uses the shared interpreter, so conversion does not run in the bundled
+    Python that Setup starts.
+    """
+    python = _runtime_python()
+    manifest = _mdl_manifest()
+    progress("Downloading the default model with VOXPrint MDL")
+    env = os.environ.copy()
+    if _SOURCE_ROOT.name.lower() == "enlarge":
+        env["VOXPRINT_SUITE_ROOT"] = str(_SOURCE_ROOT.parent)
+    command = [
+        python,
+        "-m",
+        "voxprint_common.mdl",
+        "download",
+        "--app",
+        "enlarge",
+        "--json",
+        "--manifest",
+        str(manifest),
+    ]
+    completed = subprocess.run(command, check=False, env=env, creationflags=no_window_flags())
+    if completed.returncode != 0:
+        raise SuiteInstallError(f"voxprint-mdl download --app enlarge failed ({completed.returncode})")
+
+
+def prepare_model(model_id: str, progress: Progress | None = None) -> Path:
+    """Convert one MDL weight to ONNX and write ``models/enlarge/<id>/model.onnx``."""
+    catalog = load_builtin(release=True)
+    model = catalog.get(model_id)
+    if model is None or not model.selectable:
+        raise SuiteInstallError(f"unknown or unavailable model {model_id}")
 
     def on_progress(_fraction: float, message: str) -> None:
-        progress(message)
+        _emit(progress, message)
 
     try:
-        ensure_onnx(model, on_progress=on_progress)
+        onnx = ensure_onnx(model, on_progress=on_progress)
     except (StoreError, OnnxExportError) as exc:
         raise SuiteInstallError(str(exc)) from exc
+    if "/" in model_id or "\\" in model_id or not model_id.strip():
+        raise SuiteInstallError(f"{model_id} has an unsafe id")
+    folder = models_dir() / "enlarge" / model_id
+    if _is_shared_root(folder):
+        raise SuiteInstallError("refusing to write a shared root")
+    folder.mkdir(parents=True, exist_ok=True)
+    produced = folder / "model.onnx"
+    if onnx.resolve() != produced.resolve():
+        shutil.copy2(onnx, produced)
+    register(model.id, app="enlarge")
+    _emit(progress, f"prepared {model.id}")
+    return produced
 
 
 def _remove_model(app: str) -> None:
-    others = unregister(app)
+    model = _default_model()
+    try:
+        others = unregister(model.id, app=app)
+    except (OSError, StoreError):
+        return
     if others:
         return
-    model = _default_model()
     if not model.filename or "/" in model.filename or "\\" in model.filename:
         raise SuiteInstallError(f"{model.id} has an unsafe filename")
-    target = models_dir() / model.filename
-    target.unlink(missing_ok=True)
-    target.with_name(target.name + ".partial").unlink(missing_ok=True)
+    folder = models_dir()
+    targets = [folder / model.filename]
+    if model.sha256:
+        digest = model.sha256.lower()
+        targets.append(folder / "blobs" / digest)
+        targets.append(folder / f"{digest}.onnx")
+    targets.append(folder / "enlarge" / model.id / "model.onnx")
     cached = cached_onnx(model)
     if cached is not None:
-        cached.unlink(missing_ok=True)
-    if model.sha256:
-        (models_dir() / f"{model.sha256.lower()}.onnx").unlink(missing_ok=True)
+        targets.append(cached)
+    for target in targets:
+        if _is_shared_root(target):
+            raise SuiteInstallError("refusing to delete a shared root")
+        if target.is_file():
+            target.unlink()
+        partial = target.with_name(target.name + ".partial")
+        if partial.is_file() and not _is_shared_root(partial):
+            partial.unlink()
 
 
 def _pip(python: str, args: list[str], message: str, progress: Progress | None, *, required: bool) -> None:

@@ -1,10 +1,13 @@
 """Put CUDA 13 and TensorRT 10 on the library path before ONNX Runtime loads them.
 
-ONNX Runtime 1.31's CUDA provider needs ``cublasLt64_13.dll`` (and the rest of
-the CUDA 13 runtime) from the ``nvidia-*-cu13`` wheels. Its TensorRT provider
-opens ``nvinfer_10`` from ``tensorrt-cu13-libs`` 10.14.1.48. Those directories
-are resolved in this process. An inherited ``PATH`` is not enough: a worker
-started without a console does not see them unless this module adds them.
+ONNX Runtime 1.31's CUDA provider needs ``cudart64_13.dll`` and
+``cublasLt64_13.dll``. CUDA 13 wheels nest those libraries under
+``nvidia/**/bin/x86_64`` (including ``nvidia/cu13/bin/x86_64``). A torch CUDA
+13 build can be the only copy of ``cublas64_13.dll`` and ``cublasLt64_13.dll``,
+in ``torch/lib``. TensorRT opens ``nvinfer_10`` from ``tensorrt-cu13-libs``
+10.14.1.48. Those directories are resolved in this process. An inherited
+``PATH`` is not enough: a worker started without a console does not see them
+unless this module adds them.
 
 ``os.add_dll_directory`` handles are kept alive for the life of the process.
 Child environments get the same directories prepended to ``PATH`` or
@@ -69,12 +72,13 @@ def library_dir() -> Path | None:
 
 
 def native_library_dirs() -> list[Path]:
-    """CUDA 13 wheel directories, then the TensorRT 10 library directory.
+    """CUDA 13 library directories, then the TensorRT 10 library directory.
 
-    Within the NVIDIA wheels the order is ``bin/x86_64``, ``bin``, ``lib``,
-    ``lib/x64``. CUDA 13 puts ``cudart64_13.dll`` in ``bin/x86_64``. Without
-    that directory ONNX Runtime 1.31 logs ``No registered plugin EP device
-    found for CUDAExecutionProvider`` and uses the CPU. TensorRT is last.
+    The search walks ``site-packages/nvidia`` for any directory that contains
+    a CUDA 13 library (``*64_13.dll`` or ``lib*.so.13``), including
+    ``nvidia/cu13/bin/x86_64``. ``torch/lib`` is included when it holds
+    ``cublas64_13`` or ``cublasLt64_13``. Layout order stays ``bin/x86_64``,
+    ``bin``, ``lib``, ``lib/x64``. TensorRT is last.
     """
     global _dirs_ready, _dirs
     if _dirs_ready:
@@ -179,26 +183,59 @@ def _cuda_wheel_dirs() -> list[Path]:
     seen: set[Path] = set()
     for root in roots:
         nvidia = root / "nvidia"
-        if not nvidia.is_dir():
-            continue
-        try:
-            children = list(nvidia.iterdir())
-        except OSError:
-            continue
-        for child in children:
-            if not child.is_dir():
-                continue
-            for sub in _CUDA_LAYOUTS:
-                folder = child / sub
-                try:
-                    resolved = folder.resolve()
-                except OSError:
-                    continue
-                if resolved in seen or not _has_cu13(folder):
-                    continue
-                seen.add(resolved)
-                found.append(folder)
+        if nvidia.is_dir():
+            for folder in _cu13_dirs(nvidia):
+                _remember(found, seen, folder)
+        _remember_torch_lib(found, seen, root / "torch" / "lib")
     return found
+
+
+def _cu13_dirs(nvidia: Path) -> list[Path]:
+    """Every directory under ``nvidia`` that directly contains a CUDA 13 library."""
+    found: list[Path] = []
+    try:
+        walked = os.walk(nvidia)
+    except OSError:
+        return found
+    for dirpath, _dirnames, filenames in walked:
+        if _names_have_cu13(filenames):
+            found.append(Path(dirpath))
+    return found
+
+
+def _names_have_cu13(names: list[str]) -> bool:
+    for name in names:
+        lower = name.lower()
+        if lower.endswith("64_13.dll") or (lower.startswith("lib") and ".so.13" in lower):
+            return True
+        if "_13" in lower or ".so.13" in lower or "cu13" in lower:
+            return True
+    return False
+
+
+def _remember_torch_lib(found: list[Path], seen: set[Path], folder: Path) -> None:
+    """Include ``torch/lib`` when it is the only place cublas 13 was installed."""
+    if not folder.is_dir():
+        return
+    try:
+        names = {path.name.lower() for path in folder.iterdir() if path.is_file()}
+    except OSError:
+        return
+    has_cublas = "cublas64_13.dll" in names or "cublaslt64_13.dll" in names
+    has_linux = any(name.startswith("libcublas") and ".so.13" in name for name in names)
+    if has_cublas or has_linux:
+        _remember(found, seen, folder)
+
+
+def _remember(found: list[Path], seen: set[Path], folder: Path) -> None:
+    try:
+        resolved = folder.resolve()
+    except OSError:
+        return
+    if resolved in seen or not resolved.is_dir():
+        return
+    seen.add(resolved)
+    found.append(folder)
 
 
 def _site_roots() -> list[Path]:
@@ -235,10 +272,10 @@ def _locate_root(dist: object) -> Path | None:
 
 def _has_cu13(folder: Path) -> bool:
     try:
-        names = [path.name.lower() for path in folder.iterdir() if path.is_file()]
+        names = [path.name for path in folder.iterdir() if path.is_file()]
     except OSError:
         return False
-    return any("_13" in name or ".so.13" in name or "cu13" in name for name in names)
+    return _names_have_cu13(names)
 
 
 def _layout_rank(folder: Path) -> int:
@@ -328,8 +365,12 @@ def _first_named(root: Path, name: str) -> Path | None:
     nested = root / "tensorrt_libs" / name
     if nested.is_file():
         return nested
-    # One directory level. A full rglob of site-packages walks the torch tree
-    # and delays every worker start.
+    # nvidia and torch/lib only. A full walk of site-packages delays every start.
+    limited = (root / "nvidia", root / "tensorrt_libs", root / "torch" / "lib")
+    for base in limited:
+        found = _named_under(base, name)
+        if found is not None:
+            return found
     try:
         children = list(root.iterdir())
     except OSError:
@@ -343,4 +384,20 @@ def _first_named(root: Path, name: str) -> Path | None:
         nested_child = child / "tensorrt_libs" / name
         if nested_child.is_file():
             return nested_child
+    return None
+
+
+def _named_under(base: Path, name: str) -> Path | None:
+    if not base.is_dir():
+        return None
+    direct = base / name
+    if direct.is_file():
+        return direct
+    try:
+        walked = os.walk(base)
+    except OSError:
+        return None
+    for dirpath, _dirnames, filenames in walked:
+        if name in filenames:
+            return Path(dirpath) / name
     return None

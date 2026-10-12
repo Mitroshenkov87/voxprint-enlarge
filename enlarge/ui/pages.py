@@ -83,8 +83,8 @@ class ImagesPage(QWidget):
 
 
 class ModelPage(QWidget):
-    """The Model step: the pinned catalogue, download, and hash check."""
-    download_clicked = Signal()
+    """The Model step: the pinned catalogue, MDL, and hash check."""
+    manage_clicked = Signal()
     check_clicked = Signal()
     remove_clicked = Signal()
 
@@ -97,7 +97,7 @@ class ModelPage(QWidget):
         title = QLabel("Model")
         title.setObjectName("sectiontitle")
         layout.addWidget(title)
-        hint = QLabel("The three neural models download into the shared models folder when you run them.")
+        hint = QLabel("Manage models opens VOXPrint MDL. It downloads into the shared models folder.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -114,15 +114,15 @@ class ModelPage(QWidget):
         self.file_status.setWordWrap(True)
         layout.addWidget(self.file_status)
         actions = QHBoxLayout()
-        self.btn_download = QPushButton("Download")
-        self.btn_download.setObjectName("primary")
-        apply_suite_icon(self.btn_download, "download", on_primary=True)
+        self.btn_manage = QPushButton("Manage models")
+        self.btn_manage.setObjectName("primary")
+        apply_suite_icon(self.btn_manage, "download", on_primary=True)
         self.btn_check = QPushButton("Check hash")
         self.btn_remove = QPushButton("Remove")
-        self.btn_download.clicked.connect(self.download_clicked.emit)
+        self.btn_manage.clicked.connect(self.manage_clicked.emit)
         self.btn_check.clicked.connect(self.check_clicked.emit)
         self.btn_remove.clicked.connect(self.remove_clicked.emit)
-        actions.addWidget(self.btn_download)
+        actions.addWidget(self.btn_manage)
         actions.addWidget(self.btn_check)
         actions.addWidget(self.btn_remove)
         actions.addStretch(1)

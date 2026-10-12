@@ -28,7 +28,7 @@ from enlarge.queue_state import dump_queue, load_queue, still_open
 from enlarge.ui import pages
 from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
 from enlarge.ui.jobs import BatchThread
-from enlarge.ui.models import DownloadThread
+from enlarge.ui.models import start_manage_models
 from voxprint_engine.nvidia_smi import assess
 from voxprint_common.ui.theme import build_style
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY
@@ -61,7 +61,7 @@ class MainWindow(QWidget):
         self.sources: list[Path] = []
         self.rows: list[dict[str, object]] = []
         self.job: BatchThread | None = None
-        self.download: DownloadThread | None = None
+        self._manage: object | None = None
         self._cancel = False
         self._loading = False
         self._snapshot = measure(suite.gpu())
@@ -136,7 +136,7 @@ class MainWindow(QWidget):
         self.images_page.remove_selected.connect(self.remove_selected)
         self.images_page.clear_all.connect(self.clear_images)
         self.model_page.models.currentItemChanged.connect(lambda *_args: self._on_model())
-        self.model_page.download_clicked.connect(self.download_model)
+        self.model_page.manage_clicked.connect(self.manage_models)
         self.model_page.check_clicked.connect(self.check_model)
         self.model_page.remove_clicked.connect(self.remove_model)
         self.output_page.scale_x2.clicked.connect(lambda: self._set_scale(2))
@@ -567,26 +567,14 @@ class MainWindow(QWidget):
         """Compare the selected weight file with its pinned sha256."""
         self._refresh_model_file()
 
-    def download_model(self) -> None:
-        """Download the selected model into the shared models folder."""
-        model = self._current_model()
-        if model is None or (self.download is not None and self.download.isRunning()):
+    def manage_models(self) -> None:
+        """Open VOXPrint MDL for Enlarge. The window downloads and removes models."""
+        try:
+            self._manage = start_manage_models()
+        except OSError as exc:
+            QMessageBox.warning(self, APP_DISPLAY_NAME, str(exc))
             return
-        self.model_page.btn_download.setEnabled(False)
-        thread = DownloadThread(model, suite.resolved_models_dir())
-        self.download = thread
-        thread.progressed.connect(lambda _fraction, message: self.model_page.file_status.setText(message))
-        thread.succeeded.connect(self._download_done)
-        thread.failed.connect(self._download_failed)
-        thread.start()
-
-    def _download_done(self, path: str) -> None:
-        self.model_page.btn_download.setEnabled(True)
-        self.model_page.file_status.setText(f"saved {Path(path).name}  ·  sha256 matches")
-
-    def _download_failed(self, message: str) -> None:
-        self.model_page.btn_download.setEnabled(True)
-        self.model_page.file_status.setText(message)
+        self.model_page.file_status.setText("voxprint-mdl --gui --app enlarge")
 
     def remove_model(self) -> None:
         """Delete the weight file when no other VOXPrint app still uses it."""

@@ -99,7 +99,8 @@ def test_stage_app_leaves_weights_out(tmp_path: Path) -> None:
     assert "<AssemblyName>voxprint-enlarge-cli</AssemblyName>" in cli_project
     assert "<OutputType>Exe</OutputType>" in cli_project
     assert "GUI_LAUNCHER" not in cli_project
-    assert 'Path.Combine(local, "Voxprint", "shared", "python")' in launcher
+    assert 'Path.Combine(local, "Voxprint", "shared")' in launcher
+    assert "interpreter.json" in launcher
     assert "import voxprint_common, voxprint_engine, onnxruntime" in launcher
     assert "GetConsoleMode" in launcher
     assert "StdioRedirected" in launcher
@@ -107,6 +108,10 @@ def test_stage_app_leaves_weights_out(tmp_path: Path) -> None:
     assert "--install-suite" in launcher
     assert "python.exe" in iss
     assert "Abort" in iss
+    assert "enlarge-install.log" in iss
+    assert "SuppressibleMsgBox" in iss
+    assert "WizardSilent" in iss
+    assert "MsgBox(" not in iss.replace("SuppressibleMsgBox(", "")
 
 
 def test_unregister_removes_the_linux_discovery_files(tmp_path: Path) -> None:

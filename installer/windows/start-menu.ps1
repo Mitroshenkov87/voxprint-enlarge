@@ -1,27 +1,79 @@
 # Create a Start menu shortcut in the shared VOXPrint AI Suite folder.
 # The folder is the same one Audiobook Builder and Movie Dubber use.
 # This script does not install a runtime. It only points at a checkout.
-# The interpreter is the shared runtime, then py -3, then python3.
-# python3 on Windows is often the Microsoft Store alias, so it is last.
+# The interpreter is interpreter.json under the shared python pointer, then
+# py -3. The Microsoft Store alias in WindowsApps is not used.
 param(
     [string]$Target = (Join-Path $PSScriptRoot "..\..\main.py")
 )
 $ErrorActionPreference = "Stop"
 
+function Get-InterpreterExecutable([string]$PointerDir) {
+    $pointer = Join-Path $PointerDir "interpreter.json"
+    if (-not (Test-Path -LiteralPath $pointer)) {
+        return ""
+    }
+    try {
+        $payload = Get-Content -LiteralPath $pointer -Raw | ConvertFrom-Json
+    } catch {
+        return ""
+    }
+    $version = [string]$payload.version
+    $executable = [string]$payload.executable
+    if ($version -ne "3.14" -and -not $version.StartsWith("3.14.")) {
+        return ""
+    }
+    if ($executable -and (Test-Path -LiteralPath $executable)) {
+        return $executable
+    }
+    return ""
+}
+
+function Add-PointerDirs([System.Collections.Generic.List[string]]$Dirs, [string]$Shared) {
+    if (-not (Test-Path -LiteralPath $Shared)) {
+        return
+    }
+    $manifest = Join-Path $Shared "manifest.json"
+    if (Test-Path -LiteralPath $manifest) {
+        try {
+            $document = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+            foreach ($item in $document.components.PSObject.Properties) {
+                $path = [string]$item.Value.path
+                if ($path -like "python*") {
+                    $Dirs.Add((Join-Path $Shared $path))
+                }
+            }
+        } catch {
+            # A damaged manifest still leaves the python-* folders below.
+        }
+    }
+    foreach ($dir in Get-ChildItem -LiteralPath $Shared -Directory -ErrorAction SilentlyContinue) {
+        if ($dir.Name -eq "python" -or $dir.Name.StartsWith("python-")) {
+            $Dirs.Add($dir.FullName)
+        }
+    }
+}
+
 function Resolve-VoxprintPython {
-    $candidates = @()
+    $dirs = New-Object System.Collections.Generic.List[string]
     if ($env:VOXPRINT_HOME) {
-        $candidates += Join-Path $env:VOXPRINT_HOME "shared\python\pythonw.exe"
-        $candidates += Join-Path $env:VOXPRINT_HOME "shared\python\python.exe"
+        Add-PointerDirs $dirs (Join-Path $env:VOXPRINT_HOME "shared")
     }
     if ($env:LOCALAPPDATA) {
-        $candidates += Join-Path $env:LOCALAPPDATA "Voxprint\shared\python\pythonw.exe"
-        $candidates += Join-Path $env:LOCALAPPDATA "Voxprint\shared\python\python.exe"
+        Add-PointerDirs $dirs (Join-Path $env:LOCALAPPDATA "Voxprint\shared")
     }
-    foreach ($candidate in $candidates) {
-        if (Test-Path -LiteralPath $candidate) {
-            Write-Host "python: $candidate"
-            return @{ Path = $candidate; Arguments = "" }
+    foreach ($dir in $dirs) {
+        $fromJson = Get-InterpreterExecutable $dir
+        if ($fromJson) {
+            Write-Host "python: $fromJson"
+            return @{ Path = $fromJson; Arguments = "" }
+        }
+        foreach ($name in @("pythonw.exe", "python.exe")) {
+            $candidate = Join-Path $dir $name
+            if (Test-Path -LiteralPath $candidate) {
+                Write-Host "python: $candidate"
+                return @{ Path = $candidate; Arguments = "" }
+            }
         }
     }
     $py = Get-Command py.exe -ErrorAction SilentlyContinue
@@ -29,12 +81,7 @@ function Resolve-VoxprintPython {
         Write-Host "python: py -3"
         return @{ Path = $py.Source; Arguments = "-3" }
     }
-    $python3 = Get-Command python3.exe -ErrorAction SilentlyContinue
-    if ($python3 -and $python3.Source -notlike "*\WindowsApps\*") {
-        Write-Host "python: python3"
-        return @{ Path = $python3.Source; Arguments = "" }
-    }
-    throw "No shared runtime, py -3, or python3 interpreter was found."
+    throw "No shared runtime or py -3 interpreter was found."
 }
 
 $folder = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\VOXPrint AI Suite"

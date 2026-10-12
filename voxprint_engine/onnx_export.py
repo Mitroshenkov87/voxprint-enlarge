@@ -24,7 +24,7 @@ from voxprint_common.paths import models_dir
 from voxprint_engine.registry import combined_catalog
 from voxprint_engine.trt_libs import prepare_native_runtime
 from voxprint_engine.registry.schema import ModelManifest, checked_in_channels
-from voxprint_engine.store import StoreError, download, ensure_weight, sha256_file
+from voxprint_engine.store import MDL_COMMAND, StoreError, ensure_weight, sha256_file
 
 # These imports stay inside the export functions. The worker imports this
 # module on every job, and importing torch at module level takes long enough
@@ -147,7 +147,7 @@ def ensure_onnx(
     A later call returns the cached file.
     """
     folder = root or models_dir()
-    fetch = downloader or download
+    fetch = downloader or _mdl_only
     if model.onnx_url and model.onnx_sha256:
         return _prebuilt(model, folder, on_progress, fetch)
     if not model.sha256:
@@ -186,6 +186,17 @@ def ensure_onnx(
         raise
     _emit(on_progress, 0.18, "checked the ONNX file")
     return dest
+
+
+def _mdl_only(
+    url: str,
+    target: Path,
+    expected_sha256: str,
+    on_progress: Progress | None = None,
+) -> None:
+    """Refuse an in-process download. VOXPrint MDL fetches model files."""
+    del url, expected_sha256, on_progress
+    raise StoreError(f"{target.name} is not in the shared models folder. Run {MDL_COMMAND}")
 
 
 def _prebuilt(model: ModelManifest, folder: Path, on_progress: Progress | None, fetch: Downloader) -> Path:

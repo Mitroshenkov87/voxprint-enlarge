@@ -151,7 +151,7 @@ def _classify(message: str) -> ErrorCode:
     text = message.lower()
     if "cancel" in text:
         return "cancelled"
-    if "nvidia gpu" in text or "600 series" in text:
+    if "nvidia gpu" in text or "600 series" in text or "gpu_provider_unavailable" in text:
         return "gpu_unsupported"
     if "onnx conversion failed" in text or "onnx export failed" in text or text.startswith("worker closed the pipe"):
         return "model_missing"
@@ -287,7 +287,13 @@ def run_job(
     if model is None or not model.selectable:
         return _fail(emit, job_id, "model_missing", f"unknown or unavailable model {model_id}", None)
     if not ci_lanczos() and weight_report(model)[0] != "ready":
-        return _fail(emit, job_id, "model_missing", f"{model.id} is not downloaded", None)
+        return _fail(
+            emit,
+            job_id,
+            "model_missing",
+            f"{model.id} is not downloaded. Run voxprint-mdl download --app enlarge",
+            None,
+        )
     if request.parent_lock_pid and not parent_lock_matches(request.parent_lock_pid):
         return _fail(emit, job_id, "bad_input", "the suite GPU lock pid does not match --parent-lock-pid", None)
     try:

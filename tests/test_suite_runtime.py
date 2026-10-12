@@ -378,8 +378,8 @@ def test_weight_file_is_removed_only_when_the_last_app_releases(
     target = models / model.filename
     target.parent.mkdir(parents=True)
     target.write_bytes(b"weight")
-    register("enlarge")
-    register("clarity")
+    register(DEFAULT_MODEL_ID, app="enlarge")
+    register(DEFAULT_MODEL_ID, app="clarity")
     root = tmp_path / "shared"
     root.mkdir()
     payload = {

@@ -1,32 +1,25 @@
-"""Background download and ONNX conversion. The window thread only receives signals."""
+"""Open VOXPrint MDL. Enlarge does not download model files itself."""
 from __future__ import annotations
 
-from pathlib import Path
+import subprocess
+import sys
 
-from PySide6.QtCore import QThread, Signal
-
-from voxprint_engine.onnx_export import OnnxExportError, ensure_onnx
-from voxprint_engine.registry.schema import ModelManifest
-from voxprint_engine.store import StoreError
+from voxprint_engine.process_win import no_window_flags
 
 
-class DownloadThread(QThread):
-    """Download one pinned weight and convert it to a cached ONNX file."""
-    progressed = Signal(float, str)
-    succeeded = Signal(str)
-    failed = Signal(str)
+def manage_models_command() -> list[str]:
+    """The Manage models button. MDL's window lists Enlarge's models."""
+    return ["voxprint-mdl", "--gui", "--app", "enlarge"]
 
-    def __init__(self, model: ModelManifest, root: Path) -> None:
-        """Hold the model and the models directory."""
-        super().__init__()
-        self.model = model
-        self.root = root
 
-    def run(self) -> None:
-        """Download, convert, and emit progress, then the ONNX path or the error."""
-        try:
-            path = ensure_onnx(self.model, self.root, on_progress=self.progressed.emit)
-        except (OSError, StoreError, OnnxExportError) as exc:
-            self.failed.emit(str(exc))
-            return
-        self.succeeded.emit(str(path))
+def start_manage_models() -> subprocess.Popen[bytes]:
+    """Launch ``voxprint-mdl --gui --app enlarge``.
+
+    When that command is not on PATH, the current interpreter runs the module.
+    """
+    command = manage_models_command()
+    try:
+        return subprocess.Popen(command, creationflags=no_window_flags())
+    except OSError:
+        fallback = [sys.executable, "-m", "voxprint_common.mdl", "--gui", "--app", "enlarge"]
+        return subprocess.Popen(fallback, creationflags=no_window_flags())

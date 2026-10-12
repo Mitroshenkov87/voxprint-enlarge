@@ -4,9 +4,10 @@
 # --smoke is the short set (selftest, one stock upscale and its cached rerun,
 # anime 6B at 4x, and the long-side chain). It is also the default.
 #
-# The interpreter is the shared runtime python, then `py -3`, then
-# `python3`. On Windows `python3` is often the Microsoft Store alias, so it
-# is last. The chosen command is printed as `python: ...`.
+# The interpreter is interpreter.json (or the manifest python path), then a
+# python that is really in that folder, then `py -3`. `python3` is never
+# used: on Windows it is often the Microsoft Store alias. The chosen command
+# is printed as `python: ...`.
 set -u
 
 # Git bash does not open C:\Windows paths. Forward slashes do.
@@ -16,30 +17,15 @@ _to_unix() {
 }
 
 # Print one interpreter command. A path is one line. `py -3` is the launcher.
+# Exit 1 when no shared interpreter and no working `py -3` exist.
 resolve_vm_python() {
-  local candidate data home
-  if [[ -n "${VOXPRINT_HOME:-}" ]]; then
-    home="$(_to_unix "$VOXPRINT_HOME")"
-    for candidate in "$home/shared/python/python.exe" "$home/shared/python/bin/python3"; do
-      if [[ -f "$candidate" ]]; then
-        printf '%s\n' "$candidate"
-        return 0
-      fi
-    done
-  fi
-  if [[ -n "${LOCALAPPDATA:-}" ]]; then
-    candidate="$(_to_unix "$LOCALAPPDATA")/Voxprint/shared/python/python.exe"
-    if [[ -f "$candidate" ]]; then
-      printf '%s\n' "$candidate"
+  local root
+  while IFS= read -r root; do
+    [[ -n "$root" ]] || continue
+    if _resolve_shared_tree "$root"; then
       return 0
     fi
-  fi
-  data="$(_to_unix "${XDG_DATA_HOME:-${HOME:-}/.local/share}")"
-  candidate="$data/voxprint/shared/python/bin/python3"
-  if [[ -f "$candidate" ]]; then
-    printf '%s\n' "$candidate"
-    return 0
-  fi
+  done < <(_shared_roots)
   # A dead `py -3` exits 1. The subshell keeps `set -e` from stopping the script.
   if command -v py >/dev/null 2>&1; then
     if ( py -3 -c "import sys" ) >/dev/null 2>&1; then
@@ -47,8 +33,85 @@ resolve_vm_python() {
       return 0
     fi
   fi
-  printf '%s\n' "python3"
-  return 0
+  return 1
+}
+
+_shared_roots() {
+  local data home
+  if [[ -n "${VOXPRINT_HOME:-}" ]]; then
+    printf '%s\n' "$(_to_unix "$VOXPRINT_HOME")/shared"
+  fi
+  if [[ -n "${LOCALAPPDATA:-}" ]]; then
+    printf '%s\n' "$(_to_unix "$LOCALAPPDATA")/Voxprint/shared"
+  fi
+  data="$(_to_unix "${XDG_DATA_HOME:-${HOME:-}/.local/share}")"
+  home="$data/voxprint/shared"
+  if [[ -d "$home" ]]; then
+    printf '%s\n' "$home"
+  fi
+}
+
+_resolve_shared_tree() {
+  local root="$1" rel dir name
+  if [[ -f "$root/manifest.json" ]]; then
+    while IFS= read -r rel; do
+      [[ -n "$rel" ]] || continue
+      if _consider_pointer "$root/$rel"; then
+        return 0
+      fi
+    done < <(sed -n 's/.*"path"[[:space:]]*:[[:space:]]*"\(python[^"]*\)".*/\1/p' "$root/manifest.json")
+  fi
+  shopt -s nullglob
+  for dir in "$root"/python "$root"/python-*; do
+    [[ -d "$dir" ]] || continue
+    name="$(basename "$dir")"
+    case "$name" in
+      python|python-*)
+        if _consider_pointer "$dir"; then
+          shopt -u nullglob
+          return 0
+        fi
+        ;;
+    esac
+  done
+  shopt -u nullglob
+  return 1
+}
+
+_consider_pointer() {
+  local dir="$1" exe version
+  if [[ -f "$dir/interpreter.json" ]]; then
+    exe="$(_json_field "$dir/interpreter.json" executable)"
+    version="$(_json_field "$dir/interpreter.json" version)"
+    exe="$(_unescape_json "$exe")"
+    exe="$(_to_unix "$exe")"
+    case "$version" in
+      3.14|3.14.*)
+        if [[ -n "$exe" && -f "$exe" ]]; then
+          printf '%s\n' "$exe"
+          return 0
+        fi
+        ;;
+    esac
+  fi
+  for exe in "$dir/python.exe" "$dir/pythonw.exe" "$dir/bin/python3" "$dir/Scripts/python.exe"; do
+    if [[ -f "$exe" ]]; then
+      printf '%s\n' "$exe"
+      return 0
+    fi
+  done
+  return 1
+}
+
+_json_field() {
+  local file="$1" field="$2"
+  sed -n "s/.*\"${field}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$file" | head -n 1
+}
+
+_unescape_json() {
+  local value="$1"
+  value="${value//\\\\/\\}"
+  printf '%s' "$value"
 }
 
 vm_test_main() {
@@ -69,7 +132,10 @@ vm_test_main() {
   fi
 
   local choice
-  choice="$(resolve_vm_python)"
+  if ! choice="$(resolve_vm_python)"; then
+    echo "setup: shared runtime interpreter was not found" >&2
+    exit 2
+  fi
   echo "python: $choice" >&2
   PYTHON=()
   if [[ "$choice" == "py -3" ]]; then

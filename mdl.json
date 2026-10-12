@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "app": "enlarge",
+  "models": [
+    {
+      "id": "4x-nomos2-realplksr-dysample",
+      "version": "1",
+      "vram_tier": "any",
+      "display_name": "4xNomos2_realplksr_dysample",
+      "files": [
+        {
+          "path": "4xNomos2_realplksr_dysample.pth",
+          "size": 29715988,
+          "sha256": "96c8476ed2c42107628d10562b32ae89e7be3c2f7a53d29504823e9bafe8121d",
+          "mirrors": [
+            {
+              "source": "url",
+              "url": "https://github.com/Phhofm/models/releases/download/4xNomos2_realplksr_dysample/4xNomos2_realplksr_dysample.pth"
+            }
+          ]
+        }
+      ],
+      "post_install": {
+        "argv": ["voxprint-enlarge-cli", "--prepare-model", "{id}"],
+        "timeout_s": 1800,
+        "produces": ["model.onnx"]
+      }
+    },
+    {
+      "id": "4x-nomos2-hq-dat2",
+      "version": "1",
+      "vram_tier": "any",
+      "display_name": "4xNomos2_hq_dat2",
+      "on_demand": true,
+      "files": [
+        {
+          "path": "4xNomos2_hq_dat2.pth",
+          "size": 140196334,
+          "sha256": "1f2be2b4786b5031776aed90e1818564f5576ab1e44da9355c7f3788ea25bdea",
+          "mirrors": [
+            {
+              "source": "url",
+              "url": "https://github.com/Phhofm/models/releases/download/4xNomos2_hq_dat2/4xNomos2_hq_dat2.pth"
+            }
+          ]
+        }
+      ],
+      "post_install": {
+        "argv": ["voxprint-enlarge-cli", "--prepare-model", "{id}"],
+        "timeout_s": 1800,
+        "produces": ["model.onnx"]
+      }
+    },
+    {
+      "id": "realesrgan-x4plus-anime6b",
+      "version": "1",
+      "vram_tier": "any",
+      "display_name": "RealESRGAN_x4plus_anime_6B",
+      "on_demand": true,
+      "files": [
+        {
+          "path": "RealESRGAN_x4plus_anime_6B.pth",
+          "size": 17938799,
+          "sha256": "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da",
+          "mirrors": [
+            {
+              "source": "url",
+              "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth"
+            }
+          ]
+        }
+      ],
+      "post_install": {
+        "argv": ["voxprint-enlarge-cli", "--prepare-model", "{id}"],
+        "timeout_s": 1800,
+        "produces": ["model.onnx"]
+      }
+    }
+  ]
+}

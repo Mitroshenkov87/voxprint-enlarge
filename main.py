@@ -7,7 +7,8 @@
     python main.py --serve --hidden        protocol 1 listener, no window until open_ui
     python main.py --register [--exe PATH] discovery records for Lucent
     python main.py --unregister            remove those discovery records
-    python main.py --install-suite         shared Python, CUDA wheels, and the default model
+    python main.py --install-suite         shared Python, CUDA wheels, then VOXPrint MDL
+    python main.py --prepare-model ID      convert one MDL weight to ONNX
     python main.py --uninstall-suite       drop this app's hold on those shared files
     python main.py --install-gpu           torch, CUDA 13 ONNX Runtime, and TensorRT wheels
     python main.py --input FILE --scale 2|4 --preset photo|art [--model ID] [--quality fast|max] [--format FMT] [--output PATH] --json-progress
@@ -38,6 +39,7 @@ from enlarge.suite_runtime import (
     SuiteInstallError,
     cpu_onnxruntime_shadows_gpu,
     ensure_default_model,
+    prepare_model,
     ensure_runtime,
     install_gpu_wheels,
     release_runtime,
@@ -426,6 +428,17 @@ def _unregister() -> int:
     return 0
 
 
+def _prepare_model(model_id: str) -> int:
+    """Convert one model in this interpreter. The launcher selects the shared one."""
+    try:
+        produced = prepare_model(model_id, lambda message: print(message, flush=True))
+    except SuiteInstallError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(produced)
+    return 0
+
+
 def _install_gpu() -> int:
     """Install torch and the CUDA 13 wheels into this interpreter."""
     try:
@@ -484,6 +497,8 @@ def main(argv: list[str] | None = None) -> int:
         return _unregister()
     if parsed.install_gpu:
         return _install_gpu()
+    if parsed.prepare_model:
+        return _prepare_model(str(parsed.prepare_model))
     if parsed.install_suite:
         return _install_suite()
     if parsed.uninstall_suite:

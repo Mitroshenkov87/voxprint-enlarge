@@ -1,7 +1,7 @@
 """Build number for a release.
 
 The release workflow runs this module before it installs dependencies, so it
-does not import ``voxprint_common``. The rule matches voxprint-common 0.1.1:
+does not import ``voxprint_common``. The rule matches voxprint-common 0.2.4:
 ``VOXPRINT_BUILD`` wins, otherwise ``GITHUB_RUN_NUMBER`` plus ``offset`` in
 ``BUILD.json``, otherwise the recorded ``build`` (from ``BUILD.json`` or a
 sibling ``build_info.json``). A missing recorded build stays null. It is not

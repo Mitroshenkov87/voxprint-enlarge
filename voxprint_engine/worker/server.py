@@ -105,7 +105,7 @@ def _job(message: dict[str, Any]) -> dict[str, Any]:
     weight: Path | None = None
     network: Path | None = None
     if not uses_lanczos(model, device, engine):
-        register_quietly()
+        register_quietly(model.id)
         progress(0.05, "checking the model file")
         try:
             network = ensure_onnx_in_child(
@@ -119,6 +119,10 @@ def _job(message: dict[str, Any]) -> dict[str, Any]:
             candidate = models_dir() / model.filename
             if candidate.is_file():
                 weight = candidate
+        if weight is None and model.sha256:
+            blob = models_dir() / "blobs" / model.sha256.lower()
+            if blob.is_file():
+                weight = blob
     with gpu_job("enlarge", model.id, eta=600.0, timeout=30.0):
         outcome = upscale_file(
             src,
