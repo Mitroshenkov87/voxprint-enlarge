@@ -5,13 +5,15 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import QSize
-from PySide6.QtGui import QAction, QColor, QImage
+from PySide6.QtGui import QAction, QColor, QFontMetrics, QImage
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSlider,
     QSpinBox,
     QWidget,
@@ -210,6 +212,9 @@ def test_every_chip_row_renders_in_en_ru_and_de() -> None:
         for lang in ("en", "ru", "de")
     }
     russian = catalogs["ru"]
+    assert catalogs["en"]["enlarge.preset.pictures"] == "What's in the picture"
+    assert russian["enlarge.preset.pictures"] == "Что на картинке"
+    assert catalogs["de"]["enlarge.preset.pictures"] == "Was auf dem Bild"
     assert russian["enlarge.preset.quality"] == "Качество"
     assert russian["enlarge.preset.quality.smaller"] == "Файл поменьше"
     assert russian["enlarge.preset.quality.balanced"] == "Сбалансировано"
@@ -284,7 +289,7 @@ def test_blank_translation_falls_back_to_english_and_stays_visible(tmp_path: Pat
         assert quality is not None and quality.isVisible() and quality.text() == "Quality"
         assert balanced is not None and balanced.isVisible() and balanced.text() == "Balanced"
         assert save is not None and save.isVisible() and save.text() == "Save to"
-        assert pictures is not None and pictures.isVisible() and pictures.text() == "Это"
+        assert pictures is not None and pictures.isVisible() and pictures.text() == "Что на картинке"
         assert shown_label("enlarge.preset.quality") == "Quality"
     finally:
         if folder in i18n._extra:
@@ -320,6 +325,73 @@ def test_history_thumb_uses_the_result_image(tmp_path: Path) -> None:
     assert left.red() > 140 and left.blue() < 80
     assert right.blue() > 140 and right.red() < 80
     window.close()
+    set_language("en")
+
+
+def test_drop_history_and_expert_combos_stay_readable(tmp_path: Path) -> None:
+    app = _app()
+    set_language("en")
+    window = SimpleWindow()
+    window.resize(1200, 900)
+    window.show()
+    for _ in range(4):
+        app.processEvents()
+    strip = window.findChild(QScrollArea, "historyStrip")
+    drop = window.findChild(QLabel, "fileDrop")
+    assert strip is not None and strip.isHidden()
+    assert drop is not None and drop.text() == "Drop a picture or click to choose"
+    chosen = tmp_path / "shots" / "before.png"
+    chosen.parent.mkdir()
+    chosen.write_bytes(b"png")
+    window.view.set_prompt_text(str(chosen))
+    assert drop.text() == "before.png · replace"
+    assert "Drop a picture" not in drop.text()
+    assert "shots" not in drop.text()
+    window.view.set_expert(True)
+    for _ in range(6):
+        app.processEvents()
+    window._dress_expert()
+    for _ in range(4):
+        app.processEvents()
+    seen = False
+    for combo in window.view.root.findChildren(QComboBox):
+        if not combo.isVisible() or combo.count() == 0:
+            continue
+        seen = True
+        text = combo.currentText()
+        advance = QFontMetrics(combo.font()).horizontalAdvance(text)
+        assert "…" not in text
+        assert combo.width() >= advance + 28, (combo.objectName(), text, combo.width(), advance)
+    assert seen
+    pictures = window.findChild(QLabel, "preset-pictures")
+    assert pictures is not None and pictures.text() == "What's in the picture"
+    window.view.set_expert(False)
+    assert window.simple.generate()
+    assert window.simple.finish("hist-1") is not None
+    window.view.refresh()
+    for _ in range(4):
+        app.processEvents()
+    assert not strip.isHidden()
+    assert strip.height() >= 80
+    window.close()
+
+    set_language("ru")
+    russian = SimpleWindow()
+    russian.view.set_prompt_text(str(chosen))
+    ru_drop = russian.findChild(QLabel, "fileDrop")
+    ru_pictures = russian.findChild(QLabel, "preset-pictures")
+    assert ru_drop is not None and ru_drop.text() == "before.png · заменить"
+    assert ru_pictures is not None and ru_pictures.text() == "Что на картинке"
+    russian.close()
+
+    set_language("de")
+    german = SimpleWindow()
+    german.view.set_prompt_text(str(chosen))
+    de_drop = german.findChild(QLabel, "fileDrop")
+    de_pictures = german.findChild(QLabel, "preset-pictures")
+    assert de_drop is not None and de_drop.text() == "before.png · ersetzen"
+    assert de_pictures is not None and de_pictures.text() == "Was auf dem Bild"
+    german.close()
     set_language("en")
 
 

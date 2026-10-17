@@ -107,9 +107,10 @@ command. Check hash and Remove weights are on the Manage models screen.
 Removing weights asks for confirmation before it deletes a file.
 
 Open, Credits, and About have no command id on this surface. Until Components
-adds those ids, the drop area says “Drop a picture or click to choose” and
-opens a file dialog, and Credits and About are extra actions on the existing
-More menu. Those rows are marked interim. There is no second toolbar.
+adds those ids, an empty drop area says “Drop a picture or click to choose”
+and opens a file dialog. A chosen file shows its name and “replace”. Credits
+and About are extra actions on the existing More menu. Those rows are marked
+interim. There is no second toolbar.
 
 Face restore and noise removal are registered and this build does not run
 them. `UpscaleRequest` has no field for either, so simple mode has no chip
