@@ -22,7 +22,7 @@ from enlarge.ipc.protocol import (
     request_from_message,
 )
 from enlarge.appinfo import APP_DISPLAY_NAME, product_version
-from enlarge.ui.window import MainWindow
+from enlarge.ui.simple_window import SimpleWindow as MainWindow
 from voxprint_engine.nvidia_smi import assess
 from voxprint_engine.providers import ci_lanczos
 

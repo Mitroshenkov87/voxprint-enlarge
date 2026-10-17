@@ -1,0 +1,177 @@
+{
+  "schema": "voxprint-presets/1",
+  "groups": [
+    {
+      "id": "pictures",
+      "label_key": "enlarge.preset.pictures",
+      "default": "photographs",
+      "options": [
+        {
+          "id": "photographs",
+          "label_key": "enlarge.preset.pictures.photographs",
+          "values": {}
+        },
+        {
+          "id": "detail",
+          "label_key": "enlarge.preset.pictures.detail",
+          "values": {}
+        },
+        {
+          "id": "drawings",
+          "label_key": "enlarge.preset.pictures.drawings",
+          "values": {}
+        }
+      ]
+    },
+    {
+      "id": "scale",
+      "label_key": "enlarge.preset.scale",
+      "default": "4x",
+      "options": [
+        {
+          "id": "2x",
+          "label_key": "enlarge.preset.scale.2x",
+          "values": {
+            "enlarge.scale": "2",
+            "enlarge.long_side": 0
+          }
+        },
+        {
+          "id": "4x",
+          "label_key": "enlarge.preset.scale.4x",
+          "values": {
+            "enlarge.scale": "4",
+            "enlarge.long_side": 0
+          }
+        },
+        {
+          "id": "4k",
+          "label_key": "enlarge.preset.scale.4k",
+          "values": {
+            "enlarge.scale": "4",
+            "enlarge.long_side": 3840
+          }
+        },
+        {
+          "id": "8k",
+          "label_key": "enlarge.preset.scale.8k",
+          "values": {
+            "enlarge.scale": "4",
+            "enlarge.long_side": 7680
+          }
+        }
+      ]
+    },
+    {
+      "id": "quality",
+      "label_key": "enlarge.preset.quality",
+      "default": "balanced",
+      "options": [
+        {
+          "id": "smaller",
+          "label_key": "enlarge.preset.quality.smaller",
+          "values": {
+            "enlarge.quality": 50
+          }
+        },
+        {
+          "id": "balanced",
+          "label_key": "enlarge.preset.quality.balanced",
+          "values": {
+            "enlarge.quality": 60
+          }
+        },
+        {
+          "id": "best",
+          "label_key": "enlarge.preset.quality.best",
+          "values": {
+            "enlarge.quality": 95
+          }
+        }
+      ]
+    },
+    {
+      "id": "filetype",
+      "label_key": "enlarge.preset.filetype",
+      "default": "avif",
+      "options": [
+        {
+          "id": "avif",
+          "label_key": "enlarge.preset.filetype.avif",
+          "values": {
+            "enlarge.format": "avif",
+            "enlarge.lossless": false
+          }
+        },
+        {
+          "id": "jxl",
+          "label_key": "enlarge.preset.filetype.jxl",
+          "values": {
+            "enlarge.format": "jxl",
+            "enlarge.lossless": false
+          }
+        },
+        {
+          "id": "jxl-lossless",
+          "label_key": "enlarge.preset.filetype.jxl_lossless",
+          "values": {
+            "enlarge.format": "jxl",
+            "enlarge.lossless": true
+          }
+        },
+        {
+          "id": "webp",
+          "label_key": "enlarge.preset.filetype.webp",
+          "values": {
+            "enlarge.format": "webp",
+            "enlarge.lossless": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "save",
+      "label_key": "enlarge.preset.save",
+      "default": "beside",
+      "options": [
+        {
+          "id": "beside",
+          "label_key": "enlarge.preset.save.beside",
+          "values": {
+            "enlarge.beside": true,
+            "enlarge.output_dir": ""
+          }
+        },
+        {
+          "id": "folder",
+          "label_key": "enlarge.preset.save.folder",
+          "values": {
+            "enlarge.beside": false,
+            "enlarge.output_dir": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "scope",
+      "label_key": "enlarge.preset.scope",
+      "default": "one",
+      "options": [
+        {
+          "id": "one",
+          "label_key": "enlarge.preset.scope.one",
+          "values": {
+            "enlarge.scope": "one"
+          }
+        },
+        {
+          "id": "folder",
+          "label_key": "enlarge.preset.scope.folder",
+          "values": {
+            "enlarge.scope": "folder"
+          }
+        }
+      ]
+    }
+  ]
+}
