@@ -19,28 +19,58 @@ picture-generation list plus a scale, and 4× stays unavailable until
 `enlarge/ui/presets/enlarge.json`, which ADOPTION allows. Picture chips write
 registry ids from `enlarge/ui/presets/mdl-map.json` only.
 
-## What the shell still does not draw
+## Slots this surface does not have
 
-The shell overflow stays Open folder, Manage models, Settings, and Expert mode.
-This window does not fork that menu. Its own simple actions and More menu sit
-above the shell. `docs/ui/FEATURE-MAP.md` is the placement of each old control
-and each CLI flag.
+The shell overflow is Open folder, Manage models, Settings, and Expert mode.
+There is one More button, that one. Enlarge adds Preview output names, Check
+my GPU, About, Check hash, and Remove weights to that menu. It does not add a
+second toolbar.
 
-1. The enlarge surface's result is a picture. Compare, zoom, and the batch
-   queue are extra screens. The shell picture and the history cells stay
-   painted placeholders.
-2. The image variant's action bar adds More like this and Use prompt again.
-   Enlarge does not use a prompt. Add folder, Remove, and Clear are on the
-   batch wizard. Open is the window's Open button. The shell still does not
-   emit `file.open`.
-3. The shell drop handler stores the file name. This window's filter runs
-   first and keeps the full path. `open_ui` still uses `set_prompt_text`.
-4. Lossless On cannot be limited to JPEG XL by the shell. The job refuses it
-   for any other file type.
-5. The shell preset file marks 4× unavailable. This app's size chips are both
-   available. Four times as big is the default.
-6. GPU choices are `auto`, `cuda:0`, and `cuda:1`.
-7. Face restore and the generative tier are Expert choices. Running them needs
-   a decision: the worker request has no field, and the registry says this
-   build does not run them.
-8. `--worker` has no window. Setup explains that and does not start it.
+The image result bar is hardcoded as More like this, Save, Open folder, and
+Use prompt again. Enlarge retargets the first and the last to Compare
+before/after and Enlarge again. Save and Open folder stay.
+
+Missing, with no slot to put them in:
+
+1. **Open.** `file.open` is emitted by the viewer bar only. This surface does
+   not emit it. A drop still puts the full path in the file area.
+2. **Batch.** No command id and no result-bar slot. Dropping a folder, or more
+   than one file, still opens the wizard.
+3. **Credits.** No command id and no result-bar slot.
+4. **About.** No command id. Version is an extra action on the existing More
+   menu until the shell has an About slot.
+5. **A real wipe.** The enlarge result kind is `PICTURE`. `COMPARE` paints a
+   decorative split from `_wipe` and does not take the opened file or the
+   enlarged file. This window draws that split on the result label after a
+   run, with the shell's `compareSlider` line. A shell API that accepts the
+   two pixmaps would replace that.
+6. **Chip and spin metrics.** `_fit_chip` measures before the shell font is
+   applied, so "Twice as big", "Four times as big", and «Режим эксперта» clip.
+   This window measures again after polish, with the same DemiBold advance
+   plus 14 px of padding on each side. Expert spins are created at 72 px, which
+   cuts off the number. This window reserves 120 px. A long side of 0 shows
+   the special value Off. The shell stylesheet does not paint scrollbar arrows,
+   so the native arrows look broken. This window draws a handle and leaves the
+   arrows out.
+7. **Manage models** does not run `--install-gpu` or `--prepare-model` itself.
+   Those flags stay on the command line and are reached through that existing
+   More action, as asked. A model-manager action that installs the GPU runtime
+   and prepares one model id would make the path real.
+
+## What stays as it is
+
+The shell drop handler stores the file name. This window's filter runs first
+and keeps the full path. `open_ui` still uses `set_prompt_text`.
+
+The shell preset file marks 4× unavailable. This app's size chips are both
+available. Four times as big is the default.
+
+GPU choices are `auto`, `cuda:0`, and `cuda:1`.
+
+Face restore and the generative tier are hidden. The old window did not run
+them, and the worker request has no field for them.
+
+`--serve`, `--hidden`, `--register`, `--unregister`, `--exe`,
+`--install-suite`, `--uninstall-suite`, `--worker`, `--parent-lock-pid`,
+`--lock-timeout`, `--json`, `--json-progress`, and `--capabilities` stay on
+the command line.

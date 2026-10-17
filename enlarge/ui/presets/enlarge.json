@@ -59,63 +59,32 @@
           "id": "avif",
           "label_key": "enlarge.preset.filetype.avif",
           "values": {
-            "enlarge.format": "avif"
+            "enlarge.format": "avif",
+            "enlarge.lossless": false
           }
         },
         {
           "id": "jxl",
           "label_key": "enlarge.preset.filetype.jxl",
           "values": {
-            "enlarge.format": "jxl"
+            "enlarge.format": "jxl",
+            "enlarge.lossless": false
+          }
+        },
+        {
+          "id": "jxl-lossless",
+          "label_key": "enlarge.preset.filetype.jxl_lossless",
+          "values": {
+            "enlarge.format": "jxl",
+            "enlarge.lossless": true
           }
         },
         {
           "id": "webp",
           "label_key": "enlarge.preset.filetype.webp",
           "values": {
-            "enlarge.format": "webp"
-          }
-        }
-      ]
-    },
-    {
-      "id": "lossless",
-      "label_key": "enlarge.preset.lossless",
-      "default": "off",
-      "options": [
-        {
-          "id": "off",
-          "label_key": "enlarge.preset.lossless.off",
-          "values": {
+            "enlarge.format": "webp",
             "enlarge.lossless": false
-          }
-        },
-        {
-          "id": "on",
-          "label_key": "enlarge.preset.lossless.on",
-          "values": {
-            "enlarge.lossless": true
-          }
-        }
-      ]
-    },
-    {
-      "id": "subfolders",
-      "label_key": "enlarge.preset.subfolders",
-      "default": "on",
-      "options": [
-        {
-          "id": "on",
-          "label_key": "enlarge.preset.subfolders.on",
-          "values": {
-            "enlarge.subfolders": true
-          }
-        },
-        {
-          "id": "off",
-          "label_key": "enlarge.preset.subfolders.off",
-          "values": {
-            "enlarge.subfolders": false
           }
         }
       ]

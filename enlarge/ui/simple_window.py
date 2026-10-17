@@ -6,35 +6,49 @@ It does not replace that screen.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import shutil
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QUrl
-from PySide6.QtGui import QCloseEvent, QDesktopServices, QDragEnterEvent, QDropEvent
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMenu, QPushButton, QVBoxLayout, QWidget
+import main as entry
+
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, QUrl
+from PySide6.QtGui import (
+    QCloseEvent,
+    QColor,
+    QDesktopServices,
+    QDragEnterEvent,
+    QDropEvent,
+    QFont,
+    QFontMetrics,
+    QImage,
+    QPainter,
+    QPen,
+    QPixmap,
+)
+from PySide6.QtWidgets import QFileDialog, QLabel, QPushButton, QSlider, QSpinBox, QVBoxLayout, QWidget
 
 from enlarge import suite
-from enlarge.appinfo import APP_DISPLAY_NAME, resource_dir
+from enlarge.appinfo import APP_DISPLAY_NAME, resource_dir, version_label
 from enlarge.images import is_image
 from enlarge.ipc.capabilities import gpu_capability
-from enlarge.ipc.jobs import parent_lock_matches
-from enlarge.ui.jobplan import JobSettings, as_int, fit_long_side, progress_line, requests_for
+from enlarge.ui.compare import _load
+from enlarge.ui.jobplan import JobSettings, as_int, fit_long_side, requests_for
 from enlarge.ui.models import start_manage_models
 from enlarge.ui.preset_map import load_enlarge_presets, picture_map
 from enlarge.ui.runner import GuidedBatchThread
 from enlarge.ui.screens import (
     BatchScreen,
     CompareScreen,
-    HandoffScreen,
     JobHost,
-    SetupScreen,
-    optional_note,
+    apply_suite_surface,
     show_credits,
     show_dry_run,
     show_hash,
+    show_report,
     remove_weights,
-    write_progress,
 )
 from voxprint_common.i18n import add_catalogs, tr
 from voxprint_common.mdl import ready
@@ -43,7 +57,6 @@ from voxprint_common.paths import state_dir
 from voxprint_common.ui.expert import ExpertMode
 from voxprint_common.ui.settings import Choice, SettingSpec, SettingType, Settings
 from voxprint_common.ui.simple_image import Phase, SimpleLayout, SimpleWidget
-from voxprint_common.ui.theme import build_shell_style
 from voxprint_common.ui.variants import (
     WINDOW_HEIGHT,
     WINDOW_MIN_HEIGHT,
@@ -90,18 +103,6 @@ def registry_models(manifest: Path | None = None) -> tuple[Model, ...]:
     return models
 
 
-def role_choices(role: str, off_key: str) -> tuple[Choice, ...]:
-    """Off, then each registry id with this role. The ids are not written here."""
-    rows = [Choice("off", off_key)]
-    seen = {"off"}
-    for model in load_builtin(release=False).models:
-        if model.role != role or not model.id or model.id in seen:
-            continue
-        rows.append(Choice(model.id, model.id))
-        seen.add(model.id)
-    return tuple(rows)
-
-
 def enlarge_settings(models: tuple[Model, ...]) -> Settings:
     """Return the one settings list the chips and the expert panel share.
 
@@ -126,26 +127,6 @@ def enlarge_settings(models: tuple[Model, ...]) -> Settings:
                 expert=True,
                 group="enlarge",
                 choices=tuple(Choice(model.id, model.id) for model in models),
-            ),
-            SettingSpec(
-                "enlarge.face",
-                "enlarge.face",
-                "enlarge.face.help",
-                SettingType.ENUM,
-                "off",
-                expert=True,
-                group="enlarge",
-                choices=role_choices("face", "enlarge.face.off"),
-            ),
-            SettingSpec(
-                "enlarge.generative",
-                "enlarge.generative",
-                "enlarge.generative.help",
-                SettingType.ENUM,
-                "off",
-                expert=True,
-                group="enlarge",
-                choices=role_choices("generative", "enlarge.generative.off"),
             ),
             SettingSpec(
                 "enlarge.scale",
@@ -195,7 +176,7 @@ def enlarge_settings(models: tuple[Model, ...]) -> Settings:
                 "enlarge.lossless.help",
                 SettingType.BOOL,
                 False,
-                expert=True,
+                expert=False,
                 group="enlarge",
             ),
             SettingSpec(
@@ -281,46 +262,6 @@ def enlarge_settings(models: tuple[Model, ...]) -> Settings:
                 expert=True,
                 group="enlarge",
             ),
-            SettingSpec(
-                "enlarge.lock_timeout",
-                "enlarge.lock_timeout",
-                "enlarge.lock_timeout.help",
-                SettingType.INT,
-                600,
-                expert=True,
-                group="enlarge",
-                minimum=0,
-                maximum=86400,
-            ),
-            SettingSpec(
-                "enlarge.parent_lock",
-                "enlarge.parent_lock",
-                "enlarge.parent_lock.help",
-                SettingType.INT,
-                0,
-                expert=True,
-                group="enlarge",
-                minimum=0,
-                maximum=999999999,
-            ),
-            SettingSpec(
-                "enlarge.json_progress",
-                "enlarge.json_progress",
-                "enlarge.json_progress.help",
-                SettingType.BOOL,
-                False,
-                expert=True,
-                group="enlarge",
-            ),
-            SettingSpec(
-                "enlarge.subfolders",
-                "enlarge.subfolders",
-                "enlarge.subfolders.help",
-                SettingType.BOOL,
-                True,
-                expert=False,
-                group="enlarge",
-            ),
         )
     )
 
@@ -334,20 +275,21 @@ class SimpleWindow(QWidget, JobHost):
         add_catalogs(Path(__file__).resolve().parent / "locales")
         self.setWindowTitle(APP_DISPLAY_NAME)
         self.setObjectName("shell")
-        self.setStyleSheet(build_shell_style(False))
+        apply_suite_surface(self)
         self.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self._models = registry_models()
         self._settings = enlarge_settings(self._models)
         self._results: dict[str, Path] = {}
         self._fits: dict[str, tuple[Path, int]] = {}
+        self._include_subfolders = True
+        self._wipe: QSlider | None = None
+        self._result_label: QLabel | None = None
         self._job: GuidedBatchThread | None = None
         self._manage: object | None = None
         self._batch: BatchScreen | None = None
         self._compare: CompareScreen | None = None
         self._credits: QWidget | None = None
-        self._handoff: HandoffScreen | None = None
-        self._setup: SetupScreen | None = None
         self._syncing = False
         self.simple = SimpleLayout(
             presets=load_enlarge_presets(self._settings),
@@ -371,11 +313,20 @@ class SimpleWindow(QWidget, JobHost):
         )
         body = QVBoxLayout(self)
         body.setContentsMargins(0, 0, 0, 0)
-        body.addLayout(self._action_bar())
         body.addWidget(self.view.root)
+        self._retarget_results()
+        self._extend_overflow()
         self._install_full_drop()
-        self._stop_expert = self._expert.subscribe(self.view.set_expert)
-        self.view.set_expert(self._expert.enabled())
+        expert_impl = self.view.set_expert
+
+        def watched(enabled: bool) -> None:
+            expert_impl(enabled)
+            self._dress_expert()
+            self._fit_bold_controls()
+
+        self.view.set_expert = watched  # type: ignore[method-assign]
+        self._stop_expert = self._expert.subscribe(watched)
+        watched(self._expert.enabled())
         warning = _gpu_warning()
         if warning:
             self.view.set_note(warning)
@@ -443,8 +394,13 @@ class SimpleWindow(QWidget, JobHost):
             changed = self._pull_derived()
             if self._job is not None and self.simple.phase is not Phase.BUSY:
                 self._job.cancel()
-            if changed:
-                self.view.refresh()
+            view = getattr(self, "view", None)
+            if changed and view is not None:
+                view.refresh()
+            if view is not None:
+                self._dress_expert()
+                self._fit_bold_controls()
+                QTimer.singleShot(0, self._paint_wipe)
         finally:
             self._syncing = False
 
@@ -488,12 +444,7 @@ class SimpleWindow(QWidget, JobHost):
             custom_models=str(self.simple.get("enlarge.custom_models") or ""),
             beside=bool(self.simple.get("enlarge.beside")),
             output_dir=str(self.simple.get("enlarge.output_dir") or ""),
-            subfolders=bool(self.simple.get("enlarge.subfolders")),
-            face=str(self.simple.get("enlarge.face") or "off"),
-            generative=str(self.simple.get("enlarge.generative") or "off"),
-            json_progress=bool(self.simple.get("enlarge.json_progress")),
-            parent_pid=as_int(self.simple.get("enlarge.parent_lock")),
-            lock_timeout=float(as_int(self.simple.get("enlarge.lock_timeout"), 600)),
+            subfolders=self._include_subfolders,
         )
 
     def models_ready(self) -> bool:
@@ -501,9 +452,8 @@ class SimpleWindow(QWidget, JobHost):
         return _models_ready()
 
     def set_subfolders(self, enabled: bool) -> None:
-        """Store the shared subfolders switch."""
-        if bool(self.simple.get("enlarge.subfolders")) != enabled:
-            self.simple.set_value("enlarge.subfolders", enabled)
+        """Store the batch subfolders switch. It is not a simple-mode chip."""
+        self._include_subfolders = enabled
 
     def remember(self, job_id: str, path: Path) -> None:
         """Keep a finished file so Compare and Save can find it."""
@@ -516,14 +466,10 @@ class SimpleWindow(QWidget, JobHost):
         on_progress: Callable[[str, float, str], None],
         on_item: Callable[[str, bool, str, str], None],
     ) -> bool:
-        """Start a batch. False when one is already running or the parent lock does not match."""
+        """Start a batch. False when one is already running."""
         if not requests or (self._job is not None and self._job.isRunning()):
             return False
-        settings = self.job_settings()
-        if settings.parent_pid > 0 and not parent_lock_matches(settings.parent_pid):
-            self.view.set_note(tr("enlarge.error.parent"))
-            return False
-        self._job = GuidedBatchThread(requests, cancel, settings.parent_pid, settings.lock_timeout)
+        self._job = GuidedBatchThread(requests, cancel, 0, 600.0)
         self._job.progressed.connect(on_progress)
         self._job.item_finished.connect(on_item)
         self._job.start()
@@ -584,9 +530,6 @@ class SimpleWindow(QWidget, JobHost):
             self.simple.unavailable(tr("enlarge.error.models"))
             self.view.refresh()
             return
-        note = optional_note(settings.face, settings.generative)
-        if note:
-            self.view.set_note(note)
         try:
             built = requests_for([source], settings, APP_DISPLAY_NAME)
         except (OSError, ValueError) as exc:
@@ -608,9 +551,7 @@ class SimpleWindow(QWidget, JobHost):
         self.view.set_note(message)
         self.view.refresh()
 
-    def _on_progress(self, job_id: str, fraction: float, message: str) -> None:
-        if bool(self.simple.get("enlarge.json_progress")):
-            write_progress(progress_line(job_id, fraction, message))
+    def _on_progress(self, _job_id: str, fraction: float, message: str) -> None:
         if self.simple.phase is not Phase.BUSY:
             return
         bounded = min(1.0, max(0.0, float(fraction)))
@@ -644,43 +585,43 @@ class SimpleWindow(QWidget, JobHost):
             self.simple.block(message.strip() or tr("enlarge.error.failed"))
         self.view.refresh()
 
-    def _action_bar(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.setContentsMargins(12, 8, 12, 0)
-        row.setSpacing(8)
-        for name, key, handler in (
-            ("actionOpen", "enlarge.action.open", self._open),
-            ("actionBatch", "enlarge.action.batch", lambda: self.open_batch()),
-            ("actionCompare", "enlarge.action.compare", self._open_compare),
-            ("actionCredits", "enlarge.action.credits", self._open_credits),
-        ):
-            button = QPushButton(tr(key))
-            button.setObjectName(name)
-            button.setAutoDefault(False)
-            button.clicked.connect(handler)
-            row.addWidget(button)
-        more = QPushButton(tr("enlarge.action.more"))
-        more.setObjectName("actionMore")
-        more.setAutoDefault(False)
-        more.setMenu(self._more_menu())
-        row.addWidget(more)
-        row.addStretch(1)
-        return row
+    def _retarget_results(self) -> None:
+        """Use the shell result slots. Save and Open folder stay. The other two are upscaler actions."""
+        self._relabel("moreLike", "enlarge.action.compare", self._open_compare)
+        self._relabel("usePrompt", "enlarge.action.again", self._again)
 
-    def _more_menu(self) -> QMenu:
-        menu = QMenu(self)
-        menu.setObjectName("moreMenu")
+    def _relabel(self, name: str, key: str, handler: Callable[[], None]) -> None:
+        button = self.view.root.findChild(QPushButton, name)
+        if button is None:
+            return
+        button.setText(tr(key))
+        button.clicked.disconnect()
+        button.clicked.connect(_click(handler))
+
+    def _extend_overflow(self) -> None:
+        """Add the user actions the shell overflow does not already list.
+
+        Open, Batch, and Credits have no slot on this surface, so they are not
+        added here and there is no second toolbar.
+        """
+        button = self.view.root.findChild(QPushButton, "overflow")
+        menu = None if button is None else button.menu()
+        if menu is None:
+            return
+        menu.addSeparator()
         for name, key, handler in (
+            ("morePreview", "enlarge.more.preview", self._dry_run),
+            ("moreGpu", "enlarge.more.gpu", self._check_gpu),
+            ("moreAbout", "enlarge.more.about", self._open_about),
             ("moreHash", "enlarge.more.hash", self._check_hash),
             ("moreWeights", "enlarge.more.weights", self._remove_weights),
-            ("moreHandoff", "enlarge.more.handoff", self._open_handoff),
-            ("moreDry", "enlarge.more.dry", self._dry_run),
-            ("moreSetup", "enlarge.more.setup", self._open_setup),
         ):
             action = menu.addAction(tr(key))
             action.setObjectName(name)
-            action.triggered.connect(handler)
-        return menu
+            action.triggered.connect(_click(handler))
+
+    def _again(self) -> None:
+        self.view._generate()  # noqa: SLF001 - the shell's Enlarge button uses this path
 
     def _open_compare(self) -> None:
         source = Path(self.simple.prompt)
@@ -688,17 +629,19 @@ class SimpleWindow(QWidget, JobHost):
         self._compare.show()
 
     def _open_credits(self) -> None:
+        """Credits stays built. This surface has no slot that can open it."""
         self._credits = show_credits(self, str(self.simple.get("enlarge.custom_models") or ""))
 
-    def _open_handoff(self) -> None:
-        if self._handoff is None:
-            self._handoff = HandoffScreen(self)
-        self._handoff.show()
+    def _open_about(self) -> None:
+        show_report(self, tr("enlarge.about.title"), f"{APP_DISPLAY_NAME}\n{version_label()}")
 
-    def _open_setup(self) -> None:
-        if self._setup is None:
-            self._setup = SetupScreen(self)
-        self._setup.show()
+    def _check_gpu(self) -> None:
+        buffer = io.StringIO()
+        errors = io.StringIO()
+        with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(errors):
+            code = entry._selftest(False)
+        text = "\n".join(part for part in (buffer.getvalue().strip(), errors.getvalue().strip()) if part)
+        show_report(self, tr("enlarge.more.gpu"), text or str(code))
 
     def _check_hash(self) -> None:
         show_hash(self, str(self.simple.get("enlarge.model")))
@@ -709,6 +652,53 @@ class SimpleWindow(QWidget, JobHost):
     def _dry_run(self) -> None:
         show_dry_run(self, Path(self.simple.prompt), self.job_settings())
 
+    def _dress_expert(self) -> None:
+        """Give spins room, and show Off when the long side is zero."""
+        for spin in self.view.root.findChildren(QSpinBox):
+            spin.setMinimumWidth(120)
+            if spin.objectName() == "enlarge.long_side":
+                spin.setSpecialValueText(tr("enlarge.long_side.off"))
+
+    def _fit_bold_controls(self) -> None:
+        """Size selected chips and the Expert toggle the way the shell measures bold text."""
+        for button in self.view.root.findChildren(QPushButton):
+            chip = button.property("chip") == "true" or button.objectName() == "expertToggle"
+            result = button.objectName() in {"moreLike", "savePicture", "openFolder", "usePrompt"}
+            if chip or result:
+                _fit_bold(button, pad=36 if chip else 40)
+
+    def _paint_wipe(self) -> None:
+        """Draw a before/after split on the main result after a run."""
+        label = self.view.root.findChild(QLabel, "result")
+        if label is None or self.simple.phase is not Phase.READY:
+            if self._wipe is not None:
+                self._wipe.hide()
+            return
+        slider = self._wipe_slider(label)
+        width = max(label.width(), 2)
+        height = max(label.height(), 2)
+        split = slider.value() / 1000
+        before = _pixmap(Path(self.simple.prompt))
+        after = _pixmap(self._current_result())
+        label.setPixmap(_wipe_frame(before, after, width, height, split))
+        slider.setGeometry(label.geometry())
+        slider.show()
+        slider.raise_()
+
+    def _wipe_slider(self, label: QLabel) -> QSlider:
+        if self._wipe is not None:
+            return self._wipe
+        parent = label.parentWidget()
+        slider = QSlider(Qt.Orientation.Horizontal, parent if parent is not None else label)
+        slider.setObjectName("compareSlider")
+        slider.setRange(0, 1000)
+        slider.setValue(500)
+        slider.valueChanged.connect(_click(self._paint_wipe))
+        label.installEventFilter(self)
+        self._result_label = label
+        self._wipe = slider
+        return slider
+
     def _install_full_drop(self) -> None:
         self.setAcceptDrops(True)
         drop = self.view.root.findChild(QWidget, "fileDrop")
@@ -717,7 +707,10 @@ class SimpleWindow(QWidget, JobHost):
             drop.installEventFilter(self)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt's name
-        """Keep the full path when a picture is dropped on the shell."""
+        """Keep the full path when a picture is dropped, and redraw the wipe after a resize."""
+        if watched is self._result_label and event.type() == QEvent.Type.Resize:
+            QTimer.singleShot(0, self._paint_wipe)
+            return False
         if event.type() == QEvent.Type.DragEnter and _has_urls(event):
             _accept(event)
             return True
@@ -748,6 +741,71 @@ class SimpleWindow(QWidget, JobHost):
             self.view.set_prompt_text(str(files[0]))
             return
         self.open_batch(paths)
+
+
+def _click(handler: Callable[[], None]) -> Callable[[], None]:
+    """Ignore the bool Qt passes from a clicked or triggered signal."""
+
+    def run(*_args: object) -> None:
+        handler()
+
+    return run
+
+
+def _pixmap(path: Path | None) -> QPixmap:
+    """Load a still image. A missing file returns an empty pixmap."""
+    if path is None or not path.is_file():
+        return QPixmap()
+    loaded = QPixmap(str(path))
+    if not loaded.isNull():
+        return loaded
+    return _load(path)
+
+
+def _wipe_frame(before: QPixmap, after: QPixmap, width: int, height: int, split: float) -> QPixmap:
+    """One frame with the original on the left of the divider and the result on the right."""
+    image = QImage(max(width, 1), max(height, 1), QImage.Format.Format_RGB32)
+    image.fill(QColor("#14141c"))
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    left = before if not before.isNull() else _wash("#243044", width, height)
+    right = after if not after.isNull() else _wash("#c4b49a", width, height)
+    rect = image.rect()
+    painter.drawPixmap(rect, _cover(left, width, height))
+    cut = int(max(0.0, min(split, 1.0)) * width)
+    painter.setClipRect(cut, 0, max(0, width - cut), height)
+    painter.drawPixmap(rect, _cover(right, width, height))
+    painter.setClipping(False)
+    painter.setPen(QPen(QColor("#f2f2f5"), 2))
+    painter.drawLine(cut, 0, cut, height)
+    painter.end()
+    return QPixmap.fromImage(image)
+
+
+def _wash(colour: str, width: int, height: int) -> QPixmap:
+    image = QImage(max(width, 1), max(height, 1), QImage.Format.Format_RGB32)
+    image.fill(QColor(colour))
+    return QPixmap.fromImage(image)
+
+
+def _cover(pixmap: QPixmap, width: int, height: int) -> QPixmap:
+    return pixmap.scaled(
+        width,
+        height,
+        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+
+
+def _fit_bold(button: QPushButton, *, pad: int) -> None:
+    """Reserve the bold label width. Selected chips and Expert mode use weight 600."""
+    text = button.text()
+    if not text:
+        return
+    font = QFont(button.font())
+    font.setWeight(QFont.Weight.DemiBold)
+    advance = QFontMetrics(font).horizontalAdvance(text)
+    button.setMinimumWidth(max(advance + pad, 36))
 
 
 def preset_model_ids() -> dict[str, str]:

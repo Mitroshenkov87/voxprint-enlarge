@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPlainTextEdit, QPushButton
+from PySide6.QtWidgets import QApplication, QCheckBox, QDialog, QLabel, QPushButton, QSlider, QSpinBox
 
 from enlarge.cli_parser import build_parser
 from enlarge.ipc.capabilities import ART, PHOTO_FAST, PHOTO_MAX
@@ -70,7 +70,11 @@ def test_preset_edit_reset_and_mode_keep_one_state() -> None:
     assert window.simple.get("enlarge.format") == "avif"
     assert window.simple.get("enlarge.quality") == 60
     assert window.simple.get("enlarge.lossless") is False
-    assert window.simple.get("enlarge.subfolders") is True
+    window.simple.choose("filetype", "jxl-lossless")
+    assert window.simple.get("enlarge.format") == "jxl"
+    assert window.simple.get("enlarge.lossless") is True
+    window.simple.choose("filetype", "avif")
+    assert window.simple.get("enlarge.lossless") is False
     before = window.simple.snapshot()
     window.view.set_expert(True)
     assert window.simple.snapshot() == before
@@ -166,49 +170,59 @@ def test_every_cli_flag_is_in_the_feature_map() -> None:
             continue
         for option in action.option_strings:
             assert option in text
-    assert "needs decision" in text
+    assert "needs decision" not in text
+    assert "CLI only, unchanged" in text
+    assert "not run before either, unchanged" in text
     assert "`upscale` subcommand" in text
 
 
-def test_extra_screens_keep_the_old_actions() -> None:
+def test_shell_slots_replace_the_second_toolbar() -> None:
     _app()
     set_language("en")
     window = SimpleWindow()
     source = (_ROOT / "enlarge" / "ui" / "simple_window.py").read_text(encoding="utf-8")
     assert "gfpgan" not in source
     assert "seedvr" not in source
-    face = window._settings.get("enlarge.face")
-    generative = window._settings.get("enlarge.generative")
-    assert face is not None and generative is not None
-    assert {choice.value for choice in face.choices} > {"off"}
-    assert {choice.value for choice in generative.choices} > {"off"}
-    assert window.simple.get("enlarge.face") == "off"
+    assert window._settings.get("enlarge.face") is None
+    assert window._settings.get("enlarge.generative") is None
     assert window.simple.get("enlarge.long_side") == 0
-    for name in ("actionOpen", "actionBatch", "actionCompare", "actionCredits", "actionMore"):
-        assert window.findChild(QPushButton, name) is not None
-    for name in ("moreHash", "moreWeights", "moreHandoff", "moreDry", "moreSetup"):
+    assert window.findChild(QPushButton, "actionMore") is None
+    assert window.findChild(QPushButton, "overflow") is not None
+    compare = window.view.root.findChild(QPushButton, "moreLike")
+    again = window.view.root.findChild(QPushButton, "usePrompt")
+    save = window.view.root.findChild(QPushButton, "savePicture")
+    folder = window.view.root.findChild(QPushButton, "openFolder")
+    assert compare is not None and compare.text() == "Compare before/after"
+    assert again is not None and again.text() == "Enlarge again"
+    assert save is not None and folder is not None
+    for name in ("morePreview", "moreGpu", "moreAbout", "moreHash", "moreWeights"):
         assert window.findChild(QAction, name) is not None
+    window.view.set_expert(True)
+    side = window.view.root.findChild(QSpinBox, "enlarge.long_side")
+    assert side is not None
+    assert side.specialValueText() == "Off"
+    assert side.value() == 0
+    window.view.set_prompt_text("picture.png")
+    assert window.simple.generate()
+    assert window.simple.finish("wipe-1") is not None
+    window.view.refresh()
+    app = _app()
+    for _ in range(3):
+        app.processEvents()
+    window.show()
+    for _ in range(3):
+        app.processEvents()
+    slider = window.view.root.findChild(QSlider, "compareSlider")
+    assert slider is not None and not slider.isHidden()
     window.open_batch()
     batch = window.findChild(QDialog, "batchScreen")
     assert batch is not None
     for name in ("batchAdd", "batchFolder", "batchRemove", "batchClear", "batchRun", "batchCancel"):
         assert batch.findChild(QPushButton, name) is not None
+    box = batch.findChild(QCheckBox, "batchSubfolders")
+    assert box is not None and box.text() == "Include subfolders"
     window._open_compare()
-    window._open_credits()
-    window._open_handoff()
-    window._open_setup()
     assert window.findChild(QDialog, "compareScreen") is not None
-    assert window.findChild(QDialog, "creditsScreen") is not None
-    assert window.findChild(QDialog, "handoffScreen") is not None
-    assert window.findChild(QDialog, "setupScreen") is not None
-    worker = window.findChild(QPushButton, "setupWorker")
-    assert worker is not None
-    worker.click()
-    result = window.findChild(QDialog, "setupScreen")
-    assert result is not None
-    text = result.findChild(QPlainTextEdit, "setupResult")
-    assert text is not None
-    assert "inference" in text.toPlainText().lower()
     window.close()
 
 
@@ -230,14 +244,10 @@ def test_long_side_zero_keeps_the_size_and_the_command_names_the_flags(tmp_path:
         beside=True,
         output_dir="",
         subfolders=True,
-        face="off",
-        generative="off",
-        json_progress=True,
-        parent_pid=0,
-        lock_timeout=600,
     )
     line = command_line(source, settings)
     assert "--long-side" in line
-    assert "--json-progress" in line
     assert "--double" in line
     assert "--dry-run" in line
+    assert "--json-progress" not in line
+    assert "--lock-timeout" not in line

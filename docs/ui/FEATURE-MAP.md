@@ -1,18 +1,21 @@
 # Enlarge feature map
 
-The main screen is `surface_for("enlarge")`. Everything else is a simple action,
-the Expert panel, the More menu, or the batch wizard. Nothing in the old window
-or the CLI is dropped. A row marked **needs decision** is visible, and the
-behaviour still needs a decision before it can run.
+The main screen is `surface_for("enlarge")`. Simple chips, the Expert panel, the
+shell's own More menu, and the batch wizard are the places a person can reach.
+A row marked **CLI only, unchanged** stays on the command line. The program
+still accepts the flag. It is not a menu item. A row marked **not run before
+either, unchanged** was not run by the old window, and this window does not
+show a control for it.
 
 | Feature | Old location | New location | Status |
 | --- | --- | --- | --- |
-| Add images | Images step | simple | mapped |
+| Add images | Images step | wizard | mapped |
 | Add folder | Images step | wizard | mapped |
 | Remove | Images step | wizard | mapped |
 | Clear | Images step | wizard | mapped |
-| Include subfolders | Images step | simple | mapped |
+| Include subfolders | Images step | wizard | mapped |
 | Drop a full path | Window drag and drop | simple | mapped |
+| Open one picture | Window header | drop on the main screen | no shell slot |
 | Photographs | Model step | simple | mapped |
 | Photographs, highest detail | Model step | simple | mapped |
 | Drawings | Model step | simple | mapped |
@@ -25,8 +28,8 @@ behaviour still needs a decision before it can run.
 | Double upscale | Output step | Expert | mapped |
 | Long side | CLI `--long-side` | Expert | mapped |
 | AVIF, JPEG XL, WebP | Output step | simple | mapped |
+| JPEG XL, lossless | Output step | simple | mapped |
 | JPEG, HEIC | Output step | Expert | mapped |
-| Lossless JPEG XL | Output step | simple | mapped |
 | Quality | Output step | Expert | mapped |
 | Output folder | Output step | Expert | mapped |
 | Beside the source | Output step | Expert | mapped |
@@ -38,17 +41,21 @@ behaviour still needs a decision before it can run.
 | Shared models folder | Settings | Expert | mapped |
 | Queue | Run step | wizard | mapped |
 | Queue restore | Run step | wizard | mapped |
-| Compare | Run step | simple | mapped |
+| Compare before/after | Run step | simple | mapped |
+| Before/after wipe | Run step | simple | mapped |
 | Zoom | Run step | simple | mapped |
 | Run | Run step | simple | mapped |
+| Enlarge again | Run step | simple | mapped |
 | Cancel | Run step | simple | mapped |
+| Save | Run step | simple | mapped |
+| Open folder | Run step | simple | mapped |
 | Settings | Window header | Expert | mapped |
-| Credits | Window header | simple | mapped |
+| Batch | Window header | wizard, from a dropped folder | no shell slot |
+| Credits | Window header | — | no shell slot |
+| About | — | More | mapped |
 | Splash | Shared splash | simple | mapped |
-| Face restore choice | Registry role face | Expert | mapped |
-| Run face restore | Registered and not run | Expert | needs decision |
-| Generative choice | Registry role generative | Expert | mapped |
-| Run generative upscale | Registered and not run | Expert | needs decision |
+| Face restore | Registered and not run | hidden | not run before either, unchanged |
+| Generative upscale | Registered and not run | hidden | not run before either, unchanged |
 | `--input` | CLI | simple | mapped |
 | `--output` / `--out` | CLI | Expert | mapped |
 | `--output-dir` | CLI | Expert | mapped |
@@ -63,27 +70,37 @@ behaviour still needs a decision before it can run.
 | `--double` | CLI | Expert | mapped |
 | `--upscale` | CLI | simple | mapped |
 | `upscale` subcommand | CLI | simple | mapped |
-| `--json-progress` | CLI | Expert | mapped |
 | `--dry-run` | CLI | More | mapped |
-| `--lock-timeout` | CLI | Expert | mapped |
-| `--parent-lock-pid` | CLI | Expert | mapped |
-| `--capabilities` | CLI | More | mapped |
-| `--json` | CLI | More | mapped |
-| `--serve` | CLI | More | mapped |
-| `--hidden` | CLI | More | mapped |
-| `--register` | CLI | More | mapped |
-| `--unregister` | CLI | More | mapped |
-| `--exe` | CLI | More | mapped |
-| `--install-gpu` | CLI | More | mapped |
-| `--prepare-model` | CLI | More | mapped |
-| `--install-suite` | CLI | More | mapped |
-| `--uninstall-suite` | CLI | More | mapped |
 | `--selftest` | CLI | More | mapped |
 | `--version` | CLI | More | mapped |
-| `--worker` | CLI | More | needs decision |
+| `--install-gpu` | CLI | More | mapped |
+| `--prepare-model` | CLI | More | mapped |
+| `--serve` | CLI | CLI | CLI only, unchanged |
+| `--hidden` | CLI | CLI | CLI only, unchanged |
+| `--register` | CLI | CLI | CLI only, unchanged |
+| `--unregister` | CLI | CLI | CLI only, unchanged |
+| `--exe` | CLI | CLI | CLI only, unchanged |
+| `--install-suite` | CLI | CLI | CLI only, unchanged |
+| `--uninstall-suite` | CLI | CLI | CLI only, unchanged |
+| `--worker` | CLI | CLI | CLI only, unchanged |
+| `--parent-lock-pid` | CLI | CLI | CLI only, unchanged |
+| `--lock-timeout` | CLI | CLI | CLI only, unchanged |
+| `--json` | CLI | CLI | CLI only, unchanged |
+| `--json-progress` | CLI | CLI | CLI only, unchanged |
+| `--capabilities` | CLI | CLI | CLI only, unchanged |
 
-## Needs a decision
+## What the shell does not offer
 
-* **Run face restore.** Expert stores the registry id. The worker request has no field for it, and this build's registry says the step is not run. The job says so and still enlarges the picture.
-* **Run generative upscale.** The same limit, for the generative registry row.
-* **`--worker`.** More → Setup shows why. The worker is the internal inference process. Starting it in this window would replace the screen.
+`surface_for("enlarge")` is an image surface. Its result actions are Save,
+Open folder, Compare before/after, and Enlarge again. Its More menu is the
+shell overflow: Open folder, Manage models, Settings, and Expert mode, plus
+Preview output names, Check my GPU, About, Check hash, and Remove weights.
+
+These have no slot on that surface, so this window does not add a second toolbar:
+
+* **Open** a picture with a file dialog. A drop on the main screen still fills it.
+* **Batch**. Dropping a folder, or more than one file, still opens the wizard.
+* **Credits**.
+
+Manage models is the shell's existing action. Install GPU and Prepare model go
+through that window. They are not separate menu items.

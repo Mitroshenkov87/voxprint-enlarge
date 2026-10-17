@@ -1,28 +1,22 @@
 """Extra screens the shared enlarge surface does not draw.
 
-Batch, compare, credits, the Lucent hand-off, and the process commands live
-here. The main screen stays ``surface_for("enlarge")``.
+Batch, compare, and credits live here. The main screen stays
+``surface_for("enlarge")``.
 """
 from __future__ import annotations
 
-import contextlib
-import io
-import json
-import sys
 from collections.abc import Callable
 from pathlib import Path
 
-import main as entry
-
-from PySide6.QtCore import Qt, QProcess, QThread, Signal
-from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QDragEnterEvent, QDropEvent, QPalette
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -36,22 +30,18 @@ from PySide6.QtWidgets import (
 from enlarge.appinfo import APP_DISPLAY_NAME, status_label, version_label
 from enlarge.credits import credit_sections
 from enlarge.images import collect
-from enlarge.ipc.capabilities import capabilities
-from enlarge.ipc.naming import listen_name
-from enlarge.ipc.register import register_install, unregister_install
 from enlarge.queue_state import dump_queue, load_queue, still_open
 from enlarge.ui.compare import CompareView
-from enlarge.ui.jobplan import (
-    JobSettings,
-    command_line,
-    describe_job,
-    fit_long_side,
-    progress_line,
-    requests_for,
-)
+from enlarge.ui.jobplan import JobSettings, command_line, describe_job, fit_long_side, requests_for
 from voxprint_common.i18n import tr
-from voxprint_common.paths import state_dir
-from voxprint_common.ui.theme import build_shell_style
+from voxprint_common.ui.theme import (
+    CARD_PLAIN,
+    CONTROL_BG,
+    CONTROL_BORDER,
+    ROOT_PLAIN,
+    TEXT,
+    build_shell_style,
+)
 from voxprint_engine.registry import combined_catalog, load_builtin
 from voxprint_engine.registry.schema import ModelManifest
 from voxprint_engine.store import StoreError, delete_weight, weight_report
@@ -97,11 +87,62 @@ class JobHost:
         raise NotImplementedError
 
 
+def suite_surface_style() -> str:
+    """Shell stylesheet plus the controls a wizard needs and the shell does not paint.
+
+    The shell colours a widget named ``shell``. A dialog keeps a light system
+    background unless its own surface, table header, checkbox, and scrollbar
+    are named here. Scrollbar arrows are omitted: the shell draws none, and
+    the native arrows come out broken.
+    """
+    return build_shell_style(False) + f"""
+QDialog {{ background: {ROOT_PLAIN}; color: {TEXT}; }}
+QLabel {{ color: {TEXT}; background: transparent; }}
+QCheckBox {{ color: {TEXT}; background: transparent; }}
+QTableWidget {{
+    background: {CARD_PLAIN}; color: {TEXT};
+    gridline-color: {CONTROL_BORDER}; alternate-background-color: {CARD_PLAIN};
+}}
+QTableWidget::item {{ color: {TEXT}; }}
+QHeaderView::section {{
+    background: {CONTROL_BG}; color: {TEXT}; border: none; padding: 8px; font-weight: 600;
+}}
+QTableCornerButton::section {{ background: {CONTROL_BG}; border: none; }}
+QScrollBar:vertical {{ background: {CARD_PLAIN}; width: 10px; margin: 0; border: none; }}
+QScrollBar::handle:vertical {{ background: {CONTROL_BORDER}; min-height: 28px; border-radius: 4px; }}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; width: 0; border: none; background: none; }}
+QScrollBar:horizontal {{ background: {CARD_PLAIN}; height: 10px; margin: 0; border: none; }}
+QScrollBar::handle:horizontal {{ background: {CONTROL_BORDER}; min-width: 28px; border-radius: 4px; }}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ height: 0; width: 0; border: none; background: none; }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
+QSpinBox, QDoubleSpinBox {{ min-width: 120px; padding-right: 16px; }}
+"""
+
+
+def apply_suite_surface(widget: QWidget) -> None:
+    """Paint ``widget`` with the shell colours, including a dialog that is not named shell."""
+    app = QApplication.instance()
+    if isinstance(app, QApplication) and app.style().objectName().lower() != "fusion":
+        app.setStyle("Fusion")
+    widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    widget.setStyleSheet(suite_surface_style())
+    palette = widget.palette()
+    palette.setColor(QPalette.ColorRole.Window, QColor(ROOT_PLAIN))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor(TEXT))
+    palette.setColor(QPalette.ColorRole.Base, QColor(CARD_PLAIN))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(CARD_PLAIN))
+    palette.setColor(QPalette.ColorRole.Text, QColor(TEXT))
+    palette.setColor(QPalette.ColorRole.Button, QColor(CONTROL_BG))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(TEXT))
+    widget.setPalette(palette)
+    widget.setAutoFillBackground(True)
+
+
 def _screen(dialog: QDialog, name: str, title: str) -> QVBoxLayout:
     dialog.setObjectName(name)
     dialog.setWindowTitle(title)
-    dialog.setStyleSheet(build_shell_style(False))
-    dialog.resize(1200, 900)
+    apply_suite_surface(dialog)
+    dialog.setFixedSize(1200, 900)
     root = QVBoxLayout(dialog)
     root.setContentsMargins(22, 18, 22, 18)
     root.setSpacing(10)
@@ -148,6 +189,7 @@ class BatchScreen(QDialog):
         self._subfolders = QCheckBox(tr("enlarge.batch.subfolders"))
         self._subfolders.setObjectName("batchSubfolders")
         self._subfolders.setChecked(host.job_settings().subfolders)
+        apply_suite_surface(self._subfolders)
         root.addWidget(self._subfolders)
         self._count = QLabel(tr("enlarge.batch.empty"))
         self._count.setObjectName("batchCount")
@@ -157,9 +199,14 @@ class BatchScreen(QDialog):
         self._table.setHorizontalHeaderLabels(
             [tr("enlarge.batch.file"), tr("enlarge.batch.status"), tr("enlarge.batch.output")]
         )
-        self._table.horizontalHeader().setStretchLastSection(True)
+        header = self._table.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setVisible(True)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._table.verticalHeader().setVisible(False)
+        apply_suite_surface(self._table)
         self._table.currentCellChanged.connect(self._show_row)
         root.addWidget(self._table, 1)
         self._compare = CompareView()
@@ -176,11 +223,6 @@ class BatchScreen(QDialog):
         self._status.setObjectName("batchStatus")
         self._status.setWordWrap(True)
         root.addWidget(self._status)
-        self._log = QPlainTextEdit()
-        self._log.setObjectName("batchLog")
-        self._log.setReadOnly(True)
-        self._log.setMaximumHeight(120)
-        root.addWidget(self._log)
         self._sync_subfolders()
         self._subfolders.toggled.connect(self._sync_subfolders)
         self._restore()
@@ -304,8 +346,7 @@ class BatchScreen(QDialog):
             row["dst"] = Path(request.dst)
             row["status"] = "Waiting"
             row["message"] = ""
-        note = optional_note(settings.face, settings.generative)
-        self._status.setText(note or tr("enlarge.batch.running"))
+        self._status.setText(tr("enlarge.batch.running"))
         self._cancel = False
         self._running = True
         self._run.setEnabled(False)
@@ -338,7 +379,6 @@ class BatchScreen(QDialog):
             self._fill()
             break
         self._status.setText(message)
-        self._write_progress(job_id, fraction, message)
 
     def _on_item(self, job_id: str, ok: bool, message: str, dst: str) -> None:
         settings = self._host.job_settings()
@@ -388,13 +428,6 @@ class BatchScreen(QDialog):
         dst = Path(str(item["dst"])) if item["dst"] else None
         after = dst if item["status"] == "Done" and dst is not None and dst.is_file() else None
         self._compare.set_pair(src, after)
-
-    def _write_progress(self, job_id: str, fraction: float, message: str) -> None:
-        if not self._host.job_settings().json_progress:
-            return
-        line = progress_line(job_id, fraction, message)
-        self._log.appendPlainText(line)
-        write_progress(line)
 
 
 class CompareScreen(QDialog):
@@ -474,127 +507,6 @@ class CreditsScreen(QDialog):
         return "\n".join(parts)
 
 
-class HandoffScreen(QDialog):
-    """Lucent and Canvas reach this window through protocol 1."""
-
-    def __init__(self, parent: QWidget) -> None:
-        """Explain the hand-off and offer to listen, or to start a hidden listener."""
-        super().__init__(parent)
-        self._server: object | None = None
-        root = _screen(self, "handoffScreen", tr("enlarge.handoff.title"))
-        body = QLabel(tr("enlarge.handoff.body", endpoint=listen_name()))
-        body.setObjectName("handoffBody")
-        body.setWordWrap(True)
-        root.addWidget(body)
-        canvas = QLabel(tr("enlarge.handoff.canvas"))
-        canvas.setWordWrap(True)
-        root.addWidget(canvas)
-        self._status = QLabel("")
-        self._status.setObjectName("handoffStatus")
-        self._status.setWordWrap(True)
-        root.addWidget(self._status)
-        row = QHBoxLayout()
-        row.addWidget(_button("handoffListen", "enlarge.handoff.listen", self._listen))
-        row.addWidget(_button("handoffHidden", "enlarge.handoff.hidden", self._hidden))
-        row.addStretch(1)
-        root.addLayout(row)
-        root.addStretch(1)
-
-    def _listen(self) -> None:
-        # server imports this package's window. The import stays in the call.
-        from enlarge.ipc.server import IpcServer
-
-        if self._server is not None:
-            self._status.setText(tr("enlarge.handoff.listening", endpoint=listen_name()))
-            return
-        server = IpcServer()
-        server.window = self.parentWidget()  # type: ignore[assignment]
-        if not server.listen():
-            self._status.setText(tr("enlarge.handoff.failed"))
-            return
-        self._server = server
-        self._status.setText(tr("enlarge.handoff.listening", endpoint=server.endpoint()))
-
-    def _hidden(self) -> None:
-        main_py = Path(__file__).resolve().parents[2] / "main.py"
-        QProcess.startDetached(sys.executable, [str(main_py), "--serve", "--hidden"])
-        self._status.setText(tr("enlarge.handoff.hidden_started"))
-
-    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt name
-        """Leave the listener running. The window owns the process."""
-        super().closeEvent(event)
-
-
-class SetupScreen(QDialog):
-    """Process commands from the CLI, each as its own action."""
-
-    def __init__(self, parent: QWidget) -> None:
-        """List version, capabilities, register, install, and the worker note."""
-        super().__init__(parent)
-        self._thread: _SetupThread | None = None
-        root = _screen(self, "setupScreen", tr("enlarge.setup.title"))
-        self._exe = QLineEdit(str(Path(sys.argv[0]).resolve()) if sys.argv else "")
-        self._exe.setObjectName("setupExe")
-        self._exe.setPlaceholderText(tr("enlarge.setup.exe"))
-        root.addWidget(self._exe)
-        self._model = QLineEdit()
-        self._model.setObjectName("setupModel")
-        self._model.setPlaceholderText(tr("enlarge.setup.prepare"))
-        root.addWidget(self._model)
-        self._json = QCheckBox(tr("enlarge.setup.json"))
-        self._json.setObjectName("setupJson")
-        self._json.setChecked(True)
-        root.addWidget(self._json)
-        grid = QHBoxLayout()
-        column = QVBoxLayout()
-        for name, key, command in (
-            ("setupVersion", "enlarge.setup.version", "version"),
-            ("setupCapabilities", "enlarge.setup.capabilities", "capabilities"),
-            ("setupRegister", "enlarge.setup.register", "register"),
-            ("setupUnregister", "enlarge.setup.unregister", "unregister"),
-            ("setupSelftest", "enlarge.setup.selftest", "selftest"),
-            ("setupInstallGpu", "enlarge.setup.install_gpu", "install-gpu"),
-            ("setupPrepare", "enlarge.setup.prepare_button", "prepare-model"),
-            ("setupInstallSuite", "enlarge.setup.install_suite", "install-suite"),
-            ("setupUninstall", "enlarge.setup.uninstall", "uninstall-suite"),
-            ("setupHidden", "enlarge.setup.hidden", "hidden"),
-            ("setupWorker", "enlarge.setup.worker", "worker"),
-        ):
-            column.addWidget(_button(name, key, self._bind(command)))
-        column.addStretch(1)
-        grid.addLayout(column)
-        self._result = QPlainTextEdit()
-        self._result.setObjectName("setupResult")
-        self._result.setReadOnly(True)
-        grid.addWidget(self._result, 1)
-        root.addLayout(grid, 1)
-
-    def _bind(self, command: str) -> Callable[[], None]:
-        """Return a click handler for this setup command."""
-
-        def run() -> None:
-            self._run(command)
-
-        return run
-
-    def _run(self, command: str) -> None:
-        if command == "worker":
-            self._result.setPlainText(tr("enlarge.setup.worker_reason"))
-            return
-        if command == "uninstall-suite":
-            answer = QMessageBox.question(self, APP_DISPLAY_NAME, tr("enlarge.setup.uninstall_ask"))
-            if answer != QMessageBox.StandardButton.Yes:
-                return
-        if command == "hidden":
-            main_py = Path(__file__).resolve().parents[2] / "main.py"
-            QProcess.startDetached(sys.executable, [str(main_py), "--serve", "--hidden"])
-            self._result.setPlainText(tr("enlarge.handoff.hidden_started"))
-            return
-        self._thread = _SetupThread(command, self._exe.text().strip(), self._model.text().strip(), self._json.isChecked())
-        self._thread.reported.connect(self._result.setPlainText)
-        self._thread.start()
-
-
 class DryScreen(QDialog):
     """The plan for the current picture. Nothing is written."""
 
@@ -609,79 +521,18 @@ class DryScreen(QDialog):
         root.addWidget(text, 1)
 
 
-class _SetupThread(QThread):
-    """Run one setup command off the widget thread."""
-
-    reported = Signal(str)
-
-    def __init__(self, command: str, exe: str, model_id: str, as_json: bool) -> None:
-        """Remember which command to run."""
-        super().__init__()
-        self._command = command
-        self._exe = exe
-        self._model_id = model_id
-        self._json = as_json
-
-    def run(self) -> None:
-        """Capture the command's text and emit it."""
-        try:
-            self.reported.emit(setup_command(self._command, self._exe, self._model_id, self._json))
-        except (OSError, RuntimeError, ValueError) as exc:
-            self.reported.emit(str(exc))
-
-
-def write_progress(line: str) -> None:
-    """Append one JSON progress line under the Enlarge state directory."""
-    path = state_dir() / "enlarge" / "progress.jsonl"
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
-    except OSError:
-        return
-
-
-def setup_command(command: str, exe: str, model_id: str, as_json: bool) -> str:
-    """Run one CLI command and return what it printed."""
-    buffer = io.StringIO()
-    errors = io.StringIO()
-    code = 0
-    with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(errors):
-        if command == "version":
-            buffer.write(version_label())
-        elif command == "capabilities":
-            if not as_json:
-                errors.write("usage: voxprint-enlarge --capabilities --json\n")
-                code = 2
-            else:
-                buffer.write(json.dumps(capabilities(), indent=2))
-        elif command == "register":
-            register_install(Path(exe or str(Path(__file__).resolve().parents[2] / "main.py")))
-            buffer.write("registered\n")
-        elif command == "unregister":
-            unregister_install()
-            buffer.write("unregistered\n")
-        elif command == "selftest":
-            code = entry._selftest(as_json)
-        elif command == "install-gpu":
-            code = entry._install_gpu()
-        elif command == "prepare-model":
-            code = entry._prepare_model(model_id)
-        elif command == "install-suite":
-            code = entry._install_suite()
-        elif command == "uninstall-suite":
-            code = entry._uninstall_suite()
-        else:
-            errors.write(str(command))
-            code = 2
-    text = buffer.getvalue().strip()
-    error = errors.getvalue().strip()
-    parts = [str(code)]
-    if text:
-        parts.append(text)
-    if error:
-        parts.append(error)
-    return "\n".join(parts)
+def show_report(parent: QWidget, title: str, body: str) -> None:
+    """Show a short themed note. Used for About and Check my GPU."""
+    dialog = QDialog(parent)
+    root = _screen(dialog, "reportScreen", title)
+    text = QPlainTextEdit()
+    text.setObjectName("reportBody")
+    text.setReadOnly(True)
+    text.setPlainText(body)
+    root.addWidget(text, 1)
+    root.addWidget(_button("reportClose", "enlarge.credits.close", dialog.accept))
+    dialog.resize(1200, 900)
+    dialog.exec()
 
 
 def show_hash(parent: QWidget, model_id: str) -> None:
@@ -727,16 +578,6 @@ def show_credits(parent: QWidget, custom_models: str) -> CreditsScreen:
     dialog = CreditsScreen(parent, list(catalog.models), list(catalog.warnings))
     dialog.show()
     return dialog
-
-
-def optional_note(face: str, generative: str) -> str:
-    """Sentence shown when a registered step is stored and this build does not run it."""
-    parts: list[str] = []
-    if face and face != "off":
-        parts.append(tr("enlarge.note.face"))
-    if generative and generative != "off":
-        parts.append(tr("enlarge.note.generative"))
-    return " ".join(parts)
 
 
 def _esc(text: str) -> str:

@@ -1,7 +1,6 @@
 """Turn the shared settings into one upscale request, including a long side."""
 from __future__ import annotations
 
-import json
 import shlex
 import uuid
 from dataclasses import dataclass
@@ -120,11 +119,6 @@ class JobSettings:
     beside: bool
     output_dir: str
     subfolders: bool
-    face: str
-    generative: str
-    json_progress: bool
-    parent_pid: int
-    lock_timeout: float
 
 
 def requests_for(
@@ -191,8 +185,6 @@ def describe_job(source: Path, settings: JobSettings) -> list[str]:
         f"{width}×{height}  scale {scale}  ->  {planned[0]}×{planned[1]}",
         f"{settings.image_format}  quality {settings.quality}  lossless {settings.lossless}",
         f"{settings.model_id}  double {settings.double}  tile {settings.tile}",
-        f"lock {settings.lock_timeout}s  parent {settings.parent_pid or 0}",
-        f"face {settings.face}  generative {settings.generative}",
     ]
 
 
@@ -211,31 +203,16 @@ def command_line(source: Path, settings: JobSettings) -> str:
             str(settings.quality),
             "--model",
             settings.model_id,
-            "--lock-timeout",
-            str(settings.lock_timeout),
         ]
     )
     if settings.lossless:
         parts.append("--lossless")
     if settings.double:
         parts.append("--double")
-    if settings.parent_pid > 0:
-        parts.extend(["--parent-lock-pid", str(settings.parent_pid)])
     if not settings.beside and settings.output_dir.strip():
         parts.extend(["--output-dir", settings.output_dir.strip()])
-    if settings.json_progress:
-        parts.append("--json-progress")
     parts.append("--dry-run")
     return " ".join(shlex.quote(part) for part in parts)
-
-
-def progress_line(job_id: str, fraction: float, message: str) -> str:
-    """One JSON progress line. The headless job uses the same protocol field."""
-    pct = round(min(100.0, max(0.0, float(fraction) * 100.0)), 1)
-    return json.dumps(
-        {"protocol": 1, "op": "progress", "id": job_id, "pct": pct, "message": message},
-        ensure_ascii=False,
-    )
 
 
 def reserve_many(
