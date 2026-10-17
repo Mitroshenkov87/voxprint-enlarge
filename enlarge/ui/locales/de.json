@@ -2,6 +2,7 @@
   "setting.group.enlarge": "Vergrößern",
   "enlarge.empty": "Ziehen Sie ein Bild hierher und drücken Sie Vergrößern.",
   "simple.empty": "Hier erscheint das Bild.",
+  "simple.drop.picture": "Bild hierher ziehen oder klicken, um eines zu wählen",
   "enlarge.drop.choose": "Bild hierher ziehen oder klicken, um eines zu wählen",
   "enlarge.preset.pictures": "Das sind",
   "enlarge.preset.pictures.photographs": "Fotos",

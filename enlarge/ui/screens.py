@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -99,6 +100,7 @@ def suite_surface_style() -> str:
     return build_shell_style(False) + f"""
 QDialog {{ background: {ROOT_PLAIN}; color: {TEXT}; }}
 QLabel {{ color: {TEXT}; background: transparent; }}
+QPushButton {{ color: {TEXT}; }}
 QCheckBox {{ color: {TEXT}; background: transparent; }}
 QTableWidget {{
     background: {CARD_PLAIN}; color: {TEXT};
@@ -159,6 +161,16 @@ def _button(name: str, key: str, handler: Callable[[], None]) -> QPushButton:
     button.setAutoDefault(False)
     button.clicked.connect(lambda _checked=False: handler())
     return button
+
+
+def _action_row(name: str, key: str, handler: Callable[[], None]) -> QHBoxLayout:
+    """Keep a short label at the left. A full-width button hides the words in the middle."""
+    button = _button(name, key, handler)
+    button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    row = QHBoxLayout()
+    row.addWidget(button)
+    row.addStretch(1)
+    return row
 
 
 class BatchScreen(QDialog):
@@ -549,11 +561,11 @@ class ModelsScreen(QDialog):
         hint = QLabel(tr("enlarge.models.hint"))
         hint.setWordWrap(True)
         root.addWidget(hint)
-        root.addWidget(_button("modelsOpen", "enlarge.models.open", self._open_manager))
-        root.addWidget(_button("modelsHash", "enlarge.more.hash", self._hash))
-        root.addWidget(_button("modelsRemove", "enlarge.more.weights", self._remove))
+        root.addLayout(_action_row("modelsOpen", "enlarge.models.open", self._open_manager))
+        root.addLayout(_action_row("modelsHash", "enlarge.more.hash", self._hash))
+        root.addLayout(_action_row("modelsRemove", "enlarge.more.weights", self._remove))
         root.addStretch(1)
-        root.addWidget(_button("modelsClose", "enlarge.credits.close", self.accept))
+        root.addLayout(_action_row("modelsClose", "enlarge.credits.close", self.accept))
 
     def _open_manager(self) -> None:
         """Open the shared model manager."""

@@ -2,6 +2,7 @@
   "setting.group.enlarge": "Enlarge",
   "enlarge.empty": "Drop a picture, then press Enlarge.",
   "simple.empty": "The picture will show up here.",
+  "simple.drop.picture": "Drop a picture or click to choose",
   "enlarge.drop.choose": "Drop a picture or click to choose",
   "enlarge.preset.pictures": "Pictures are",
   "enlarge.preset.pictures.photographs": "Photographs",

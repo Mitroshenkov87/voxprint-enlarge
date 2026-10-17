@@ -283,6 +283,10 @@ def test_shell_slots_replace_the_second_toolbar() -> None:
     russian.view.set_expert(True)
     for _ in range(6):
         app.processEvents()
+    ru_drop = russian.findChild(QLabel, "fileDrop")
+    assert ru_drop is not None
+    assert ru_drop.text().splitlines()[0] == "Перетащите изображение или нажмите, чтобы выбрать"
+    assert "картин" not in ru_drop.text()
     ru_form = russian.findChild(QWidget, "expertForm")
     assert ru_form is not None
     boxes = []
