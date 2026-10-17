@@ -27,7 +27,7 @@ from enlarge.images import collect, plan_outputs
 from enlarge.queue_state import dump_queue, load_queue, still_open
 from enlarge.ui import pages
 from enlarge.ui.dialogs import CreditsDialog, SettingsDialog
-from enlarge.ui.jobs import BatchThread
+from enlarge.ui.jobs import BatchThread, ModelInstallThread
 from enlarge.ui.models import start_manage_models
 from voxprint_engine.nvidia_smi import assess
 from voxprint_common.ui.theme import build_style
@@ -417,6 +417,8 @@ class MainWindow(QWidget):
         if model is None or not model.selectable:
             self.run_page.status.setText("Pick a model from the list.")
             return
+        if self._offer_install(model):
+            return
         self._snapshot = measure(suite.gpu())
         self._update_tile_label()
         requests: list[UpscaleRequest] = []
@@ -456,6 +458,38 @@ class MainWindow(QWidget):
         self.run_page.status.setText("Running…")
         self.go(3)
         self.job.start()
+
+    def _offer_install(self, model: ModelManifest) -> bool:
+        """Offer to install a missing model. True when the run must wait or stop."""
+        if ci_lanczos() or not model.download_url:
+            return False
+        if weight_report(model, suite.resolved_models_dir())[0] == "ready":
+            return False
+        if getattr(self, "_installer", None) is not None:
+            return True
+        answer = QMessageBox.question(
+            self,
+            APP_DISPLAY_NAME,
+            f"{model.name} is not installed. Download and install it now?",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self.run_page.status.setText(f"{model.name} is not installed.")
+            return True
+        self._installer = ModelInstallThread(model.id)
+        self._installer.progressed.connect(self.run_page.status.setText)
+        self._installer.done.connect(self._on_installed)
+        self.run_page.status.setText(f"Installing {model.name}…")
+        self._installer.start()
+        return True
+
+    def _on_installed(self, ok: bool, message: str) -> None:
+        self._installer = None
+        self._refresh_model_file()
+        if not ok:
+            QMessageBox.warning(self, APP_DISPLAY_NAME, message)
+            self.run_page.status.setText(message)
+            return
+        self.start_run()
 
     def cancel_run(self) -> None:
         """Cancel the image that is running."""
