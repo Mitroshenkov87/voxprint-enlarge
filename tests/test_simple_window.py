@@ -78,7 +78,24 @@ def test_preset_edit_reset_and_mode_keep_one_state() -> None:
     assert window.simple.get("enlarge.scale") == "4"
     assert window.simple.get("enlarge.format") == "avif"
     assert window.simple.get("enlarge.quality") == 60
+    assert window.simple.get("enlarge.long_side") == 0
+    assert window.simple.get("enlarge.beside") is True
+    assert window.simple.get("enlarge.scope") == "one"
     assert window.simple.get("enlarge.lossless") is False
+    window.simple.choose("quality", "best")
+    assert window.simple.get("enlarge.quality") == 95
+    window.simple.choose("quality", "smaller")
+    assert window.simple.get("enlarge.quality") == 50
+    window.simple.choose("quality", "balanced")
+    window.simple.choose("scale", "4k")
+    assert window.simple.get("enlarge.scale") == "4"
+    assert window.simple.get("enlarge.long_side") == 3840
+    window.simple.choose("scale", "8k")
+    assert window.simple.get("enlarge.long_side") == 7680
+    window.simple.choose("scale", "2x")
+    assert window.simple.get("enlarge.scale") == "2"
+    assert window.simple.get("enlarge.long_side") == 0
+    window.simple.choose("scale", "4x")
     window.simple.choose("filetype", "jxl-lossless")
     assert window.simple.get("enlarge.format") == "jxl"
     assert window.simple.get("enlarge.lossless") is True
@@ -90,22 +107,31 @@ def test_preset_edit_reset_and_mode_keep_one_state() -> None:
     window.view.set_expert(False)
     assert window.simple.snapshot() == before
     window.view.set_expert(True)
-    window.simple.set_value("enlarge.quality", 80)
-    status = window.simple.preset_status("pictures")
+    window.simple.set_value("enlarge.long_side", 1920)
+    status = window.simple.preset_status("scale")
     assert status is not None
     assert status.kind is PresetMatch.MODIFIED
-    assert status.option_id == "photographs"
+    assert status.option_id == "4x"
+    window.resize(1200, 900)
+    window.show()
+    for _ in range(4):
+        _app().processEvents()
     window.view.refresh()
-    chip = window.view.root.findChild(QPushButton, "chip-pictures-photographs")
+    chip = window.view.root.findChild(QPushButton, "chip-scale-4x")
     assert chip is not None
-    assert chip.text() == "Photographs + changes"
+    assert chip.text() == "Four times as big + changes"
+    side = window.view.root.findChild(QSpinBox, "enlarge.long_side")
+    assert side is not None and side.value() == 1920
     reset = window.view.root.findChild(QPushButton, "expertReset")
-    assert reset is not None and reset.text() == "Reset to Photographs"
-    window.simple.reset_group("pictures")
-    assert window.simple.get("enlarge.model") == preset_model_ids()["photographs"]
-    assert window.simple.get("enlarge.quality") == 60
-    restored = window.simple.preset_status("pictures")
+    assert reset is not None and reset.text() == "Reset to Four times as big"
+    window.simple.reset_group("scale")
+    assert window.simple.get("enlarge.long_side") == 0
+    restored = window.simple.preset_status("scale")
     assert restored is not None and restored.kind is PresetMatch.EXACT
+    window.simple.set_value("enlarge.quality", 80)
+    quality = window.simple.preset_status("quality")
+    assert quality is not None and quality.kind is PresetMatch.CUSTOM
+    window.simple.choose("quality", "balanced")
     window.close()
 
 
@@ -183,6 +209,7 @@ def test_every_cli_flag_is_in_the_feature_map() -> None:
     assert "CLI only, unchanged" in text
     assert "not run before either, unchanged" in text
     assert "interim, until a shell command id" in text
+    assert "needs worker support" in text
     assert "`upscale` subcommand" in text
 
 
@@ -205,16 +232,39 @@ def test_shell_slots_replace_the_second_toolbar() -> None:
     assert compare is not None and compare.text() == "Compare before/after"
     assert again is not None and again.text() == "Enlarge again"
     assert save is not None and folder is not None
-    for name in ("moreFolder", "moreCredits", "moreAbout", "morePreview", "moreGpu"):
+    for name in ("moreCredits", "moreAbout", "morePreview", "moreGpu"):
         assert window.findChild(QAction, name) is not None
+    assert window.findChild(QAction, "moreFolder") is None
     assert window.findChild(QAction, "moreHash") is None
     assert window.findChild(QAction, "moreWeights") is None
-    folder = window.findChild(QAction, "moreFolder")
     credits = window.findChild(QAction, "moreCredits")
     preview = window.findChild(QAction, "morePreview")
-    assert folder is not None and folder.text() == "Enlarge a folder…"
     assert credits is not None and credits.text() == "Credits"
     assert preview is not None and preview.text() == "Preview file names"
+    whole = window.findChild(QPushButton, "chip-scope-folder")
+    assert whole is not None and whole.text() == "A whole folder"
+    whole.click()
+    assert window.findChild(QDialog, "batchScreen") is not None
+    for chip, label in (
+        ("chip-pictures-photographs", "Photographs"),
+        ("chip-pictures-detail", "Photographs, highest detail"),
+        ("chip-pictures-drawings", "Drawings"),
+        ("chip-scale-2x", "Twice as big"),
+        ("chip-scale-4x", "Four times as big"),
+        ("chip-scale-4k", "Up to 4K"),
+        ("chip-scale-8k", "Up to 8K"),
+        ("chip-quality-smaller", "Smaller file"),
+        ("chip-quality-balanced", "Balanced"),
+        ("chip-quality-best", "Best quality"),
+        ("chip-save-beside", "Next to the picture"),
+        ("chip-save-folder", "Choose a folder…"),
+        ("chip-scope-one", "One picture"),
+    ):
+        button = window.findChild(QPushButton, chip)
+        assert button is not None and button.text() == label
+    assert window.findChild(QPushButton, "chip-face-on") is None
+    assert window.findChild(QPushButton, "chip-denoise-on") is None
+    window.simple.choose("scope", "one")
     window.resize(1200, 900)
     window.show()
     app = _app()

@@ -22,8 +22,9 @@ registry ids from `enlarge/ui/presets/mdl-map.json` only.
 ## Slots this surface does not have
 
 The shell overflow is Open folder, Manage models, Settings, and Expert mode.
-There is one More button, that one. Enlarge adds Enlarge a folder…, Credits,
-About, Preview file names, and Check my GPU to that menu. Expert mode stays
+There is one More button, that one. Enlarge adds Credits, About, Preview
+file names, and Check my GPU to that menu. A whole folder is a main-screen
+chip and opens the batch wizard. Expert mode stays
 because the shell adds it. Check hash and Remove weights are on the Manage
 models screen, and removing weights asks for confirmation. There is no second
 toolbar.
@@ -32,14 +33,16 @@ The image result bar is hardcoded as More like this, Save, Open folder, and
 Use prompt again. Enlarge retargets the first and the last to Compare
 before/after and Enlarge again. Save and Open folder stay.
 
-These four are interim until Components adds command ids. The rows in
+Open, Credits, and About stay interim until Components adds command ids.
+Batch is on the main screen without a command id. The rows in
 `docs/ui/FEATURE-MAP.md` say so.
 
 1. **Open.** `file.open` is emitted by the viewer bar only. This surface does
    not emit it. The drop area says “Drop a picture or click to choose” and
    opens a file dialog. A drop still puts the full path in the file area.
-2. **Batch.** No command id and no result-bar slot. More → Enlarge a folder…
-   opens the wizard, and so does dropping a folder or more than one file.
+2. **Batch.** No command id and no result-bar slot. The What to enlarge chip
+   “A whole folder” opens the wizard, and so does dropping a folder or more
+   than one file.
 3. **Credits.** No command id and no result-bar slot. More → Credits opens the
    screen.
 4. **About.** No command id. More → About shows the version until the shell
@@ -72,8 +75,9 @@ available. Four times as big is the default.
 
 GPU choices are `auto`, `cuda:0`, and `cuda:1`.
 
-Face restore and the generative tier are hidden. The old window did not run
-them, and the worker request has no field for them.
+Face restore, noise removal, and the generative tier are hidden. The worker
+request has no field for them. Face restore and noise removal need worker
+support before a chip can be honest.
 
 `--serve`, `--hidden`, `--register`, `--unregister`, `--exe`,
 `--install-suite`, `--uninstall-suite`, `--worker`, `--parent-lock-pid`,

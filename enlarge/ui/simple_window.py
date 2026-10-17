@@ -360,6 +360,7 @@ class SimpleWindow(QWidget, JobHost):
 
         self.view.set_expert = watched  # type: ignore[method-assign]
         self._stop_expert = self._expert.subscribe(watched)
+        self._wire_chip_actions()
         watched(self._expert.enabled())
         warning = _gpu_warning()
         if warning:
@@ -533,11 +534,24 @@ class SimpleWindow(QWidget, JobHost):
         if selected:
             self.view.set_prompt_text(selected)
 
-    def _choose_folder(self) -> None:
-        """Browse for a folder and open the batch wizard. There is no shell command id yet."""
-        folder = QFileDialog.getExistingDirectory(self, tr("enlarge.more.folder"), str(Path.home()))
-        if folder:
-            self.open_batch([Path(folder)])
+    def _wire_chip_actions(self) -> None:
+        """Run the chips whose value is not the whole action."""
+        folder = self.view.root.findChild(QPushButton, "chip-save-folder")
+        if folder is not None:
+            folder.clicked.connect(_click(self._pick_output_folder))
+        whole = self.view.root.findChild(QPushButton, "chip-scope-folder")
+        if whole is not None:
+            whole.clicked.connect(_click(self.open_batch))
+
+    def _pick_output_folder(self) -> None:
+        """Ask for the output folder. Cancelling returns to saving beside the picture."""
+        selected = QFileDialog.getExistingDirectory(self, tr("enlarge.preset.save.folder"), str(Path.home()))
+        if not selected:
+            self.simple.choose("save", "beside")
+            self.view.refresh()
+            return
+        self.simple.set_value("enlarge.output_dir", selected)
+        self.view.refresh()
 
     def _open_folder(self) -> None:
         target = self._current_result()
@@ -650,8 +664,9 @@ class SimpleWindow(QWidget, JobHost):
     def _extend_overflow(self) -> None:
         """Add the user actions the shell overflow does not already list.
 
-        Enlarge a folder, Credits, and About stay on this menu until the shell
-        grows command ids for them. There is no second toolbar.
+        A whole folder is a chip on the main screen. Credits and About stay
+        on this menu until the shell grows command ids for them. There is no
+        second toolbar.
         """
         button = self.view.root.findChild(QPushButton, "overflow")
         menu = None if button is None else button.menu()
@@ -659,7 +674,6 @@ class SimpleWindow(QWidget, JobHost):
             return
         menu.addSeparator()
         for name, key, handler in (
-            ("moreFolder", "enlarge.more.folder", self._choose_folder),
             ("moreCredits", "enlarge.more.credits", self._open_credits),
             ("moreAbout", "enlarge.more.about", self._open_about),
             ("morePreview", "enlarge.more.preview", self._dry_run),
