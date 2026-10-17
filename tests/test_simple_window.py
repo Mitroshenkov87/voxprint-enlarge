@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import QSize
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QColor, QImage
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -27,8 +27,10 @@ from enlarge.ui.simple_window import (
     known_model_ids,
     preset_model_ids,
     registry_models,
+    shown_label,
 )
-from voxprint_common.i18n import set_language
+from voxprint_common import i18n
+from voxprint_common.i18n import add_catalogs, set_language
 from voxprint_common.ui.presets import PresetMatch
 from voxprint_common.ui.simple_image import Phase
 from voxprint_common.ui.variants import InputKind, ResultKind, VariantId, surface_for
@@ -195,6 +197,136 @@ def test_grabs(tmp_path: Path) -> None:
         grab_window(window, tmp_path / name)
         window.close()
     set_language("en")
+
+
+_CHIP_ROWS = ("pictures", "scale", "quality", "filetype", "save", "scope")
+
+
+def test_every_chip_row_renders_in_en_ru_and_de() -> None:
+    catalogs = {
+        lang: json.loads(
+            (_ROOT / "enlarge" / "ui" / "locales" / f"{lang}.json").read_text(encoding="utf-8")
+        )
+        for lang in ("en", "ru", "de")
+    }
+    russian = catalogs["ru"]
+    assert russian["enlarge.preset.quality"] == "Качество"
+    assert russian["enlarge.preset.quality.smaller"] == "Файл поменьше"
+    assert russian["enlarge.preset.quality.balanced"] == "Сбалансировано"
+    assert russian["enlarge.preset.quality.best"] == "Лучшее качество"
+    assert russian["enlarge.preset.save"] == "Куда сохранить"
+    assert russian["enlarge.preset.save.beside"] == "Рядом с изображением"
+    assert russian["enlarge.preset.save.folder"] == "Выбрать папку…"
+    assert russian["enlarge.preset.scope"] == "Что увеличить"
+    assert russian["enlarge.preset.scope.one"] == "Одно изображение"
+    assert russian["enlarge.preset.scope.folder"] == "Целую папку"
+    assert russian["enlarge.preset.scale.4k"] == "До 4K"
+    assert russian["enlarge.preset.scale.8k"] == "До 8K"
+    app = _app()
+    opened: list[SimpleWindow] = []
+    try:
+        for lang in ("en", "ru", "de"):
+            set_language(lang)
+            window = SimpleWindow()
+            opened.append(window)
+            window.resize(1200, 900)
+            window.show()
+            for _ in range(4):
+                app.processEvents()
+            catalog = catalogs[lang]
+            assert tuple(row.row_id for row in window.simple.rows) == _CHIP_ROWS
+            for row in window.simple.rows:
+                label = window.findChild(QLabel, f"preset-{row.row_id}")
+                assert label is not None and label.isVisible()
+                assert label.text() == catalog[row.label_key]
+                assert label.text().strip() and label.text() != row.label_key
+                for choice in row.choices:
+                    safe = "".join(char if char.isalnum() else "-" for char in choice.value)
+                    button = window.findChild(QPushButton, f"chip-{row.row_id}-{safe}")
+                    assert button is not None and button.isVisible(), choice.label_key
+                    assert button.text().strip()
+                    assert button.text() != choice.label_key
+                    assert catalog[choice.label_key] in button.text()
+    finally:
+        set_language("en")
+        for window in opened:
+            window.close()
+
+
+def test_blank_translation_falls_back_to_english_and_stays_visible(tmp_path: Path) -> None:
+    folder = tmp_path / "locales"
+    folder.mkdir()
+    (folder / "ru.json").write_text(
+        json.dumps(
+            {
+                "enlarge.preset.quality": "",
+                "enlarge.preset.quality.balanced": "   ",
+                "enlarge.preset.save": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+    _app()
+    set_language("ru")
+    window = SimpleWindow()
+    add_catalogs(folder)
+    app = _app()
+    window.resize(1200, 900)
+    window.show()
+    try:
+        window.view.refresh()
+        for _ in range(4):
+            app.processEvents()
+        quality = window.findChild(QLabel, "preset-quality")
+        balanced = window.findChild(QPushButton, "chip-quality-balanced")
+        save = window.findChild(QLabel, "preset-save")
+        pictures = window.findChild(QLabel, "preset-pictures")
+        assert quality is not None and quality.isVisible() and quality.text() == "Quality"
+        assert balanced is not None and balanced.isVisible() and balanced.text() == "Balanced"
+        assert save is not None and save.isVisible() and save.text() == "Save to"
+        assert pictures is not None and pictures.isVisible() and pictures.text() == "Это"
+        assert shown_label("enlarge.preset.quality") == "Quality"
+    finally:
+        if folder in i18n._extra:
+            i18n._extra.remove(folder)
+        i18n._catalogs.clear()
+        set_language("en")
+        window.close()
+
+
+def test_history_thumb_uses_the_result_image(tmp_path: Path) -> None:
+    _app()
+    set_language("ru")
+    before = tmp_path / "before.png"
+    after = tmp_path / "after.png"
+    _solid(before, QColor(180, 30, 30))
+    _solid(after, QColor(30, 30, 180))
+    window = SimpleWindow()
+    window.resize(1200, 900)
+    window.show()
+    window.view.set_prompt_text(str(before))
+    assert window.simple.generate()
+    assert window.simple.finish("same-image") is not None
+    window.remember("same-image", after)
+    window.view.refresh()
+    for _ in range(4):
+        _app().processEvents()
+    button = window.findChild(QPushButton, "thumb-same-image")
+    assert button is not None and button.isVisible()
+    image = button.icon().pixmap(QSize(80, 80)).toImage()
+    assert not image.isNull()
+    left = image.pixelColor(12, 40)
+    right = image.pixelColor(68, 40)
+    assert left.red() > 140 and left.blue() < 80
+    assert right.blue() > 140 and right.red() < 80
+    window.close()
+    set_language("en")
+
+
+def _solid(path: Path, color: QColor) -> None:
+    image = QImage(48, 32, QImage.Format.Format_RGB32)
+    image.fill(color)
+    assert image.save(str(path))
 
 
 def test_every_cli_flag_is_in_the_feature_map() -> None:

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import main as entry
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QCloseEvent,
     QColor,
@@ -23,6 +23,7 @@ from PySide6.QtGui import (
     QDropEvent,
     QFont,
     QFontMetrics,
+    QIcon,
     QImage,
     QPainter,
     QPen,
@@ -71,7 +72,7 @@ from enlarge.ui.screens import (
     show_dry_run,
     show_report,
 )
-from voxprint_common.i18n import add_catalogs, tr
+from voxprint_common.i18n import add_catalogs, tr, tr_lang
 from voxprint_common.mdl import ready
 from voxprint_common.mdl.catalog import Model, load_manifest
 from voxprint_common.paths import state_dir
@@ -436,6 +437,8 @@ class SimpleWindow(QWidget, JobHost):
             if view is not None:
                 self._retitle_drop()
                 self._dress_expert()
+                self._keep_chip_rows()
+                self._paint_history_thumbs()
                 self._sync_result_actions()
                 self._fit_bold_controls()
                 QTimer.singleShot(0, self._paint_wipe)
@@ -821,6 +824,49 @@ class SimpleWindow(QWidget, JobHost):
         name = self.simple.prompt.strip()
         drop.setText(f"{hint}\n{name}" if name else hint)
 
+    def _keep_chip_rows(self) -> None:
+        """Keep every chip row on screen when a translation is missing.
+
+        The shell already falls back to English for a missing key. A blank
+        catalog value does not. This fills that blank from English and shows
+        the control again.
+        """
+        for row in self.simple.rows:
+            label = self.view.root.findChild(QLabel, f"preset-{row.row_id}")
+            if label is not None:
+                label.setText(shown_label(row.label_key))
+                label.setVisible(True)
+            for choice in row.choices:
+                button = self.view.root.findChild(
+                    QPushButton,
+                    _chip_object_name(row.row_id, choice.value),
+                )
+                if button is None:
+                    continue
+                if _replace_blank(button, choice.label_key):
+                    _fit_bold(button, pad=36)
+                if choice.available:
+                    button.setVisible(True)
+
+    def _paint_history_thumbs(self) -> None:
+        """Paint the finished picture on its history button.
+
+        The shell draws a decorative scene. The thumbnail uses the same
+        before/after pair as the main result.
+        """
+        for item in self.simple.history:
+            button = self.view.root.findChild(QPushButton, f"thumb-{item.item_id}")
+            if button is None:
+                continue
+            after = _pixmap(self._results.get(item.item_id))
+            before = _pixmap(Path(item.prompt)) if item.prompt else QPixmap()
+            if after.isNull() and before.isNull():
+                continue
+            left = before if not before.isNull() else after
+            right = after if not after.isNull() else before
+            button.setIcon(QIcon(_wipe_frame(left, right, 168, 168, 0.5)))
+            button.setIconSize(QSize(80, 80))
+
     def _fit_bold_controls(self) -> None:
         """Size selected chips and the Expert toggle the way the shell measures bold text."""
         for button in self.view.root.findChildren(QPushButton):
@@ -989,6 +1035,41 @@ def _cover(pixmap: QPixmap, width: int, height: int) -> QPixmap:
         Qt.AspectRatioMode.KeepAspectRatioByExpanding,
         Qt.TransformationMode.SmoothTransformation,
     )
+
+
+def shown_label(key: str) -> str:
+    """Return the active translation, or English when that text is blank.
+
+    A missing key already falls back inside ``tr``. A catalog value that is
+    empty does not, so this treats a blank string the same way. The key itself
+    is only used when English is blank too, so the control still has text.
+    """
+    text = tr(key).strip()
+    if text and text != key:
+        return text
+    english = tr_lang(key, "en").strip()
+    if english:
+        return english
+    return key
+
+
+def _chip_object_name(row_id: str, value: str) -> str:
+    """Return the object name the shell gives one chip."""
+    safe = "".join(char if char.isalnum() else "-" for char in value)
+    return f"chip-{row_id}-{safe}"
+
+
+def _replace_blank(widget: QLabel | QPushButton, key: str) -> bool:
+    """Write the English label when ``widget`` shows nothing or the raw key."""
+    current = widget.text().strip()
+    if current and current != key and not current.startswith(key):
+        return False
+    replacement = shown_label(key)
+    if not current or current == key:
+        widget.setText(replacement)
+        return True
+    widget.setText(current.replace(key, replacement, 1))
+    return True
 
 
 def _fit_bold(button: QPushButton, *, pad: int) -> None:
