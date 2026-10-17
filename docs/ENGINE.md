@@ -81,13 +81,9 @@ The 1.4.0 pin stays valid for the surface before `prepare_native_runtime` and
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.4.0
 ```
 
-Install `voxprint-common` 0.2.4 (Malkhut) from the release wheel beside it:
-
-```text
-voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.2.4/voxprint_common-0.2.4-py3-none-any.whl
-```
-
-The wheel SHA256 is `3051bc64700964705bf5cee5182829d1311560a38a9f7436195f26481e4fa239`.
+The app pin is the `voxprint-common` line in `requirements.txt`. This branch uses the
+SimpleLayout commit `f4e95ccfa25780abaf50412cb095a7843725102a` (voxprint-common
+PR #13). Replace that one line with the tagged release when Components publishes it.
 
 The 1.3.0 pin stays valid for the surface before those removals:
 

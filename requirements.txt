@@ -7,9 +7,9 @@
 PySide6>=6.8,<7
 Pillow>=12.3.0,<13
 numpy>=2.5.3,<3
-# voxprint-common 0.2.4 Malkhut. The wheel is the release asset. The ui extra is PySide6.
-# SHA256 3051bc64700964705bf5cee5182829d1311560a38a9f7436195f26481e4fa239
-voxprint-common[ui] @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.2.4/voxprint_common-0.2.4-py3-none-any.whl
+# voxprint-common pin. Replace this one line with the tagged wheel when Components publishes it.
+# Until then this is PR #13 head, branch cursor/expert-mode-3cae.
+voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common.git@f4e95ccfa25780abaf50412cb095a7843725102a
 onnxruntime-gpu==1.31.0
 # 2026.10.10 publishes a cp312-abi3 wheel, which installs on Python 3.14.
 imagecodecs==2026.10.10

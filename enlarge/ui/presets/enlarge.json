@@ -1,0 +1,63 @@
+{
+  "schema": "voxprint-presets/1",
+  "groups": [
+    {
+      "id": "look",
+      "label_key": "enlarge.preset.look",
+      "default": "photo",
+      "options": [
+        {
+          "id": "photo",
+          "label_key": "enlarge.preset.look.photo",
+          "values": {
+            "enlarge.model": "4x-nomos2-realplksr-dysample",
+            "enlarge.tile": "256",
+            "enlarge.face": false,
+            "enlarge.denoise": 0.0
+          }
+        },
+        {
+          "id": "drawing",
+          "label_key": "enlarge.preset.look.drawing",
+          "values": {
+            "enlarge.model": "realesrgan-x4plus-anime6b",
+            "enlarge.tile": "256",
+            "enlarge.face": false,
+            "enlarge.denoise": 0.0
+          }
+        },
+        {
+          "id": "old",
+          "label_key": "enlarge.preset.look.old",
+          "values": {
+            "enlarge.model": "4x-nomos2-hq-dat2",
+            "enlarge.tile": "128",
+            "enlarge.face": false,
+            "enlarge.denoise": 0.35
+          }
+        }
+      ]
+    },
+    {
+      "id": "bigger",
+      "label_key": "enlarge.preset.bigger",
+      "default": "2x",
+      "options": [
+        {
+          "id": "2x",
+          "label_key": "enlarge.preset.bigger.2x",
+          "values": {
+            "enlarge.scale": "2"
+          }
+        },
+        {
+          "id": "4x",
+          "label_key": "enlarge.preset.bigger.4x",
+          "values": {
+            "enlarge.scale": "4"
+          }
+        }
+      ]
+    }
+  ]
+}

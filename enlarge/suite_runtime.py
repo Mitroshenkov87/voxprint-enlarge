@@ -307,10 +307,19 @@ TRT_META_SPEC = "tensorrt-cu13==10.14.1.48"
 NVIDIA_INDEX = "https://pypi.nvidia.com"
 SPANDREL_SPEC = "spandrel>=0.4,<0.5"
 ONNX_SPEC = "onnx>=1.17,<2"
-COMMON_SPEC = (
-    "voxprint-common[ui] @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/"
-    "v0.2.4/voxprint_common-0.2.4-py3-none-any.whl"
-)
+
+
+def _pinned_common() -> str:
+    """Return the voxprint-common requirement. ``requirements.txt`` is the one line to change."""
+    root = Path(__file__).resolve().parents[1]
+    for line in (root / "requirements.txt").read_text(encoding="utf-8").splitlines():
+        text = line.strip()
+        if text.startswith("voxprint-common"):
+            return text
+    raise RuntimeError("requirements.txt does not pin voxprint-common")
+
+
+COMMON_SPEC = _pinned_common()
 
 ComponentId = Literal["python", "gpu", "model"]
 Progress = Callable[[str], None]
