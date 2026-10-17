@@ -93,9 +93,8 @@ def suite_surface_style() -> str:
     """Shell stylesheet plus the controls a wizard needs and the shell does not paint.
 
     The shell colours a widget named ``shell``. A dialog keeps a light system
-    background unless its own surface, table header, checkbox, and scrollbar
-    are named here. Scrollbar arrows are omitted: the shell draws none, and
-    the native arrows come out broken.
+    background unless its own surface, table header, and checkbox are named
+    here. voxprint-common 0.2.5 styles every scrollbar and sizes spin boxes.
     """
     return build_shell_style(False) + f"""
 QDialog {{ background: {ROOT_PLAIN}; color: {TEXT}; }}
@@ -111,14 +110,6 @@ QHeaderView::section {{
     background: {CONTROL_BG}; color: {TEXT}; border: none; padding: 8px; font-weight: 600;
 }}
 QTableCornerButton::section {{ background: {CONTROL_BG}; border: none; }}
-QScrollBar:vertical {{ background: {CARD_PLAIN}; width: 10px; margin: 0; border: none; }}
-QScrollBar::handle:vertical {{ background: {CONTROL_BORDER}; min-height: 28px; border-radius: 4px; }}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; width: 0; border: none; background: none; }}
-QScrollBar:horizontal {{ background: {CARD_PLAIN}; height: 10px; margin: 0; border: none; }}
-QScrollBar::handle:horizontal {{ background: {CONTROL_BORDER}; min-width: 28px; border-radius: 4px; }}
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ height: 0; width: 0; border: none; background: none; }}
-QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
-QSpinBox, QDoubleSpinBox {{ min-width: 120px; padding-right: 16px; }}
 """
 
 

@@ -338,7 +338,7 @@ try:
 except meta.PackageNotFoundError:
     missing.append("voxprint-common")
 else:
-    if not str(common_version).startswith("0.2.4"):
+    if not str(common_version).startswith("0.2.5"):
         missing.append("voxprint-common")
 names = {
     dist.metadata["Name"].lower()
@@ -803,7 +803,7 @@ def install_gpu_wheels(python: str, progress: Progress | None = None) -> None:
     _pip(
         python,
         ["install", COMMON_SPEC],
-        "Installing voxprint-common 0.2.4",
+        "Installing voxprint-common 0.2.5",
         progress,
         required=True,
     )

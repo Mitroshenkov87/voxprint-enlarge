@@ -7,8 +7,8 @@
 PySide6>=6.8,<7
 Pillow>=12.3.0,<13
 numpy>=2.5.3,<3
-# Pin line from suite/ui/ADOPTION.md. Replace this one line with the UI tag.
-voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common@f4e95ccfa25780abaf50412cb095a7843725102a
+# voxprint-common 0.2.5 Yitro (UI tag, commit 8a94b531). No release wheel; the git tag is the pin.
+voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common@v0.2.5
 onnxruntime-gpu==1.31.0
 # 2026.10.10 publishes a cp312-abi3 wheel, which installs on Python 3.14.
 imagecodecs==2026.10.10

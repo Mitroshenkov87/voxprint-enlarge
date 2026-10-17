@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import QSize
-from PySide6.QtGui import QAction, QColor, QFontMetrics, QImage
+from PySide6.QtGui import QAction, QColor, QImage
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -33,12 +33,15 @@ from enlarge.ui.simple_window import (
 )
 from voxprint_common import i18n
 from voxprint_common.i18n import add_catalogs, set_language
+from voxprint_common.ui.safety import ReviewedOutput
 from voxprint_common.ui.presets import PresetMatch
 from voxprint_common.ui.simple_image import Phase
 from voxprint_common.ui.variants import InputKind, ResultKind, VariantId, surface_for
 
 _ROOT = Path(__file__).resolve().parents[1]
 
+
+_PICTURE = ReviewedOutput(path=Path("picture.png"))
 
 def _app() -> QApplication:
     running = QApplication.instance()
@@ -150,7 +153,7 @@ def test_builtin_enlarge_surface_shows_a_picture_and_the_old_window_stays_unlaun
     window.view.set_prompt_text("picture.png")
     assert window.simple.generate()
     assert window.simple.phase is Phase.BUSY
-    assert window.simple.finish("result-1") is not None
+    assert window.simple.finish("result-1", _PICTURE) is not None
     window.view.refresh()
     picture = window.view.root.findChild(QLabel, "result")
     assert picture is not None
@@ -194,7 +197,7 @@ def test_grabs(tmp_path: Path) -> None:
         if wipe:
             window.view.set_prompt_text("picture.png")
             assert window.simple.generate()
-            assert window.simple.finish(f"shot-{lang}") is not None
+            assert window.simple.finish(f"shot-{lang}", _PICTURE) is not None
             window.view.refresh()
         grab_window(window, tmp_path / name)
         window.close()
@@ -311,7 +314,7 @@ def test_history_thumb_uses_the_result_image(tmp_path: Path) -> None:
     window.show()
     window.view.set_prompt_text(str(before))
     assert window.simple.generate()
-    assert window.simple.finish("same-image") is not None
+    assert window.simple.finish("same-image", _PICTURE) is not None
     window.remember("same-image", after)
     window.view.refresh()
     for _ in range(4):
@@ -359,15 +362,17 @@ def test_drop_history_and_expert_combos_stay_readable(tmp_path: Path) -> None:
             continue
         seen = True
         text = combo.currentText()
-        advance = QFontMetrics(combo.font()).horizontalAdvance(text)
         assert "…" not in text
-        assert combo.width() >= advance + 28, (combo.objectName(), text, combo.width(), advance)
+        fitted = combo.property("fittedText")
+        # voxprint-common 0.2.5 elides a long value and keeps it whole on the tooltip.
+        if isinstance(fitted, str) and fitted != text:
+            assert text in combo.toolTip(), (combo.objectName(), text, combo.toolTip())
     assert seen
     pictures = window.findChild(QLabel, "preset-pictures")
     assert pictures is not None and pictures.text() == "What's in the picture"
     window.view.set_expert(False)
     assert window.simple.generate()
-    assert window.simple.finish("hist-1") is not None
+    assert window.simple.finish("hist-1", _PICTURE) is not None
     window.view.refresh()
     for _ in range(4):
         app.processEvents()
@@ -491,9 +496,6 @@ def test_shell_slots_replace_the_second_toolbar() -> None:
     factor = window.findChild(QLabel, "enlarge.factorValue")
     assert factor is not None and factor.text() == "4×"
     assert factor.sizeHint().height() < 36
-    form = window.findChild(QWidget, "expertForm")
-    assert form is not None and form.layout() is not None
-    assert form.layout().contentsMargins().right() >= 8
     window.view.set_expert(True)
     factor = window.findChild(QLabel, "enlarge.factorValue")
     assert factor is not None and factor.text() == "4×"
@@ -503,7 +505,7 @@ def test_shell_slots_replace_the_second_toolbar() -> None:
     assert side.value() == 0
     window.view.set_prompt_text("picture.png")
     assert window.simple.generate()
-    assert window.simple.finish("wipe-1") is not None
+    assert window.simple.finish("wipe-1", _PICTURE) is not None
     window.view.refresh()
     app = _app()
     for _ in range(3):

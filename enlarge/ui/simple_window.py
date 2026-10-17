@@ -31,18 +31,14 @@ from PySide6.QtGui import (
     QResizeEvent,
 )
 from PySide6.QtWidgets import (
-    QBoxLayout,
-    QComboBox,
     QFileDialog,
     QLabel,
-    QLayout,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QSlider,
     QSpinBox,
-    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -78,6 +74,7 @@ from voxprint_common.i18n import add_catalogs, tr, tr_lang
 from voxprint_common.mdl import ready
 from voxprint_common.mdl.catalog import Model, load_manifest
 from voxprint_common.paths import state_dir
+from voxprint_common.ui.safety import ReviewedOutput
 from voxprint_common.ui.expert import ExpertMode
 from voxprint_common.ui.settings import Choice, SettingSpec, SettingType, Settings
 from voxprint_common.ui.simple_image import Phase, SimpleLayout, SimpleWidget
@@ -105,9 +102,9 @@ class _Allow:
         del prompt
         return None
 
-    def review_result(self, prompt: str, item_id: str) -> str | None:
+    def review_result(self, prompt: str, item_id: str, output: ReviewedOutput) -> str | None:
         """Allow every finished picture."""
-        del prompt, item_id
+        del prompt, item_id, output
         return None
 
 
@@ -312,7 +309,6 @@ class SimpleWindow(QWidget, JobHost):
         self._drop: QWidget | None = None
         self._drop_armed = False
         self._dressing = False
-        self._combo_width = 0
         self._job: GuidedBatchThread | None = None
         self._manage: object | None = None
         self._batch: BatchScreen | None = None
@@ -362,7 +358,6 @@ class SimpleWindow(QWidget, JobHost):
         def watched(enabled: bool) -> None:
             expert_impl(enabled)
             self._dress_expert()
-            self._fit_bold_controls()
 
         self.view.set_expert = watched  # type: ignore[method-assign]
         self._stop_expert = self._expert.subscribe(watched)
@@ -463,7 +458,6 @@ class SimpleWindow(QWidget, JobHost):
                 self._paint_history_thumbs()
                 self._sync_history_strip()
                 self._sync_result_actions()
-                self._fit_bold_controls()
                 QTimer.singleShot(0, self._paint_wipe)
         finally:
             self._syncing = False
@@ -669,7 +663,7 @@ class SimpleWindow(QWidget, JobHost):
                 message = str(exc)
         if ok and dst:
             self._results[job_id] = Path(dst)
-            self.simple.finish(job_id)
+            self.simple.finish(job_id, ReviewedOutput(path=Path(dst)))
         else:
             self.simple.block(message.strip() or tr("enlarge.error.failed"))
         self.view.refresh()
@@ -741,42 +735,17 @@ class SimpleWindow(QWidget, JobHost):
         show_dry_run(self, Path(self.simple.prompt), self.job_settings())
 
     def _dress_expert(self) -> None:
-        """Give every expert row a height, and let each combo show its whole value."""
+        """Show the resulting size as a label and name the Off long side."""
         self._show_factor()
         for spin in self.view.root.findChildren(QSpinBox):
             if spin.objectName() == "enlarge.long_side":
                 spin.setSpecialValueText(tr("enlarge.long_side.off"))
-        self._combo_width = _widest_combo(self.view.root)
-        self._align_value_column()
-        self._fit_expert_combos()
-        self._reserve_scrollbar()
-        self._elide_squeezed_combos()
 
     def _sync_result_actions(self) -> None:
         """Hide Compare, Save, Open folder, and Enlarge again until a result exists."""
         bar = self.view.root.findChild(QWidget, "actionBar")
         if bar is not None:
             bar.setVisible(self.simple.phase is Phase.READY)
-
-    def _reserve_scrollbar(self) -> None:
-        """Keep the expert form inside the scroll viewport, wide enough for the combos."""
-        form = self.view.root.findChild(QWidget, "expertForm")
-        scroll = self.view.root.findChild(QScrollArea, "expertScroll")
-        split = self.view.root.findChild(QSplitter, "expertSplit")
-        if form is None or form.layout() is None or scroll is None:
-            return
-        panel = max(340, 168 + self._combo_width + 24)
-        if split is not None and split.isVisible():
-            total = split.width()
-            handle = split.handleWidth()
-            if total > 200:
-                panel = min(panel, total - 200)
-            if total > panel + 80:
-                split.setSizes([max(1, total - handle - panel), panel])
-        form.layout().setContentsMargins(0, 0, 8, 0)
-        viewport = scroll.viewport().width()
-        if viewport > 0:
-            form.setMaximumWidth(viewport)
 
     def _show_factor(self) -> None:
         """Turn the Resulting size box into a one-line label in the same form row."""
@@ -786,62 +755,25 @@ class SimpleWindow(QWidget, JobHost):
         self._pull_derived()
         label = form.findChild(QLabel, "enlarge.factorValue")
         if label is None:
-            edit = next(
-                (item for item in form.findChildren(QPlainTextEdit, "enlarge.factor") if _row_layout(item) is not None),
-                None,
-            )
-            row = None if edit is None else _row_layout(edit)
-            if edit is None or not isinstance(row, QBoxLayout):
+            edit = form.findChild(QPlainTextEdit, "enlarge.factor")
+            holder = None if edit is None else edit.parentWidget()
+            layout = None if holder is None else holder.layout()
+            if edit is None or holder is None or layout is None:
                 return
-            label = QLabel(form)
+            label = QLabel(holder)
             label.setObjectName("enlarge.factorValue")
             label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-            row.insertWidget(max(0, row.indexOf(edit)), label, 1)
+            if layout.replaceWidget(edit, label) is None:
+                label.deleteLater()
+                return
             edit.setObjectName("")
             edit.hide()
             edit.setParent(None)
             edit.deleteLater()
         label.setText(str(self.simple.get("enlarge.factor") or "4×"))
         label.setMinimumHeight(label.fontMetrics().height() + 10)
-
-    def _align_value_column(self) -> None:
-        """Wrap long labels and give every value the same width, including the spin boxes."""
-        form = self.view.root.findChild(QWidget, "expertForm")
-        scroll = self.view.root.findChild(QScrollArea, "expertScroll")
-        if form is None or form.layout() is None:
-            return
-        width = form.width()
-        if width < 80 and scroll is not None:
-            width = scroll.viewport().width()
-        label_width = 156 if width < 80 else max(128, min(168, width // 3))
-        layout = form.layout()
-        for index in range(layout.count()):
-            item = layout.itemAt(index)
-            row = None if item is None else item.layout()
-            if row is None or row.count() < 2:
-                continue
-            name_item = row.itemAt(0)
-            value_item = row.itemAt(1)
-            name = None if name_item is None else name_item.widget()
-            value = None if value_item is None else value_item.widget()
-            if not isinstance(name, QLabel) or value is None:
-                continue
-            name.setWordWrap(True)
-            name.setMinimumWidth(label_width)
-            name.setMaximumWidth(label_width)
-            row.setStretch(0, 0)
-            row.setStretch(1, 1)
-            value.setMinimumWidth(0)
-            value.setMaximumWidth(16777215)
-            value.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-            if isinstance(value, QSpinBox):
-                value.setStyleSheet("")
-            metrics = QFontMetrics(name.font())
-            flags = int(Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextWordWrap)
-            bounds = metrics.boundingRect(0, 0, label_width, 800, flags, name.text())
-            name.setMinimumHeight(max(metrics.height() + 8, bounds.height() + 6))
 
     def _retitle_drop(self) -> None:
         """Show the choose sentence until a file is chosen, then its name and replace."""
@@ -853,26 +785,6 @@ class SimpleWindow(QWidget, JobHost):
             drop.setText(tr("enlarge.drop.choose"))
             return
         drop.setText(tr("enlarge.drop.replace", name=Path(name).name))
-
-    def _fit_expert_combos(self) -> None:
-        """Ask each expert combo for the width of its longest value.
-
-        The shell elides on the right. That shared sizing belongs in Components.
-        This only raises the local minimum so the closed combo can show the
-        whole value.
-        """
-        for combo in _expert_combos(self.view.root):
-            combo.setMinimumWidth(_combo_needed_width(combo))
-            _restore_combo_text(combo)
-
-    def _elide_squeezed_combos(self) -> None:
-        """Elide a value in the middle when the panel still cannot hold it."""
-        for combo in _expert_combos(self.view.root):
-            needed = _combo_needed_width(combo)
-            room = combo.width()
-            if room >= needed or room < 48 or room < combo.minimumWidth() - 2:
-                continue
-            _elide_combo_middle(combo, room)
 
     def _sync_history_strip(self) -> None:
         """Hide the history row until a picture has been enlarged."""
@@ -928,14 +840,6 @@ class SimpleWindow(QWidget, JobHost):
             right = after if not after.isNull() else before
             button.setIcon(QIcon(_wipe_frame(left, right, 168, 168, 0.5)))
             button.setIconSize(QSize(80, 80))
-
-    def _fit_bold_controls(self) -> None:
-        """Size selected chips and the Expert toggle the way the shell measures bold text."""
-        for button in self.view.root.findChildren(QPushButton):
-            chip = button.property("chip") == "true" or button.objectName() == "expertToggle"
-            result = button.objectName() in {"moreLike", "savePicture", "openFolder", "usePrompt"}
-            if chip or result:
-                _fit_bold(button, pad=36 if chip else 40)
 
     def _paint_wipe(self) -> None:
         """Draw a before/after split on the main result after a run."""
@@ -1025,95 +929,6 @@ class SimpleWindow(QWidget, JobHost):
             self.view.set_prompt_text(str(files[0]))
             return
         self.open_batch(paths)
-
-
-def _expert_combos(root: QWidget) -> list[QComboBox]:
-    """Return the combos that sit in an expert form row."""
-    form = root.findChild(QWidget, "expertForm")
-    if form is None:
-        return []
-    return [combo for combo in form.findChildren(QComboBox) if _row_layout(combo) is not None]
-
-
-def _widest_combo(root: QWidget) -> int:
-    """Return the width the widest expert value needs, including the arrow."""
-    return max((_combo_needed_width(combo) for combo in _expert_combos(root)), default=0)
-
-
-def _combo_originals(combo: QComboBox) -> list[str]:
-    """Return each combo entry as it was built, before any local elision."""
-    stored = combo.property("fullValues")
-    if isinstance(stored, list) and len(stored) == combo.count() and all(isinstance(item, str) for item in stored):
-        return [str(item) for item in stored]
-    originals = [combo.itemText(index) for index in range(combo.count())]
-    combo.setProperty("fullValues", originals)
-    return originals
-
-
-def _combo_needed_width(combo: QComboBox) -> int:
-    """Return the pixels a closed combo needs in order to show its longest value."""
-    metrics = QFontMetrics(combo.font())
-    longest = max((metrics.horizontalAdvance(text) for text in _combo_originals(combo)), default=0)
-    return longest + 40
-
-
-def _setting_help(combo: QComboBox) -> str:
-    """Return the setting's help line, without a value prepended earlier."""
-    saved = combo.property("settingHelp")
-    if isinstance(saved, str):
-        return saved
-    current = combo.property("helpTip")
-    text = current if isinstance(current, str) else ""
-    combo.setProperty("settingHelp", text)
-    return text
-
-
-def _restore_combo_text(combo: QComboBox) -> None:
-    """Put the original entry text back once the combo is wide enough."""
-    stored = combo.property("fullValues")
-    if isinstance(stored, list):
-        for index, text in enumerate(stored):
-            if isinstance(text, str) and index < combo.count() and combo.itemText(index) != text:
-                combo.setItemText(index, text)
-    help_text = combo.property("settingHelp")
-    if isinstance(help_text, str):
-        combo.setProperty("helpTip", help_text)
-        combo.setToolTip(help_text)
-
-
-def _elide_combo_middle(combo: QComboBox, width: int) -> None:
-    """Show the start and end of the current value, and keep the rest on the tooltip."""
-    originals = _combo_originals(combo)
-    index = combo.currentIndex()
-    if index < 0 or index >= len(originals):
-        return
-    full = originals[index]
-    usable = max(width - 40, 24)
-    fitted = QFontMetrics(combo.font()).elidedText(full, Qt.TextElideMode.ElideMiddle, usable)
-    if combo.itemText(index) != fitted:
-        combo.setItemText(index, fitted)
-    help_text = _setting_help(combo)
-    tip = full if not help_text else f"{full}\n{help_text}"
-    combo.setProperty("helpTip", tip)
-    combo.setToolTip(tip)
-
-
-def _row_layout(widget: QWidget) -> QLayout | None:
-    """Return the row layout that holds ``widget`` inside the expert form."""
-    parent = widget.parentWidget()
-    form = None if parent is None else parent.layout()
-    if form is None:
-        return None
-    for index in range(form.count()):
-        item = form.itemAt(index)
-        nested = None if item is None else item.layout()
-        if nested is None:
-            continue
-        for child in range(nested.count()):
-            child_item = nested.itemAt(child)
-            if child_item is not None and child_item.widget() is widget:
-                return nested
-    return None
 
 
 def _click(handler: Callable[[], None]) -> Callable[[], None]:

@@ -4,13 +4,12 @@ This window is `voxprint_common.ui.simple_image.SimpleLayout` and `SimpleWidget`
 It passes `surface_for("enlarge")` from `voxprint_common.ui.variants`. It does
 not build its own `AppSurface`.
 
-The pin is the one line in `requirements.txt`, from `suite/ui/ADOPTION.md`:
+The pin is the one line in `requirements.txt`, the UI tag 0.2.5 Yitro
+(commit `8a94b531`). It has no release wheel, so the git tag is the pin:
 
 ```text
-voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common@f4e95ccfa25780abaf50412cb095a7843725102a
+voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common@v0.2.5
 ```
-
-Replace that line with the UI tag when Components publishes it.
 
 `surface_for("enlarge")` is an image variant with a file drop and a picture
 result. The action is Enlarge. Its built-in settings and preset file are the
@@ -33,7 +32,7 @@ The image result bar is hardcoded as More like this, Save, Open folder, and
 Use prompt again. Enlarge retargets the first and the last to Compare
 before/after and Enlarge again. Save and Open folder stay.
 
-Open, Credits, and About stay interim until Components adds command ids.
+Open, Credits, and About stay interim: 0.2.5 has no command ids for them.
 Batch is on the main screen without a command id. The rows in
 `docs/ui/FEATURE-MAP.md` say so.
 
@@ -52,15 +51,12 @@ Batch is on the main screen without a command id. The rows in
    enlarged file. This window draws that split on the result label after a
    run, with the shell's `compareSlider` line. A shell API that accepts the
    two pixmaps would replace that.
-6. **Chip and spin metrics.** `_fit_chip` measures before the shell font is
-   applied, so "Twice as big", "Four times as big", and «Режим эксперта» clip.
-   This window measures again after polish, with the same DemiBold advance
-   plus 14 px of padding on each side. Expert spins are created at 72 px, which
-   cuts off the number. This window reserves 120 px. A long side of 0 shows
-   the special value Off. The shell stylesheet does not paint scrollbar arrows,
-   so the native arrows look broken. This window draws a handle and leaves the
-   arrows out.
-7. **Manage models** does not run `--install-gpu` or `--prepare-model` itself.
+0.2.5 provides chip and Expert-toggle bold padding, one label column,
+expanding spin boxes, combos that elide a long value with the full value on
+the tooltip, and dark scrollbars without arrows in every scroll area. This
+window no longer does any of those.
+
+6. **Manage models** does not run `--install-gpu` or `--prepare-model` itself.
    Those flags stay on the command line and are reached through that existing
    More action, as asked. A model-manager action that installs the GPU runtime
    and prepares one model id would make the path real.

@@ -231,7 +231,7 @@ def test_gpu_install_includes_the_converter(monkeypatch: pytest.MonkeyPatch) -> 
     assert "tensorrt-cu13-libs==10.14.1.48" in flat
     assert "--no-deps tensorrt-cu13==10.14.1.48" in flat
     assert "uninstall -y onnxruntime " in flat
-    assert "f4e95ccfa25780abaf50412cb095a7843725102a" in flat
+    assert "voxprint-common@v0.2.5" in flat
     assert "torch" in flat
 
 
