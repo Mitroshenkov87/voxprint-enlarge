@@ -1,10 +1,27 @@
 # Shared inference engine
 
 `voxprint_engine` is the image upscaler VOXPrint AI Enlarge owns and VOXPrint AI
-Clarity imports. The installable distribution is `voxprint-engine` 1.5.1. It
+Clarity imports. The installable distribution is `voxprint-engine` 1.5.2. It
 does not import Qt. `API` is 1. The package version and `API` are different
 numbers: the version marks this release, and `API` stays 1 until a breaking
-change to the inference surface. 1.5.1 keeps that surface and teaches
+change to the inference surface.
+
+1.5.2 keeps the inference surface unchanged. It declares
+`voxprint-common>=0.2.4,<0.4` as a plain version range instead of the 0.2.4
+wheel URL, so an app that pins its own `voxprint-common` (for example the
+Yitro UI tag) can install this package next to it. Enlarge's
+`requirements.txt` still pins the 0.2.4 wheel. `mdl.json` lists a second
+Hugging Face source for each model, after the author's GitHub release. Pin:
+
+```text
+voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.5.2
+```
+
+`register` records one model id per model: a per-model ref in
+`<models>/.users.json`. There is no app-level root key; register each model
+id you use.
+
+1.5.1 keeps that surface and teaches
 `prepare_native_runtime()` to walk every directory under `site-packages/nvidia`
 that holds a CUDA 13 library, including `nvidia/cu13/bin/x86_64`, and to add
 `torch/lib` when that is where `cublas64_13.dll` and `cublasLt64_13.dll` live.
@@ -39,7 +56,7 @@ parent-lock borrow on `gpu_job` (`VOXPRINT_GPU_PARENT_PID`). `paths` also gains
 `cache_dir`, `projects_dir`, `runtime_dir`, and `voices_dir`. `runtime_manifest`
 refuses to register or delete a shared root.
 
-The 1.5.1 pin will be `engine-v1.5.1` on this commit. The 1.5.0 pin is:
+The 1.5.1 pin is `engine-v1.5.1`. The 1.5.0 pin is:
 
 ```text
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.5.0

@@ -16,6 +16,10 @@
             {
               "source": "url",
               "url": "https://github.com/Phhofm/models/releases/download/4xNomos2_realplksr_dysample/4xNomos2_realplksr_dysample.pth"
+            },
+            {
+              "source": "url",
+              "url": "https://huggingface.co/Phips/4xNomos2_realplksr_dysample/resolve/893bd79c7eccc29cc04fa0ac4ff08f72585c2605/4xNomos2_realplksr_dysample.pth"
             }
           ]
         }
@@ -41,6 +45,10 @@
             {
               "source": "url",
               "url": "https://github.com/Phhofm/models/releases/download/4xNomos2_hq_dat2/4xNomos2_hq_dat2.pth"
+            },
+            {
+              "source": "url",
+              "url": "https://huggingface.co/Mitroshenkov87/voxprint-mirror-4x-nomos2-hq-dat2/resolve/e67431f5cc866fee58c9f11c37524afb23c2e3a5/4xNomos2_hq_dat2.pth"
             }
           ]
         }
@@ -66,6 +74,10 @@
             {
               "source": "url",
               "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth"
+            },
+            {
+              "source": "url",
+              "url": "https://huggingface.co/Mitroshenkov87/voxprint-mirror-realesrgan-x4plus-anime6b/resolve/07caa430cae05ce23c94928c98e2b58f15be1d6d/RealESRGAN_x4plus_anime_6B.pth"
             }
           ]
         }
