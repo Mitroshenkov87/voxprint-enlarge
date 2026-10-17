@@ -34,3 +34,25 @@ class BatchThread(QThread):
             cancel=self._cancel,
             control=self.control,
         )
+
+
+class ModelInstallThread(QThread):
+    """Download and prepare one model off the widget thread."""
+    progressed = Signal(str)
+    done = Signal(bool, str)
+
+    def __init__(self, model_id: str) -> None:
+        """Hold the model id."""
+        super().__init__()
+        self.model_id = model_id
+
+    def run(self) -> None:
+        """Run ``install_model`` and emit ``done`` with the outcome."""
+        from enlarge.suite_runtime import SuiteInstallError, install_model
+
+        try:
+            install_model(self.model_id, self.progressed.emit)
+        except SuiteInstallError as exc:
+            self.done.emit(False, str(exc))
+            return
+        self.done.emit(True, "")

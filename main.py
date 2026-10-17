@@ -9,6 +9,7 @@
     python main.py --unregister            remove those discovery records
     python main.py --install-suite         shared Python, CUDA wheels, then VOXPrint MDL
     python main.py --prepare-model ID      convert one MDL weight to ONNX
+    python main.py --install-model ID      download one model with MDL, then prepare it
     python main.py --uninstall-suite       drop this app's hold on those shared files
     python main.py --install-gpu           torch, CUDA 13 ONNX Runtime, and TensorRT wheels
     python main.py --input FILE --scale 2|4 --preset photo|art [--model ID] [--quality fast|max] [--format FMT] [--output PATH] --json-progress
@@ -39,6 +40,8 @@ from enlarge.suite_runtime import (
     SuiteInstallError,
     cpu_onnxruntime_shadows_gpu,
     ensure_default_model,
+    ModelInstallError,
+    install_model,
     prepare_model,
     ensure_runtime,
     install_gpu_wheels,
@@ -439,6 +442,21 @@ def _prepare_model(model_id: str) -> int:
     return 0
 
 
+# docs/CLI.md exit codes for --install-model.
+_INSTALL_EXIT = {"model_missing": 7, "internal": 1}
+
+
+def _install_model(model_id: str) -> int:
+    """Download and prepare one model. Exit 7 when it cannot be downloaded."""
+    try:
+        produced = install_model(model_id, lambda message: print(message, flush=True))
+    except ModelInstallError as exc:
+        print(str(exc), file=sys.stderr)
+        return _INSTALL_EXIT.get(exc.code, 1)
+    print(produced)
+    return 0
+
+
 def _install_gpu() -> int:
     """Install torch and the CUDA 13 wheels into this interpreter."""
     try:
@@ -499,6 +517,8 @@ def main(argv: list[str] | None = None) -> int:
         return _install_gpu()
     if parsed.prepare_model:
         return _prepare_model(str(parsed.prepare_model))
+    if parsed.install_model:
+        return _install_model(str(parsed.install_model))
     if parsed.install_suite:
         return _install_suite()
     if parsed.uninstall_suite:
