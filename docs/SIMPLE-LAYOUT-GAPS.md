@@ -19,24 +19,28 @@ picture-generation list plus a scale, and 4× stays unavailable until
 `enlarge/ui/presets/enlarge.json`, which ADOPTION allows. Picture chips write
 registry ids from `enlarge/ui/presets/mdl-map.json` only.
 
-## Missing on the shell
+## What the shell still does not draw
 
-1. The enlarge surface's result is a picture. The migration plan's compare
-   slot, the divider, and a batch list are not on `surface_for("enlarge")`.
-   The picture and the history cells are painted placeholders. There is no
-   API for the opened file and the enlarged file.
+The shell overflow stays Open folder, Manage models, Settings, and Expert mode.
+This window does not fork that menu. Its own simple actions and More menu sit
+above the shell. `docs/ui/FEATURE-MAP.md` is the placement of each old control
+and each CLI flag.
+
+1. The enlarge surface's result is a picture. Compare, zoom, and the batch
+   queue are extra screens. The shell picture and the history cells stay
+   painted placeholders.
 2. The image variant's action bar adds More like this and Use prompt again.
-   Enlarge does not use a prompt. Add images, Add folder, Remove, Clear,
-   Browse, and Beside source are not controls on this surface. Open is
-   `file.open`, and nothing here emits it.
-3. The drop handler stores the file name, not the path
-   (`SimpleWidget._install_drop`). `open_ui` still puts a full path in the
-   prompt through `set_prompt_text`.
-4. Manage models is the overflow item `models.manage`. Credits, check hash,
-   and remove weights have no command on that menu.
-5. Lossless On cannot be enabled only for JPEG XL. The job refuses it for any
-   other file type. Include-subfolders is stored and is not applied, because
-   there is no folder list.
-6. The shell preset file marks 4× unavailable. This app's size chips are both
+   Enlarge does not use a prompt. Add folder, Remove, and Clear are on the
+   batch wizard. Open is the window's Open button. The shell still does not
+   emit `file.open`.
+3. The shell drop handler stores the file name. This window's filter runs
+   first and keeps the full path. `open_ui` still uses `set_prompt_text`.
+4. Lossless On cannot be limited to JPEG XL by the shell. The job refuses it
+   for any other file type.
+5. The shell preset file marks 4× unavailable. This app's size chips are both
    available. Four times as big is the default.
-7. GPU choices are `auto`, `cuda:0`, and `cuda:1`.
+6. GPU choices are `auto`, `cuda:0`, and `cuda:1`.
+7. Face restore and the generative tier are Expert choices. Running them needs
+   a decision: the worker request has no field, and the registry says this
+   build does not run them.
+8. `--worker` has no window. Setup explains that and does not start it.

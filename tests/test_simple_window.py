@@ -5,10 +5,13 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import QSize
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPlainTextEdit, QPushButton
 
+from enlarge.cli_parser import build_parser
 from enlarge.ipc.capabilities import ART, PHOTO_FAST, PHOTO_MAX
 from enlarge.ipc.server import MainWindow
+from enlarge.ui.jobplan import JobSettings, command_line, model_scale
 from enlarge.ui.preset_map import map_path, picture_map
 from enlarge.ui.simple_window import (
     SimpleWindow,
@@ -153,3 +156,88 @@ def test_grabs(tmp_path: Path) -> None:
         grab_window(window, tmp_path / name)
         window.close()
     set_language("en")
+
+
+def test_every_cli_flag_is_in_the_feature_map() -> None:
+    text = (_ROOT / "docs" / "ui" / "FEATURE-MAP.md").read_text(encoding="utf-8")
+    parser = build_parser()
+    for action in parser._actions:
+        if action.dest == "help":
+            continue
+        for option in action.option_strings:
+            assert option in text
+    assert "needs decision" in text
+    assert "`upscale` subcommand" in text
+
+
+def test_extra_screens_keep_the_old_actions() -> None:
+    _app()
+    set_language("en")
+    window = SimpleWindow()
+    source = (_ROOT / "enlarge" / "ui" / "simple_window.py").read_text(encoding="utf-8")
+    assert "gfpgan" not in source
+    assert "seedvr" not in source
+    face = window._settings.get("enlarge.face")
+    generative = window._settings.get("enlarge.generative")
+    assert face is not None and generative is not None
+    assert {choice.value for choice in face.choices} > {"off"}
+    assert {choice.value for choice in generative.choices} > {"off"}
+    assert window.simple.get("enlarge.face") == "off"
+    assert window.simple.get("enlarge.long_side") == 0
+    for name in ("actionOpen", "actionBatch", "actionCompare", "actionCredits", "actionMore"):
+        assert window.findChild(QPushButton, name) is not None
+    for name in ("moreHash", "moreWeights", "moreHandoff", "moreDry", "moreSetup"):
+        assert window.findChild(QAction, name) is not None
+    window.open_batch()
+    batch = window.findChild(QDialog, "batchScreen")
+    assert batch is not None
+    for name in ("batchAdd", "batchFolder", "batchRemove", "batchClear", "batchRun", "batchCancel"):
+        assert batch.findChild(QPushButton, name) is not None
+    window._open_compare()
+    window._open_credits()
+    window._open_handoff()
+    window._open_setup()
+    assert window.findChild(QDialog, "compareScreen") is not None
+    assert window.findChild(QDialog, "creditsScreen") is not None
+    assert window.findChild(QDialog, "handoffScreen") is not None
+    assert window.findChild(QDialog, "setupScreen") is not None
+    worker = window.findChild(QPushButton, "setupWorker")
+    assert worker is not None
+    worker.click()
+    result = window.findChild(QDialog, "setupScreen")
+    assert result is not None
+    text = result.findChild(QPlainTextEdit, "setupResult")
+    assert text is not None
+    assert "inference" in text.toPlainText().lower()
+    window.close()
+
+
+def test_long_side_zero_keeps_the_size_and_the_command_names_the_flags(tmp_path: Path) -> None:
+    source = tmp_path / "picture.png"
+    source.write_bytes(b"not-read")
+    assert model_scale(source, "2", 0) == 2
+    settings = JobSettings(
+        scale_text="4",
+        long_side=1920,
+        image_format="avif",
+        quality=60,
+        lossless=False,
+        model_id="model",
+        tile=0,
+        double=True,
+        device="auto",
+        custom_models="",
+        beside=True,
+        output_dir="",
+        subfolders=True,
+        face="off",
+        generative="off",
+        json_progress=True,
+        parent_pid=0,
+        lock_timeout=600,
+    )
+    line = command_line(source, settings)
+    assert "--long-side" in line
+    assert "--json-progress" in line
+    assert "--double" in line
+    assert "--dry-run" in line

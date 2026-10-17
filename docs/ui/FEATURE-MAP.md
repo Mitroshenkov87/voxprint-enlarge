@@ -1,64 +1,89 @@
 # Enlarge feature map
 
-One row for each old-window feature and each CLI feature. The old window in
-`enlarge/ui/window.py` stays in the tree and is no longer opened. The new
-window is `surface_for("enlarge")` on `SimpleLayout`.
+The main screen is `surface_for("enlarge")`. Everything else is a simple action,
+the Expert panel, the More menu, or the batch wizard. Nothing in the old window
+or the CLI is dropped. A row marked **needs decision** is visible, and the
+behaviour still needs a decision before it can run.
 
-| Feature | Where it was | Where it lives now | Status |
+| Feature | Old location | New location | Status |
 | --- | --- | --- | --- |
-| Add images | Images step | Drop area. Open is handled, and this surface does not emit it | mapped |
-| Add folder | Images step | Not on the built-in file drop. Subfolders stays a preset | mapped |
-| Remove, Clear | Images step | Not on the built-in file drop | mapped |
-| Include subfolders | Images step | Preset Subfolders, default on. Stored only | mapped |
-| Photographs / highest detail / Drawings | Model step, three names | Preset Pictures are. Values are registry ids in `mdl-map.json` | mapped |
-| Manage models | Model step | Overflow `models.manage` | mapped |
-| Check hash | Model step | Expert is the licence line. The hash check has no shell command | mapped |
-| Remove weights | Model step | Overflow Manage models | mapped |
-| Scale 2 and 4 | Output step | Preset Size. Default is four times as big | mapped |
-| Double upscale | Output step and `--double` | Expert Double upscale. The panel shows the resulting factor | mapped |
-| AVIF, JPEG XL, WebP | Output step | Preset File type. Default AVIF | mapped |
-| JPEG, HEIC | Output step | Expert file type | mapped |
-| Lossless JPEG XL | Output step and `--lossless` | Preset Lossless. The job refuses it for other file types | mapped |
-| Quality | Output step and `--quality` | Expert. Picture presets write 60 | mapped |
-| Output folder, beside the source | Output step and `--output` / `--output-dir` | Expert Next to the picture and Output folder | mapped |
-| Tile size | Output step and Settings | Expert. Automatic is the default | mapped |
-| GPU | Settings | Expert. The same suite value | mapped |
+| Add images | Images step | simple | mapped |
+| Add folder | Images step | wizard | mapped |
+| Remove | Images step | wizard | mapped |
+| Clear | Images step | wizard | mapped |
+| Include subfolders | Images step | simple | mapped |
+| Drop a full path | Window drag and drop | simple | mapped |
+| Photographs | Model step | simple | mapped |
+| Photographs, highest detail | Model step | simple | mapped |
+| Drawings | Model step | simple | mapped |
+| Manage models | Model step | More | mapped |
+| Check hash | Model step | More | mapped |
+| Remove weights | Model step | More | mapped |
+| Model id | Model step | Expert | mapped |
+| Licence | Model step | Expert | mapped |
+| Scale 2 and 4 | Output step | simple | mapped |
+| Double upscale | Output step | Expert | mapped |
+| Long side | CLI `--long-side` | Expert | mapped |
+| AVIF, JPEG XL, WebP | Output step | simple | mapped |
+| JPEG, HEIC | Output step | Expert | mapped |
+| Lossless JPEG XL | Output step | simple | mapped |
+| Quality | Output step | Expert | mapped |
+| Output folder | Output step | Expert | mapped |
+| Beside the source | Output step | Expert | mapped |
+| Tile size | Output step and Settings | Expert | mapped |
+| TensorRT note | Output step | wizard | mapped |
+| GPU | Settings | Expert | mapped |
+| GPU warning | Output step | simple | mapped |
 | Custom models folder | Settings | Expert | mapped |
-| Shared models folder | Settings | Expert. Writes the suite folder | mapped |
-| Model id and licence | Model step detail line | Expert Model and Licence | mapped |
-| Queue | Run step | History strip | mapped |
-| Compare, before / after, zoom | Run step | The built-in enlarge result is a picture, not a wipe | mapped |
-| Run | Run step | Primary action Enlarge | mapped |
-| Cancel | Run step | The shell Cancel control while a job is busy | mapped |
-| GPU warning | Output step | A sentence when the probe says warn | mapped |
-| Settings dialog | Window header | Expert panel. One settings state | mapped |
-| Credits | Window header | No overflow command on this surface | mapped |
-| Splash | Shared splash | Unchanged `voxprint_common.ui.splash` | mapped |
-| `--input` | CLI | unchanged CLI | CLI-only |
-| `--output` / `--out` | CLI | unchanged CLI | CLI-only |
-| `--output-dir` | CLI | unchanged CLI | CLI-only |
-| `--scale` | CLI | unchanged CLI | CLI-only |
-| `--long-side` | CLI | unchanged CLI | CLI-only |
-| `--format` | CLI | unchanged CLI | CLI-only |
-| `--quality` | CLI | unchanged CLI | CLI-only |
-| `--preset photo\|art` | CLI | unchanged CLI. The same ids as the picture presets | CLI-only |
-| `--quality-tier fast\|max` | CLI | unchanged CLI. The same ids as the picture presets | CLI-only |
-| `--model` | CLI | unchanged CLI | CLI-only |
-| `--lossless` | CLI | unchanged CLI | CLI-only |
-| `--double` | CLI | unchanged CLI | CLI-only |
-| `--upscale` | CLI | unchanged CLI | CLI-only |
-| `--json-progress` | CLI | unchanged CLI | CLI-only |
-| `--dry-run` | CLI | unchanged CLI | CLI-only |
-| `--lock-timeout` | CLI | unchanged CLI | CLI-only |
-| `--parent-lock-pid` | CLI | unchanged CLI | CLI-only |
-| `--capabilities` | CLI | unchanged CLI | CLI-only |
-| `--json` | CLI | unchanged CLI | CLI-only |
-| `--serve` / `--hidden` | CLI | unchanged CLI | CLI-only |
-| `--register` / `--unregister` / `--exe` | CLI | unchanged CLI | CLI-only |
-| `--install-gpu` | CLI | unchanged CLI | CLI-only |
-| `--prepare-model` | CLI | unchanged CLI | CLI-only |
-| `--install-suite` / `--uninstall-suite` | CLI | unchanged CLI | CLI-only |
-| `--selftest` | CLI | unchanged CLI | CLI-only |
-| `--version` | CLI | unchanged CLI | CLI-only |
-| `--worker` | CLI | unchanged CLI | CLI-only |
-| `upscale` subcommand | CLI | unchanged CLI | CLI-only |
+| Shared models folder | Settings | Expert | mapped |
+| Queue | Run step | wizard | mapped |
+| Queue restore | Run step | wizard | mapped |
+| Compare | Run step | simple | mapped |
+| Zoom | Run step | simple | mapped |
+| Run | Run step | simple | mapped |
+| Cancel | Run step | simple | mapped |
+| Settings | Window header | Expert | mapped |
+| Credits | Window header | simple | mapped |
+| Splash | Shared splash | simple | mapped |
+| Face restore choice | Registry role face | Expert | mapped |
+| Run face restore | Registered and not run | Expert | needs decision |
+| Generative choice | Registry role generative | Expert | mapped |
+| Run generative upscale | Registered and not run | Expert | needs decision |
+| `--input` | CLI | simple | mapped |
+| `--output` / `--out` | CLI | Expert | mapped |
+| `--output-dir` | CLI | Expert | mapped |
+| `--scale` | CLI | simple | mapped |
+| `--long-side` | CLI | Expert | mapped |
+| `--format` | CLI | simple | mapped |
+| `--lossless` | CLI | simple | mapped |
+| `--quality` | CLI | Expert | mapped |
+| `--preset` | CLI | simple | mapped |
+| `--quality-tier` | CLI | Expert | mapped |
+| `--model` | CLI | Expert | mapped |
+| `--double` | CLI | Expert | mapped |
+| `--upscale` | CLI | simple | mapped |
+| `upscale` subcommand | CLI | simple | mapped |
+| `--json-progress` | CLI | Expert | mapped |
+| `--dry-run` | CLI | More | mapped |
+| `--lock-timeout` | CLI | Expert | mapped |
+| `--parent-lock-pid` | CLI | Expert | mapped |
+| `--capabilities` | CLI | More | mapped |
+| `--json` | CLI | More | mapped |
+| `--serve` | CLI | More | mapped |
+| `--hidden` | CLI | More | mapped |
+| `--register` | CLI | More | mapped |
+| `--unregister` | CLI | More | mapped |
+| `--exe` | CLI | More | mapped |
+| `--install-gpu` | CLI | More | mapped |
+| `--prepare-model` | CLI | More | mapped |
+| `--install-suite` | CLI | More | mapped |
+| `--uninstall-suite` | CLI | More | mapped |
+| `--selftest` | CLI | More | mapped |
+| `--version` | CLI | More | mapped |
+| `--worker` | CLI | More | needs decision |
+
+## Needs a decision
+
+* **Run face restore.** Expert stores the registry id. The worker request has no field for it, and this build's registry says the step is not run. The job says so and still enlarges the picture.
+* **Run generative upscale.** The same limit, for the generative registry row.
+* **`--worker`.** More → Setup shows why. The worker is the internal inference process. Starting it in this window would replace the screen.

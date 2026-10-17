@@ -7,20 +7,35 @@ It does not replace that screen.
 from __future__ import annotations
 
 import shutil
-import uuid
+from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
-from PySide6.QtGui import QCloseEvent, QDesktopServices
-from PySide6.QtWidgets import QFileDialog, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QObject, QUrl
+from PySide6.QtGui import QCloseEvent, QDesktopServices, QDragEnterEvent, QDropEvent
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QMenu, QPushButton, QVBoxLayout, QWidget
 
 from enlarge import suite
 from enlarge.appinfo import APP_DISPLAY_NAME, resource_dir
-from enlarge.images import is_image, plan_outputs
+from enlarge.images import is_image
 from enlarge.ipc.capabilities import gpu_capability
-from enlarge.ui.jobs import BatchThread
+from enlarge.ipc.jobs import parent_lock_matches
+from enlarge.ui.jobplan import JobSettings, as_int, fit_long_side, progress_line, requests_for
 from enlarge.ui.models import start_manage_models
 from enlarge.ui.preset_map import load_enlarge_presets, picture_map
+from enlarge.ui.runner import GuidedBatchThread
+from enlarge.ui.screens import (
+    BatchScreen,
+    CompareScreen,
+    HandoffScreen,
+    JobHost,
+    SetupScreen,
+    optional_note,
+    show_credits,
+    show_dry_run,
+    show_hash,
+    remove_weights,
+    write_progress,
+)
 from voxprint_common.i18n import add_catalogs, tr
 from voxprint_common.mdl import ready
 from voxprint_common.mdl.catalog import Model, load_manifest
@@ -75,6 +90,18 @@ def registry_models(manifest: Path | None = None) -> tuple[Model, ...]:
     return models
 
 
+def role_choices(role: str, off_key: str) -> tuple[Choice, ...]:
+    """Off, then each registry id with this role. The ids are not written here."""
+    rows = [Choice("off", off_key)]
+    seen = {"off"}
+    for model in load_builtin(release=False).models:
+        if model.role != role or not model.id or model.id in seen:
+            continue
+        rows.append(Choice(model.id, model.id))
+        seen.add(model.id)
+    return tuple(rows)
+
+
 def enlarge_settings(models: tuple[Model, ...]) -> Settings:
     """Return the one settings list the chips and the expert panel share.
 
@@ -101,6 +128,26 @@ def enlarge_settings(models: tuple[Model, ...]) -> Settings:
                 choices=tuple(Choice(model.id, model.id) for model in models),
             ),
             SettingSpec(
+                "enlarge.face",
+                "enlarge.face",
+                "enlarge.face.help",
+                SettingType.ENUM,
+                "off",
+                expert=True,
+                group="enlarge",
+                choices=role_choices("face", "enlarge.face.off"),
+            ),
+            SettingSpec(
+                "enlarge.generative",
+                "enlarge.generative",
+                "enlarge.generative.help",
+                SettingType.ENUM,
+                "off",
+                expert=True,
+                group="enlarge",
+                choices=role_choices("generative", "enlarge.generative.off"),
+            ),
+            SettingSpec(
                 "enlarge.scale",
                 "enlarge.scale",
                 "enlarge.scale.help",
@@ -109,6 +156,17 @@ def enlarge_settings(models: tuple[Model, ...]) -> Settings:
                 expert=True,
                 group="enlarge",
                 choices=(Choice("2", "enlarge.scale.2"), Choice("4", "enlarge.scale.4")),
+            ),
+            SettingSpec(
+                "enlarge.long_side",
+                "enlarge.long_side",
+                "enlarge.long_side.help",
+                SettingType.INT,
+                0,
+                expert=True,
+                group="enlarge",
+                minimum=0,
+                maximum=20000,
             ),
             SettingSpec(
                 "enlarge.quality",
@@ -224,6 +282,37 @@ def enlarge_settings(models: tuple[Model, ...]) -> Settings:
                 group="enlarge",
             ),
             SettingSpec(
+                "enlarge.lock_timeout",
+                "enlarge.lock_timeout",
+                "enlarge.lock_timeout.help",
+                SettingType.INT,
+                600,
+                expert=True,
+                group="enlarge",
+                minimum=0,
+                maximum=86400,
+            ),
+            SettingSpec(
+                "enlarge.parent_lock",
+                "enlarge.parent_lock",
+                "enlarge.parent_lock.help",
+                SettingType.INT,
+                0,
+                expert=True,
+                group="enlarge",
+                minimum=0,
+                maximum=999999999,
+            ),
+            SettingSpec(
+                "enlarge.json_progress",
+                "enlarge.json_progress",
+                "enlarge.json_progress.help",
+                SettingType.BOOL,
+                False,
+                expert=True,
+                group="enlarge",
+            ),
+            SettingSpec(
                 "enlarge.subfolders",
                 "enlarge.subfolders",
                 "enlarge.subfolders.help",
@@ -236,7 +325,7 @@ def enlarge_settings(models: tuple[Model, ...]) -> Settings:
     )
 
 
-class SimpleWindow(QWidget):
+class SimpleWindow(QWidget, JobHost):
     """Enlarge on the shared simple screen. Simple mode is the default."""
 
     def __init__(self) -> None:
@@ -251,8 +340,14 @@ class SimpleWindow(QWidget):
         self._models = registry_models()
         self._settings = enlarge_settings(self._models)
         self._results: dict[str, Path] = {}
-        self._job: BatchThread | None = None
+        self._fits: dict[str, tuple[Path, int]] = {}
+        self._job: GuidedBatchThread | None = None
         self._manage: object | None = None
+        self._batch: BatchScreen | None = None
+        self._compare: CompareScreen | None = None
+        self._credits: QWidget | None = None
+        self._handoff: HandoffScreen | None = None
+        self._setup: SetupScreen | None = None
         self._syncing = False
         self.simple = SimpleLayout(
             presets=load_enlarge_presets(self._settings),
@@ -276,7 +371,9 @@ class SimpleWindow(QWidget):
         )
         body = QVBoxLayout(self)
         body.setContentsMargins(0, 0, 0, 0)
+        body.addLayout(self._action_bar())
         body.addWidget(self.view.root)
+        self._install_full_drop()
         self._stop_expert = self._expert.subscribe(self.view.set_expert)
         self.view.set_expert(self._expert.enabled())
         warning = _gpu_warning()
@@ -289,8 +386,11 @@ class SimpleWindow(QWidget):
         Args:
             paths: Files another app asked this window to show.
         """
-        if paths:
+        if len(paths) == 1 and paths[0].is_file():
             self.view.set_prompt_text(str(paths[0]))
+            return
+        if paths:
+            self.open_batch(paths)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt's name
         """Stop listening for Expert mode when the window closes."""
@@ -312,7 +412,11 @@ class SimpleWindow(QWidget):
         if self.simple.get("enlarge.licence") != licence:
             self.simple.set_value("enlarge.licence", licence)
             changed = True
-        factor = _factor_text(self.simple.get("enlarge.scale"), self.simple.get("enlarge.double"))
+        factor = _factor_text(
+            self.simple.get("enlarge.scale"),
+            self.simple.get("enlarge.double"),
+            self.simple.get("enlarge.long_side"),
+        )
         if self.simple.get("enlarge.factor") != factor:
             self.simple.set_value("enlarge.factor", factor)
             changed = True
@@ -357,8 +461,83 @@ class SimpleWindow(QWidget):
         if command_id == "file.open_folder":
             self._open_folder()
             return
+        if command_id == "view.settings":
+            if not self._expert.enabled():
+                self._expert.toggle()
+            return
         if command_id == "file.open":
             self._open()
+
+    def job_settings(self) -> JobSettings:
+        """Current expert and simple values."""
+        quality = self.simple.get("enlarge.quality")
+        if isinstance(quality, bool) or not isinstance(quality, int):
+            quality = DEFAULT_QUALITY
+        tile_text = str(self.simple.get("enlarge.tile"))
+        self._push_suite()
+        return JobSettings(
+            scale_text=str(self.simple.get("enlarge.scale")),
+            long_side=as_int(self.simple.get("enlarge.long_side")),
+            image_format=str(self.simple.get("enlarge.format")),
+            quality=quality,
+            lossless=bool(self.simple.get("enlarge.lossless")),
+            model_id=str(self.simple.get("enlarge.model")),
+            tile=0 if tile_text == "auto" else as_int(tile_text),
+            double=bool(self.simple.get("enlarge.double")),
+            device=suite.gpu(),
+            custom_models=str(self.simple.get("enlarge.custom_models") or ""),
+            beside=bool(self.simple.get("enlarge.beside")),
+            output_dir=str(self.simple.get("enlarge.output_dir") or ""),
+            subfolders=bool(self.simple.get("enlarge.subfolders")),
+            face=str(self.simple.get("enlarge.face") or "off"),
+            generative=str(self.simple.get("enlarge.generative") or "off"),
+            json_progress=bool(self.simple.get("enlarge.json_progress")),
+            parent_pid=as_int(self.simple.get("enlarge.parent_lock")),
+            lock_timeout=float(as_int(self.simple.get("enlarge.lock_timeout"), 600)),
+        )
+
+    def models_ready(self) -> bool:
+        """True when the shared models can run."""
+        return _models_ready()
+
+    def set_subfolders(self, enabled: bool) -> None:
+        """Store the shared subfolders switch."""
+        if bool(self.simple.get("enlarge.subfolders")) != enabled:
+            self.simple.set_value("enlarge.subfolders", enabled)
+
+    def remember(self, job_id: str, path: Path) -> None:
+        """Keep a finished file so Compare and Save can find it."""
+        self._results[job_id] = path
+
+    def launch(
+        self,
+        requests: list[UpscaleRequest],
+        cancel: Callable[[], bool],
+        on_progress: Callable[[str, float, str], None],
+        on_item: Callable[[str, bool, str, str], None],
+    ) -> bool:
+        """Start a batch. False when one is already running or the parent lock does not match."""
+        if not requests or (self._job is not None and self._job.isRunning()):
+            return False
+        settings = self.job_settings()
+        if settings.parent_pid > 0 and not parent_lock_matches(settings.parent_pid):
+            self.view.set_note(tr("enlarge.error.parent"))
+            return False
+        self._job = GuidedBatchThread(requests, cancel, settings.parent_pid, settings.lock_timeout)
+        self._job.progressed.connect(on_progress)
+        self._job.item_finished.connect(on_item)
+        self._job.start()
+        return True
+
+    def open_batch(self, paths: list[Path] | None = None) -> None:
+        """Open the batch screen and add ``paths`` when they were dropped or chosen."""
+        if self._batch is None:
+            self._batch = BatchScreen(self, self)
+        if paths:
+            self._batch.add_paths(paths)
+        self._batch.resize(1200, 900)
+        self._batch.show()
+        self._batch.raise_()
 
     def _open(self) -> None:
         selected, _used = QFileDialog.getOpenFileName(self, APP_DISPLAY_NAME)
@@ -395,54 +574,43 @@ class SimpleWindow(QWidget):
     def _start(self) -> None:
         source = Path(self.simple.prompt)
         if not is_image(source):
-            self.simple.cancel()
-            self.view.set_note(tr("enlarge.error.missing"))
-            self.view.refresh()
+            self._stop_simple(tr("enlarge.error.missing"))
             return
-        image_format = str(self.simple.get("enlarge.format"))
-        lossless = bool(self.simple.get("enlarge.lossless"))
-        if lossless and image_format != "jxl":
-            self.simple.cancel()
-            self.view.set_note(tr("enlarge.error.lossless"))
-            self.view.refresh()
+        settings = self.job_settings()
+        if settings.lossless and settings.image_format != "jxl":
+            self._stop_simple(tr("enlarge.error.lossless"))
             return
-        if not _models_ready():
+        if not self.models_ready():
             self.simple.unavailable(tr("enlarge.error.models"))
             self.view.refresh()
             return
-        self._push_suite()
-        scale = int(str(self.simple.get("enlarge.scale")))
-        tile_text = str(self.simple.get("enlarge.tile"))
-        quality = self.simple.get("enlarge.quality")
-        if isinstance(quality, bool) or not isinstance(quality, int):
-            quality = DEFAULT_QUALITY
-        double = bool(self.simple.get("enlarge.double"))
-        folder_text = str(self.simple.get("enlarge.output_dir") or "").strip()
-        beside = bool(self.simple.get("enlarge.beside"))
-        folder = None if beside or not folder_text else Path(folder_text)
-        destination = plan_outputs([source], folder, scale, image_format, double)[0]
-        job_id = uuid.uuid4().hex
-        request = UpscaleRequest(
-            id=job_id,
-            src=str(source),
-            dst=str(destination),
-            scale=scale,
-            format=image_format,
-            quality=quality,
-            lossless=lossless,
-            model_id=str(self.simple.get("enlarge.model")),
-            tile=0 if tile_text == "auto" else int(tile_text),
-            double=double,
-            device=suite.gpu(),
-            custom_models_dir=str(self.simple.get("enlarge.custom_models") or ""),
-            app_name=APP_DISPLAY_NAME,
+        note = optional_note(settings.face, settings.generative)
+        if note:
+            self.view.set_note(note)
+        try:
+            built = requests_for([source], settings, APP_DISPLAY_NAME)
+        except (OSError, ValueError) as exc:
+            self._stop_simple(str(exc))
+            return
+        request, scale = built[0]
+        self._fits[request.id] = (source, scale)
+        started = self.launch(
+            [request],
+            lambda: self.simple.phase is not Phase.BUSY,
+            self._on_progress,
+            self._on_item,
         )
-        self._job = BatchThread([request], lambda: self.simple.phase is not Phase.BUSY)
-        self._job.progressed.connect(self._on_progress)
-        self._job.item_finished.connect(self._on_item)
-        self._job.start()
+        if not started:
+            self._stop_simple(tr("enlarge.batch.busy"))
 
-    def _on_progress(self, _job_id: str, fraction: float, message: str) -> None:
+    def _stop_simple(self, message: str) -> None:
+        self.simple.cancel()
+        self.view.set_note(message)
+        self.view.refresh()
+
+    def _on_progress(self, job_id: str, fraction: float, message: str) -> None:
+        if bool(self.simple.get("enlarge.json_progress")):
+            write_progress(progress_line(job_id, fraction, message))
         if self.simple.phase is not Phase.BUSY:
             return
         bounded = min(1.0, max(0.0, float(fraction)))
@@ -453,12 +621,133 @@ class SimpleWindow(QWidget):
     def _on_item(self, job_id: str, ok: bool, message: str, dst: str) -> None:
         if self.simple.phase is not Phase.BUSY:
             return
+        settings = self.job_settings()
+        if ok and dst and settings.long_side > 0:
+            source, scale = self._fits.get(job_id, (Path(self.simple.prompt), 4))
+            try:
+                fit_long_side(
+                    source,
+                    Path(dst),
+                    scale,
+                    settings.long_side,
+                    settings.image_format,
+                    settings.quality,
+                    settings.lossless and settings.image_format == "jxl",
+                )
+            except (OSError, ValueError) as exc:
+                ok = False
+                message = str(exc)
         if ok and dst:
             self._results[job_id] = Path(dst)
             self.simple.finish(job_id)
         else:
             self.simple.block(message.strip() or tr("enlarge.error.failed"))
         self.view.refresh()
+
+    def _action_bar(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setContentsMargins(12, 8, 12, 0)
+        row.setSpacing(8)
+        for name, key, handler in (
+            ("actionOpen", "enlarge.action.open", self._open),
+            ("actionBatch", "enlarge.action.batch", lambda: self.open_batch()),
+            ("actionCompare", "enlarge.action.compare", self._open_compare),
+            ("actionCredits", "enlarge.action.credits", self._open_credits),
+        ):
+            button = QPushButton(tr(key))
+            button.setObjectName(name)
+            button.setAutoDefault(False)
+            button.clicked.connect(handler)
+            row.addWidget(button)
+        more = QPushButton(tr("enlarge.action.more"))
+        more.setObjectName("actionMore")
+        more.setAutoDefault(False)
+        more.setMenu(self._more_menu())
+        row.addWidget(more)
+        row.addStretch(1)
+        return row
+
+    def _more_menu(self) -> QMenu:
+        menu = QMenu(self)
+        menu.setObjectName("moreMenu")
+        for name, key, handler in (
+            ("moreHash", "enlarge.more.hash", self._check_hash),
+            ("moreWeights", "enlarge.more.weights", self._remove_weights),
+            ("moreHandoff", "enlarge.more.handoff", self._open_handoff),
+            ("moreDry", "enlarge.more.dry", self._dry_run),
+            ("moreSetup", "enlarge.more.setup", self._open_setup),
+        ):
+            action = menu.addAction(tr(key))
+            action.setObjectName(name)
+            action.triggered.connect(handler)
+        return menu
+
+    def _open_compare(self) -> None:
+        source = Path(self.simple.prompt)
+        self._compare = CompareScreen(self, source, self._current_result())
+        self._compare.show()
+
+    def _open_credits(self) -> None:
+        self._credits = show_credits(self, str(self.simple.get("enlarge.custom_models") or ""))
+
+    def _open_handoff(self) -> None:
+        if self._handoff is None:
+            self._handoff = HandoffScreen(self)
+        self._handoff.show()
+
+    def _open_setup(self) -> None:
+        if self._setup is None:
+            self._setup = SetupScreen(self)
+        self._setup.show()
+
+    def _check_hash(self) -> None:
+        show_hash(self, str(self.simple.get("enlarge.model")))
+
+    def _remove_weights(self) -> None:
+        remove_weights(self, str(self.simple.get("enlarge.model")))
+
+    def _dry_run(self) -> None:
+        show_dry_run(self, Path(self.simple.prompt), self.job_settings())
+
+    def _install_full_drop(self) -> None:
+        self.setAcceptDrops(True)
+        drop = self.view.root.findChild(QWidget, "fileDrop")
+        if drop is not None:
+            drop.setAcceptDrops(True)
+            drop.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt's name
+        """Keep the full path when a picture is dropped on the shell."""
+        if event.type() == QEvent.Type.DragEnter and _has_urls(event):
+            _accept(event)
+            return True
+        if event.type() == QEvent.Type.Drop:
+            paths = _dropped_paths(event)
+            if paths:
+                self._take_drop(paths)
+                _accept(event)
+                return True
+        return super().eventFilter(watched, event)
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802 - Qt's name
+        """Accept a drag that contains files."""
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802 - Qt's name
+        """Add dropped files. One file fills the main screen. More than one opens the batch."""
+        paths = [Path(url.toLocalFile()) for url in event.mimeData().urls() if url.toLocalFile()]
+        if paths:
+            self._take_drop(paths)
+            event.acceptProposedAction()
+
+    def _take_drop(self, paths: list[Path]) -> None:
+        files = [path for path in paths if path.is_file()]
+        folders = [path for path in paths if path.is_dir()]
+        if len(paths) == 1 and len(files) == 1 and not folders:
+            self.view.set_prompt_text(str(files[0]))
+            return
+        self.open_batch(paths)
 
 
 def preset_model_ids() -> dict[str, str]:
@@ -478,12 +767,35 @@ def _shared_text() -> str:
     return str(suite.resolved_models_dir())
 
 
-def _factor_text(scale: object, double: object) -> str:
+def _factor_text(scale: object, double: object, long_side: object = 0) -> str:
+    side = as_int(long_side)
+    if side > 0:
+        return f"{side} px"
     try:
         factor = output_scale(int(str(scale)), bool(double))
     except (TypeError, ValueError):
         return ""
     return f"{factor}×"
+
+
+def _accept(event: QEvent) -> None:
+    accept = getattr(event, "acceptProposedAction", None)
+    if callable(accept):
+        accept()
+
+
+def _has_urls(event: QEvent) -> bool:
+    mime = getattr(event, "mimeData", None)
+    if not callable(mime):
+        return False
+    return bool(mime().hasUrls())
+
+
+def _dropped_paths(event: QEvent) -> list[Path]:
+    mime = getattr(event, "mimeData", None)
+    if not callable(mime):
+        return []
+    return [Path(url.toLocalFile()) for url in mime().urls() if url.toLocalFile()]
 
 
 def _licence_line(model_id: str) -> str:
