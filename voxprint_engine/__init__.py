@@ -13,7 +13,7 @@ lines bumps it. ``voxprint_common.API`` is a separate number.
 from __future__ import annotations
 
 API = 1
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 
 __all__ = ["API", "__version__", "prepare_native_runtime", "session_providers"]
 
