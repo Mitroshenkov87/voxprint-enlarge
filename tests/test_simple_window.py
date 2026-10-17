@@ -6,7 +6,16 @@ from pathlib import Path
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QApplication, QCheckBox, QDialog, QLabel, QPushButton, QSlider, QSpinBox
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QDialog,
+    QLabel,
+    QPushButton,
+    QSlider,
+    QSpinBox,
+    QWidget,
+)
 
 from enlarge.cli_parser import build_parser
 from enlarge.ipc.capabilities import ART, PHOTO_FAST, PHOTO_MAX
@@ -173,6 +182,7 @@ def test_every_cli_flag_is_in_the_feature_map() -> None:
     assert "needs decision" not in text
     assert "CLI only, unchanged" in text
     assert "not run before either, unchanged" in text
+    assert "interim, until a shell command id" in text
     assert "`upscale` subcommand" in text
 
 
@@ -195,9 +205,27 @@ def test_shell_slots_replace_the_second_toolbar() -> None:
     assert compare is not None and compare.text() == "Compare before/after"
     assert again is not None and again.text() == "Enlarge again"
     assert save is not None and folder is not None
-    for name in ("morePreview", "moreGpu", "moreAbout", "moreHash", "moreWeights"):
+    for name in ("moreFolder", "moreCredits", "moreAbout", "morePreview", "moreGpu", "moreHash", "moreWeights"):
         assert window.findChild(QAction, name) is not None
+    folder = window.findChild(QAction, "moreFolder")
+    credits = window.findChild(QAction, "moreCredits")
+    assert folder is not None and folder.text() == "Enlarge a folder…"
+    assert credits is not None and credits.text() == "Credits"
+    drop = window.findChild(QLabel, "fileDrop")
+    assert drop is not None and drop.text().splitlines()[0] == "Drop a picture or click to choose"
     window.view.set_expert(True)
+    app = _app()
+    for _ in range(3):
+        app.processEvents()
+    factor = window.findChild(QLabel, "enlarge.factorValue")
+    assert factor is not None and factor.text() == "4×"
+    assert factor.sizeHint().height() < 36
+    form = window.findChild(QWidget, "expertForm")
+    assert form is not None and form.layout() is not None
+    assert form.layout().contentsMargins().right() >= 8
+    window.view.set_expert(True)
+    factor = window.findChild(QLabel, "enlarge.factorValue")
+    assert factor is not None and factor.text() == "4×"
     side = window.view.root.findChild(QSpinBox, "enlarge.long_side")
     assert side is not None
     assert side.specialValueText() == "Off"
@@ -221,6 +249,22 @@ def test_shell_slots_replace_the_second_toolbar() -> None:
         assert batch.findChild(QPushButton, name) is not None
     box = batch.findChild(QCheckBox, "batchSubfolders")
     assert box is not None and box.text() == "Include subfolders"
+    placeholder = batch.findChild(QWidget, "batchCompare")
+    assert placeholder is not None
+    assert str(placeholder.placeholder).startswith("Enlarge to compare before and after")
+    assert "upscale" not in str(placeholder.placeholder).lower()
+    set_language("ru")
+    russian = SimpleWindow()
+    ru_drop = russian.findChild(QLabel, "fileDrop")
+    assert ru_drop is not None
+    assert ru_drop.text().splitlines()[0] == "Перетащите картину или нажмите, чтобы выбрать"
+    russian.open_batch()
+    ru_batch = russian.findChild(QDialog, "batchScreen")
+    ru_compare = None if ru_batch is None else ru_batch.findChild(QWidget, "batchCompare")
+    assert ru_compare is not None
+    assert str(ru_compare.placeholder).startswith("Увеличьте, чтобы сравнить до и после")
+    russian.close()
+    set_language("en")
     window._open_compare()
     assert window.findChild(QDialog, "compareScreen") is not None
     window.close()

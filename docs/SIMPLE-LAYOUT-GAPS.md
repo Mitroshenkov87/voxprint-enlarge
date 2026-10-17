@@ -22,23 +22,26 @@ registry ids from `enlarge/ui/presets/mdl-map.json` only.
 ## Slots this surface does not have
 
 The shell overflow is Open folder, Manage models, Settings, and Expert mode.
-There is one More button, that one. Enlarge adds Preview output names, Check
-my GPU, About, Check hash, and Remove weights to that menu. It does not add a
-second toolbar.
+There is one More button, that one. Enlarge adds Enlarge a folder…, Credits,
+About, Preview output names, Check my GPU, Check hash, and Remove weights to
+that menu. It does not add a second toolbar.
 
 The image result bar is hardcoded as More like this, Save, Open folder, and
 Use prompt again. Enlarge retargets the first and the last to Compare
 before/after and Enlarge again. Save and Open folder stay.
 
-Missing, with no slot to put them in:
+These four are interim until Components adds command ids. The rows in
+`docs/ui/FEATURE-MAP.md` say so.
 
 1. **Open.** `file.open` is emitted by the viewer bar only. This surface does
-   not emit it. A drop still puts the full path in the file area.
-2. **Batch.** No command id and no result-bar slot. Dropping a folder, or more
-   than one file, still opens the wizard.
-3. **Credits.** No command id and no result-bar slot.
-4. **About.** No command id. Version is an extra action on the existing More
-   menu until the shell has an About slot.
+   not emit it. The drop area says “Drop a picture or click to choose” and
+   opens a file dialog. A drop still puts the full path in the file area.
+2. **Batch.** No command id and no result-bar slot. More → Enlarge a folder…
+   opens the wizard, and so does dropping a folder or more than one file.
+3. **Credits.** No command id and no result-bar slot. More → Credits opens the
+   screen.
+4. **About.** No command id. More → About shows the version until the shell
+   has an About slot.
 5. **A real wipe.** The enlarge result kind is `PICTURE`. `COMPARE` paints a
    decorative split from `_wipe` and does not take the opened file or the
    enlarged file. This window draws that split on the result label after a

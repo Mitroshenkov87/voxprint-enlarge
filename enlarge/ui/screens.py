@@ -211,6 +211,7 @@ class BatchScreen(QDialog):
         root.addWidget(self._table, 1)
         self._compare = CompareView()
         self._compare.setObjectName("batchCompare")
+        self._compare.set_placeholder(tr("enlarge.compare.placeholder"))
         root.addWidget(self._compare, 1)
         actions = QHBoxLayout()
         self._run = _button("batchRun", "enlarge.batch.run", self._run_batch)

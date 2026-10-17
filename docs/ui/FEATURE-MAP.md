@@ -15,7 +15,7 @@ show a control for it.
 | Clear | Images step | wizard | mapped |
 | Include subfolders | Images step | wizard | mapped |
 | Drop a full path | Window drag and drop | simple | mapped |
-| Open one picture | Window header | drop on the main screen | no shell slot |
+| Open one picture | Window header | drop area, click to choose | interim, until a shell command id |
 | Photographs | Model step | simple | mapped |
 | Photographs, highest detail | Model step | simple | mapped |
 | Drawings | Model step | simple | mapped |
@@ -50,9 +50,9 @@ show a control for it.
 | Save | Run step | simple | mapped |
 | Open folder | Run step | simple | mapped |
 | Settings | Window header | Expert | mapped |
-| Batch | Window header | wizard, from a dropped folder | no shell slot |
-| Credits | Window header | — | no shell slot |
-| About | — | More | mapped |
+| Batch | Window header | More | interim, until a shell command id |
+| Credits | Window header | More | interim, until a shell command id |
+| About | — | More | interim, until a shell command id |
 | Splash | Shared splash | simple | mapped |
 | Face restore | Registered and not run | hidden | not run before either, unchanged |
 | Generative upscale | Registered and not run | hidden | not run before either, unchanged |
@@ -94,13 +94,14 @@ show a control for it.
 `surface_for("enlarge")` is an image surface. Its result actions are Save,
 Open folder, Compare before/after, and Enlarge again. Its More menu is the
 shell overflow: Open folder, Manage models, Settings, and Expert mode, plus
-Preview output names, Check my GPU, About, Check hash, and Remove weights.
+Enlarge a folder…, Credits, About, Preview output names, Check my GPU, Check
+hash, and Remove weights.
 
-These have no slot on that surface, so this window does not add a second toolbar:
-
-* **Open** a picture with a file dialog. A drop on the main screen still fills it.
-* **Batch**. Dropping a folder, or more than one file, still opens the wizard.
-* **Credits**.
+Open, Batch, Credits, and About have no command id on this surface. Until
+Components adds those ids, the drop area says “Drop a picture or click to
+choose” and opens a file dialog, and Enlarge a folder…, Credits, and About are
+extra actions on the existing More menu. Those four rows are marked interim.
+There is no second toolbar.
 
 Manage models is the shell's existing action. Install GPU and Prepare model go
 through that window. They are not separate menu items.

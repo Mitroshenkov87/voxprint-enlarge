@@ -28,7 +28,21 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
 )
-from PySide6.QtWidgets import QFileDialog, QLabel, QPushButton, QSlider, QSpinBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QPlainTextEdit,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSlider,
+    QSpinBox,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
 
 from enlarge import suite
 from enlarge.appinfo import APP_DISPLAY_NAME, resource_dir, version_label
@@ -40,15 +54,16 @@ from enlarge.ui.models import start_manage_models
 from enlarge.ui.preset_map import load_enlarge_presets, picture_map
 from enlarge.ui.runner import GuidedBatchThread
 from enlarge.ui.screens import (
+    _IMAGE_FILTER,
     BatchScreen,
     CompareScreen,
     JobHost,
     apply_suite_surface,
+    remove_weights,
     show_credits,
     show_dry_run,
     show_hash,
     show_report,
-    remove_weights,
 )
 from voxprint_common.i18n import add_catalogs, tr
 from voxprint_common.mdl import ready
@@ -285,6 +300,8 @@ class SimpleWindow(QWidget, JobHost):
         self._include_subfolders = True
         self._wipe: QSlider | None = None
         self._result_label: QLabel | None = None
+        self._drop: QWidget | None = None
+        self._drop_armed = False
         self._job: GuidedBatchThread | None = None
         self._manage: object | None = None
         self._batch: BatchScreen | None = None
@@ -317,6 +334,14 @@ class SimpleWindow(QWidget, JobHost):
         self._retarget_results()
         self._extend_overflow()
         self._install_full_drop()
+        show_prompt = self.view.set_prompt_text
+
+        def show_chosen(text: str) -> None:
+            show_prompt(text)
+            self._retitle_drop()
+
+        self.view.set_prompt_text = show_chosen  # type: ignore[method-assign]
+        self._retitle_drop()
         expert_impl = self.view.set_expert
 
         def watched(enabled: bool) -> None:
@@ -398,6 +423,7 @@ class SimpleWindow(QWidget, JobHost):
             if changed and view is not None:
                 view.refresh()
             if view is not None:
+                self._retitle_drop()
                 self._dress_expert()
                 self._fit_bold_controls()
                 QTimer.singleShot(0, self._paint_wipe)
@@ -486,9 +512,21 @@ class SimpleWindow(QWidget, JobHost):
         self._batch.raise_()
 
     def _open(self) -> None:
-        selected, _used = QFileDialog.getOpenFileName(self, APP_DISPLAY_NAME)
+        """Browse for one picture. The drop area uses this until the shell emits file.open."""
+        selected, _used = QFileDialog.getOpenFileName(
+            self,
+            tr("enlarge.drop.choose"),
+            str(Path.home()),
+            _IMAGE_FILTER,
+        )
         if selected:
             self.view.set_prompt_text(selected)
+
+    def _choose_folder(self) -> None:
+        """Browse for a folder and open the batch wizard. There is no shell command id yet."""
+        folder = QFileDialog.getExistingDirectory(self, tr("enlarge.more.folder"), str(Path.home()))
+        if folder:
+            self.open_batch([Path(folder)])
 
     def _open_folder(self) -> None:
         target = self._current_result()
@@ -601,8 +639,8 @@ class SimpleWindow(QWidget, JobHost):
     def _extend_overflow(self) -> None:
         """Add the user actions the shell overflow does not already list.
 
-        Open, Batch, and Credits have no slot on this surface, so they are not
-        added here and there is no second toolbar.
+        Enlarge a folder, Credits, and About stay on this menu until the shell
+        grows command ids for them. There is no second toolbar.
         """
         button = self.view.root.findChild(QPushButton, "overflow")
         menu = None if button is None else button.menu()
@@ -610,9 +648,11 @@ class SimpleWindow(QWidget, JobHost):
             return
         menu.addSeparator()
         for name, key, handler in (
+            ("moreFolder", "enlarge.more.folder", self._choose_folder),
+            ("moreCredits", "enlarge.more.credits", self._open_credits),
+            ("moreAbout", "enlarge.more.about", self._open_about),
             ("morePreview", "enlarge.more.preview", self._dry_run),
             ("moreGpu", "enlarge.more.gpu", self._check_gpu),
-            ("moreAbout", "enlarge.more.about", self._open_about),
             ("moreHash", "enlarge.more.hash", self._check_hash),
             ("moreWeights", "enlarge.more.weights", self._remove_weights),
         ):
@@ -653,11 +693,75 @@ class SimpleWindow(QWidget, JobHost):
         show_dry_run(self, Path(self.simple.prompt), self.job_settings())
 
     def _dress_expert(self) -> None:
-        """Give spins room, and show Off when the long side is zero."""
+        """Keep expert controls clear of the scrollbar, and show Resulting size as a label."""
+        self._show_factor()
         for spin in self.view.root.findChildren(QSpinBox):
-            spin.setMinimumWidth(120)
+            spin.setMinimumWidth(96)
+            spin.setMaximumWidth(112)
+            spin.setStyleSheet("QSpinBox { min-width: 96px; max-width: 112px; padding: 2px 4px 2px 6px; }")
             if spin.objectName() == "enlarge.long_side":
                 spin.setSpecialValueText(tr("enlarge.long_side.off"))
+        self._reserve_scrollbar()
+
+    def _reserve_scrollbar(self) -> None:
+        """Keep the expert form inside the scroll viewport, clear of the scrollbar."""
+        form = self.view.root.findChild(QWidget, "expertForm")
+        scroll = self.view.root.findChild(QScrollArea, "expertScroll")
+        split = self.view.root.findChild(QSplitter, "expertSplit")
+        if form is None or form.layout() is None or scroll is None:
+            return
+        if split is not None and split.isVisible():
+            panel = 340
+            total = split.width()
+            handle = split.handleWidth()
+            if total > panel + 80:
+                split.setSizes([max(1, total - handle - panel), panel])
+        form.layout().setContentsMargins(0, 0, 8, 0)
+        viewport = scroll.viewport().width()
+        if viewport > 0:
+            form.setMaximumWidth(viewport)
+
+    def _show_factor(self) -> None:
+        """Replace the tall Resulting size box with a read-only label."""
+        form = self.view.root.findChild(QWidget, "expertForm")
+        if form is None or form.layout() is None:
+            return
+        edits = form.findChildren(QPlainTextEdit, "enlarge.factor")
+        for edit in edits:
+            if _row_layout(edit) is None:
+                edit.setObjectName("")
+                edit.deleteLater()
+            else:
+                _remove_row(edit)
+        label = form.findChild(QLabel, "enlarge.factorValue")
+        if label is None or _row_layout(label) is None:
+            if label is not None:
+                label.setParent(None)
+                label.deleteLater()
+            label = QLabel(form)
+            label.setObjectName("enlarge.factorValue")
+            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+            name = QLabel(tr("enlarge.factor"), form)
+            name.setObjectName("panel")
+            name.setMinimumWidth(96)
+            name.setWordWrap(True)
+            row = QHBoxLayout()
+            row.setSpacing(8)
+            row.addWidget(name, 1)
+            row.addWidget(label, 1)
+            layout = form.layout()
+            layout.insertLayout(max(0, layout.count() - 1), row)
+        label.setText(str(self.simple.get("enlarge.factor") or ""))
+
+    def _retitle_drop(self) -> None:
+        """Use the click-to-choose sentence. A chosen file stays on the next line."""
+        drop = self._drop if isinstance(self._drop, QLabel) else None
+        if drop is None:
+            return
+        hint = tr("enlarge.drop.choose")
+        name = self.simple.prompt.strip()
+        drop.setText(f"{hint}\n{name}" if name else hint)
 
     def _fit_bold_controls(self) -> None:
         """Size selected chips and the Expert toggle the way the shell measures bold text."""
@@ -700,18 +804,32 @@ class SimpleWindow(QWidget, JobHost):
         return slider
 
     def _install_full_drop(self) -> None:
+        """Accept a drop on the window and a click on the picture area."""
         self.setAcceptDrops(True)
+        self._drop_armed = False
         drop = self.view.root.findChild(QWidget, "fileDrop")
+        self._drop = drop
         if drop is not None:
             drop.setAcceptDrops(True)
+            drop.setCursor(Qt.CursorShape.PointingHandCursor)
             drop.installEventFilter(self)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt's name
-        """Keep the full path when a picture is dropped, and redraw the wipe after a resize."""
+        """Keep the full path when a picture is dropped, and open a file dialog on a click."""
         if watched is self._result_label and event.type() == QEvent.Type.Resize:
             QTimer.singleShot(0, self._paint_wipe)
             return False
+        if watched is self._drop and event.type() == QEvent.Type.MouseButtonPress:
+            self._drop_armed = True
+            return False
+        if watched is self._drop and event.type() == QEvent.Type.MouseButtonRelease and self._drop_armed:
+            self._drop_armed = False
+            button = getattr(event, "button", None)
+            if callable(button) and button() == Qt.MouseButton.LeftButton:
+                self._open()
+                return True
         if event.type() == QEvent.Type.DragEnter and _has_urls(event):
+            self._drop_armed = False
             _accept(event)
             return True
         if event.type() == QEvent.Type.Drop:
@@ -741,6 +859,53 @@ class SimpleWindow(QWidget, JobHost):
             self.view.set_prompt_text(str(files[0]))
             return
         self.open_batch(paths)
+
+
+def _row_layout(widget: QWidget) -> QLayout | None:
+    """Return the row layout that holds ``widget`` inside the expert form."""
+    parent = widget.parentWidget()
+    form = None if parent is None else parent.layout()
+    if form is None:
+        return None
+    for index in range(form.count()):
+        item = form.itemAt(index)
+        nested = None if item is None else item.layout()
+        if nested is None:
+            continue
+        for child in range(nested.count()):
+            child_item = nested.itemAt(child)
+            if child_item is not None and child_item.widget() is widget:
+                return nested
+    return None
+
+
+def _remove_row(widget: QWidget) -> None:
+    """Drop the expert row that holds ``widget`` and delete that control."""
+    parent = widget.parentWidget()
+    form = None if parent is None else parent.layout()
+    if form is None:
+        return
+    for index in range(form.count()):
+        item = form.itemAt(index)
+        nested = None if item is None else item.layout()
+        if nested is None:
+            continue
+        held: list[QWidget | None] = []
+        for position in range(nested.count()):
+            child_item = nested.itemAt(position)
+            held.append(None if child_item is None else child_item.widget())
+        if widget not in held:
+            continue
+        form.takeAt(index)
+        while nested.count():
+            taken = nested.takeAt(0)
+            row_widget = None if taken is None else taken.widget()
+            if row_widget is not None:
+                row_widget.setObjectName("")
+                row_widget.hide()
+                row_widget.setParent(None)
+                row_widget.deleteLater()
+        return
 
 
 def _click(handler: Callable[[], None]) -> Callable[[], None]:
