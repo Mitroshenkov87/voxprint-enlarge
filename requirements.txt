@@ -7,10 +7,8 @@
 PySide6>=6.8,<7
 Pillow>=12.3.0,<13
 numpy>=2.5.3,<3
-# Pin line. The migration plan says to pin the shell tag, not the PR branch.
-# The tag is not published. This commit is voxprint-common PR #13 head.
-# Replace this one line with the tagged wheel.
-voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common.git@0d1e30de68cc49549a2a94cb3695e5601c17e7db
+# Pin line from suite/ui/ADOPTION.md. Replace this one line with the UI tag.
+voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common@f4e95ccfa25780abaf50412cb095a7843725102a
 onnxruntime-gpu==1.31.0
 # 2026.10.10 publishes a cp312-abi3 wheel, which installs on Python 3.14.
 imagecodecs==2026.10.10

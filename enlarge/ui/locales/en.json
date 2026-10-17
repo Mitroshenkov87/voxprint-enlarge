@@ -67,5 +67,6 @@
   "enlarge.error.missing": "That file is not on this computer.",
   "enlarge.error.failed": "Enlarge did not finish.",
   "enlarge.error.lossless": "Lossless is for JPEG XL.",
+  "enlarge.error.models": "The models are not on this computer yet. Use Manage models.",
   "enlarge.note.saved": "Saved."
 }

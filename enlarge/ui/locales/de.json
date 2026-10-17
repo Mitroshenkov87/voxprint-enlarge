@@ -67,5 +67,6 @@
   "enlarge.error.missing": "Diese Datei liegt nicht auf diesem Computer.",
   "enlarge.error.failed": "Vergrößern wurde nicht fertig.",
   "enlarge.error.lossless": "Verlustfrei gilt nur für JPEG XL.",
+  "enlarge.error.models": "Die Modelle sind noch nicht auf diesem Computer. Nutzen Sie Modelle verwalten.",
   "enlarge.note.saved": "Gespeichert."
 }

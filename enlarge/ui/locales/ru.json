@@ -67,5 +67,6 @@
   "enlarge.error.missing": "Этого файла нет на компьютере.",
   "enlarge.error.failed": "Увеличить не удалось.",
   "enlarge.error.lossless": "Режим без потерь только для JPEG XL.",
+  "enlarge.error.models": "Моделей ещё нет на компьютере. Откройте «Управление моделями».",
   "enlarge.note.saved": "Сохранено."
 }

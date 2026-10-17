@@ -5,13 +5,12 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import QSize
-from PySide6.QtWidgets import QApplication, QPushButton, QSlider
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from enlarge.ipc.capabilities import ART, PHOTO_FAST, PHOTO_MAX
 from enlarge.ipc.server import MainWindow
 from enlarge.ui.preset_map import map_path, picture_map
 from enlarge.ui.simple_window import (
-    ENLARGE_SURFACE,
     SimpleWindow,
     known_model_ids,
     preset_model_ids,
@@ -20,7 +19,7 @@ from enlarge.ui.simple_window import (
 from voxprint_common.i18n import set_language
 from voxprint_common.ui.presets import PresetMatch
 from voxprint_common.ui.simple_image import Phase
-from voxprint_common.ui.variants import ResultKind
+from voxprint_common.ui.variants import InputKind, ResultKind, VariantId, surface_for
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -94,19 +93,23 @@ def test_preset_edit_reset_and_mode_keep_one_state() -> None:
     window.close()
 
 
-def test_compare_wipe_is_the_result_and_the_old_window_is_not_launched() -> None:
+def test_builtin_enlarge_surface_shows_a_picture_and_the_old_window_stays_unlaunched() -> None:
     _app()
     assert MainWindow is SimpleWindow
-    assert ENLARGE_SURFACE.result_kind is ResultKind.COMPARE
     window = SimpleWindow()
+    assert window.surface is surface_for("enlarge")
+    assert window.surface.variant is VariantId.IMAGE
+    assert window.surface.input_kind is InputKind.FILE
+    assert window.surface.result_kind is ResultKind.PICTURE
     window.view.set_prompt_text("picture.png")
     assert window.simple.generate()
     assert window.simple.phase is Phase.BUSY
     assert window.simple.finish("result-1") is not None
     window.view.refresh()
-    slider = window.view.root.findChild(QSlider, "compareSlider")
-    assert slider is not None
-    assert slider.value() == 500
+    picture = window.view.root.findChild(QLabel, "result")
+    assert picture is not None
+    pixmap = picture.pixmap()
+    assert pixmap is not None and not pixmap.isNull()
     window.close()
 
 
@@ -132,10 +135,10 @@ def test_grabs(tmp_path: Path) -> None:
     shots = {
         "en-simple.png": ("en", False, False),
         "en-expert.png": ("en", True, False),
-        "en-wipe.png": ("en", False, True),
+        "en-result.png": ("en", False, True),
         "ru-simple.png": ("ru", False, False),
         "ru-expert.png": ("ru", True, False),
-        "ru-wipe.png": ("ru", False, True),
+        "ru-result.png": ("ru", False, True),
     }
     for name, (lang, expert, wipe) in shots.items():
         set_language(lang)

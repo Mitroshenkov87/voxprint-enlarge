@@ -81,10 +81,9 @@ The 1.4.0 pin stays valid for the surface before `prepare_native_runtime` and
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.4.0
 ```
 
-The app pin is the `voxprint-common` line in `requirements.txt`. The migration plan
-says to pin the shell tag, not the PR branch. That tag is not published. This
-branch uses PR #13 head `0d1e30de68cc49549a2a94cb3695e5601c17e7db`. Replace that
-one line with the tagged wheel when Components publishes it.
+The app pin is the `voxprint-common` line in `requirements.txt`. Adoption uses
+`voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common@f4e95ccfa25780abaf50412cb095a7843725102a`.
+Replace that one line with the UI tag when Components publishes it.
 
 The 1.3.0 pin stays valid for the surface before those removals:
 

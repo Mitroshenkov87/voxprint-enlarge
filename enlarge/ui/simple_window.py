@@ -22,6 +22,7 @@ from enlarge.ui.jobs import BatchThread
 from enlarge.ui.models import start_manage_models
 from enlarge.ui.preset_map import load_enlarge_presets, picture_map
 from voxprint_common.i18n import add_catalogs, tr
+from voxprint_common.mdl import ready
 from voxprint_common.mdl.catalog import Model, load_manifest
 from voxprint_common.paths import state_dir
 from voxprint_common.ui.expert import ExpertMode
@@ -33,32 +34,12 @@ from voxprint_common.ui.variants import (
     WINDOW_MIN_HEIGHT,
     WINDOW_MIN_WIDTH,
     WINDOW_WIDTH,
-    AppSurface,
-    InputKind,
-    ResultKind,
-    VariantId,
+    surface_for,
 )
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY, choices
 from voxprint_engine.registry import load_builtin
 from voxprint_engine.worker import UpscaleRequest
 from voxprint_engine.worker.lanczos import output_scale
-
-# The registered enlarge surface is a still picture with no wipe, and its
-# action bar adds picture-generation commands. The plan's file list, batch
-# result, and compare slot are not on that surface yet. Clarity's compare
-# result is the wipe. Video's action bar is Save and Open folder. See
-# docs/SIMPLE-LAYOUT-GAPS.md.
-ENLARGE_SURFACE = AppSurface(
-    "enlarge",
-    VariantId.VIDEO,
-    InputKind.FILE,
-    ResultKind.COMPARE,
-    "simple.action.enlarge",
-    "enlarge.empty",
-    "simple.drop.picture",
-    "enlarge",
-    "simple.drop.picture",
-)
 
 _GPU_VALUES = {"auto": "enlarge.gpu.auto", "cuda:0": "enlarge.gpu.cuda0", "cuda:1": "enlarge.gpu.cuda1"}
 _TILES = ("auto", "128", "256", "512", "768")
@@ -284,13 +265,14 @@ class SimpleWindow(QWidget):
         self._align_from_suite()
         self._pull_derived()
         self._expert = ExpertMode()
+        self.surface = surface_for("enlarge")
         self.view = SimpleWidget(
             self.simple,
             self._settings,
             on_generate=self._start,
             on_command=self._command,
             on_refresh=self._after_paint,
-            surface=ENLARGE_SURFACE,
+            surface=self.surface,
         )
         body = QVBoxLayout(self)
         body.setContentsMargins(0, 0, 0, 0)
@@ -424,6 +406,10 @@ class SimpleWindow(QWidget):
             self.view.set_note(tr("enlarge.error.lossless"))
             self.view.refresh()
             return
+        if not _models_ready():
+            self.simple.unavailable(tr("enlarge.error.models"))
+            self.view.refresh()
+            return
         self._push_suite()
         scale = int(str(self.simple.get("enlarge.scale")))
         tile_text = str(self.simple.get("enlarge.tile"))
@@ -509,6 +495,13 @@ def _licence_line(model_id: str) -> str:
     if author and licence:
         return f"{author} · {licence}"
     return licence or author
+
+
+def _models_ready() -> bool:
+    try:
+        return ready("enlarge")
+    except (OSError, RuntimeError, ValueError):
+        return False
 
 
 def _gpu_warning() -> str:
