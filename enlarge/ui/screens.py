@@ -33,6 +33,7 @@ from enlarge.images import collect
 from enlarge.queue_state import dump_queue, load_queue, still_open
 from enlarge.ui.compare import CompareView
 from enlarge.ui.jobplan import JobSettings, command_line, describe_job, fit_long_side, requests_for
+from enlarge.ui.models import start_manage_models
 from voxprint_common.i18n import tr
 from voxprint_common.ui.theme import (
     CARD_PLAIN,
@@ -536,6 +537,37 @@ def show_report(parent: QWidget, title: str, body: str) -> None:
     dialog.exec()
 
 
+class ModelsScreen(QDialog):
+    """Check hash and remove weights live here, beside the shared model manager."""
+
+    def __init__(self, parent: QWidget, model_id: str) -> None:
+        """Build the model actions for the model selected on the main screen."""
+        super().__init__(parent)
+        self._model_id = model_id
+        self._process: object | None = None
+        root = _screen(self, "modelsScreen", tr("enlarge.models.title"))
+        hint = QLabel(tr("enlarge.models.hint"))
+        hint.setWordWrap(True)
+        root.addWidget(hint)
+        root.addWidget(_button("modelsOpen", "enlarge.models.open", self._open_manager))
+        root.addWidget(_button("modelsHash", "enlarge.more.hash", self._hash))
+        root.addWidget(_button("modelsRemove", "enlarge.more.weights", self._remove))
+        root.addStretch(1)
+        root.addWidget(_button("modelsClose", "enlarge.credits.close", self.accept))
+
+    def _open_manager(self) -> None:
+        """Open the shared model manager."""
+        self._process = start_manage_models()
+
+    def _hash(self) -> None:
+        """Compare the selected weight file with its pinned sha256."""
+        show_hash(self, self._model_id)
+
+    def _remove(self) -> None:
+        """Ask, then delete the selected weight file."""
+        remove_weights(self, self._model_id)
+
+
 def show_hash(parent: QWidget, model_id: str) -> None:
     """Compare the selected weight file with its pinned sha256."""
     model = load_builtin(release=False).get(model_id)
@@ -552,7 +584,13 @@ def remove_weights(parent: QWidget, model_id: str) -> None:
     if model is None or not model.filename:
         QMessageBox.information(parent, APP_DISPLAY_NAME, tr("enlarge.hash.missing"))
         return
-    answer = QMessageBox.question(parent, APP_DISPLAY_NAME, tr("enlarge.weights.ask", name=model.filename))
+    answer = QMessageBox.question(
+        parent,
+        APP_DISPLAY_NAME,
+        tr("enlarge.weights.ask", name=model.filename),
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No,
+    )
     if answer != QMessageBox.StandardButton.Yes:
         return
     try:

@@ -23,8 +23,10 @@ registry ids from `enlarge/ui/presets/mdl-map.json` only.
 
 The shell overflow is Open folder, Manage models, Settings, and Expert mode.
 There is one More button, that one. Enlarge adds Enlarge a folder…, Credits,
-About, Preview output names, Check my GPU, Check hash, and Remove weights to
-that menu. It does not add a second toolbar.
+About, Preview file names, and Check my GPU to that menu. Expert mode stays
+because the shell adds it. Check hash and Remove weights are on the Manage
+models screen, and removing weights asks for confirmation. There is no second
+toolbar.
 
 The image result bar is hardcoded as More like this, Save, Open folder, and
 Use prompt again. Enlarge retargets the first and the last to Compare

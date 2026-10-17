@@ -20,8 +20,8 @@ show a control for it.
 | Photographs, highest detail | Model step | simple | mapped |
 | Drawings | Model step | simple | mapped |
 | Manage models | Model step | More | mapped |
-| Check hash | Model step | More | mapped |
-| Remove weights | Model step | More | mapped |
+| Check hash | Model step | Manage models | mapped |
+| Remove weights | Model step | Manage models | mapped |
 | Model id | Model step | Expert | mapped |
 | Licence | Model step | Expert | mapped |
 | Scale 2 and 4 | Output step | simple | mapped |
@@ -94,8 +94,10 @@ show a control for it.
 `surface_for("enlarge")` is an image surface. Its result actions are Save,
 Open folder, Compare before/after, and Enlarge again. Its More menu is the
 shell overflow: Open folder, Manage models, Settings, and Expert mode, plus
-Enlarge a folder…, Credits, About, Preview output names, Check my GPU, Check
-hash, and Remove weights.
+Enlarge a folder…, Credits, About, Preview file names, and Check my GPU.
+Expert mode is the shell's own menu item. The toggle beside More is the same
+command. Check hash and Remove weights are on the Manage models screen.
+Removing weights asks for confirmation before it deletes a file.
 
 Open, Batch, Credits, and About have no command id on this surface. Until
 Components adds those ids, the drop area says “Drop a picture or click to

@@ -29,8 +29,8 @@ from PySide6.QtGui import (
     QPixmap,
 )
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QFileDialog,
-    QHBoxLayout,
     QLabel,
     QLayout,
     QPlainTextEdit,
@@ -49,8 +49,15 @@ from enlarge.appinfo import APP_DISPLAY_NAME, resource_dir, version_label
 from enlarge.images import is_image
 from enlarge.ipc.capabilities import gpu_capability
 from enlarge.ui.compare import _load
-from enlarge.ui.jobplan import JobSettings, as_int, fit_long_side, requests_for
-from enlarge.ui.models import start_manage_models
+from enlarge.ui.jobplan import (
+    JobSettings,
+    as_int,
+    fit_long_side,
+    model_scale,
+    planned_size,
+    requests_for,
+    source_size,
+)
 from enlarge.ui.preset_map import load_enlarge_presets, picture_map
 from enlarge.ui.runner import GuidedBatchThread
 from enlarge.ui.screens import (
@@ -58,11 +65,10 @@ from enlarge.ui.screens import (
     BatchScreen,
     CompareScreen,
     JobHost,
+    ModelsScreen,
     apply_suite_surface,
-    remove_weights,
     show_credits,
     show_dry_run,
-    show_hash,
     show_report,
 )
 from voxprint_common.i18n import add_catalogs, tr
@@ -338,10 +344,13 @@ class SimpleWindow(QWidget, JobHost):
 
         def show_chosen(text: str) -> None:
             show_prompt(text)
+            self._pull_derived()
             self._retitle_drop()
+            self._show_factor()
 
         self.view.set_prompt_text = show_chosen  # type: ignore[method-assign]
         self._retitle_drop()
+        self._sync_result_actions()
         expert_impl = self.view.set_expert
 
         def watched(enabled: bool) -> None:
@@ -392,6 +401,7 @@ class SimpleWindow(QWidget, JobHost):
             self.simple.get("enlarge.scale"),
             self.simple.get("enlarge.double"),
             self.simple.get("enlarge.long_side"),
+            Path(self.simple.prompt) if self.simple.prompt else None,
         )
         if self.simple.get("enlarge.factor") != factor:
             self.simple.set_value("enlarge.factor", factor)
@@ -425,6 +435,7 @@ class SimpleWindow(QWidget, JobHost):
             if view is not None:
                 self._retitle_drop()
                 self._dress_expert()
+                self._sync_result_actions()
                 self._fit_bold_controls()
                 QTimer.singleShot(0, self._paint_wipe)
         finally:
@@ -435,7 +446,7 @@ class SimpleWindow(QWidget, JobHost):
             self._expert.toggle()
             return
         if command_id == "models.manage":
-            self._manage = start_manage_models()
+            self._open_models()
             return
         if command_id == "file.save":
             self._save()
@@ -653,8 +664,6 @@ class SimpleWindow(QWidget, JobHost):
             ("moreAbout", "enlarge.more.about", self._open_about),
             ("morePreview", "enlarge.more.preview", self._dry_run),
             ("moreGpu", "enlarge.more.gpu", self._check_gpu),
-            ("moreHash", "enlarge.more.hash", self._check_hash),
-            ("moreWeights", "enlarge.more.weights", self._remove_weights),
         ):
             action = menu.addAction(tr(key))
             action.setObjectName(name)
@@ -683,25 +692,28 @@ class SimpleWindow(QWidget, JobHost):
         text = "\n".join(part for part in (buffer.getvalue().strip(), errors.getvalue().strip()) if part)
         show_report(self, tr("enlarge.more.gpu"), text or str(code))
 
-    def _check_hash(self) -> None:
-        show_hash(self, str(self.simple.get("enlarge.model")))
-
-    def _remove_weights(self) -> None:
-        remove_weights(self, str(self.simple.get("enlarge.model")))
+    def _open_models(self) -> None:
+        """Open hash check and weight removal. The shared manager is a button on that screen."""
+        self._models_screen = ModelsScreen(self, str(self.simple.get("enlarge.model")))
+        self._models_screen.show()
 
     def _dry_run(self) -> None:
         show_dry_run(self, Path(self.simple.prompt), self.job_settings())
 
     def _dress_expert(self) -> None:
-        """Keep expert controls clear of the scrollbar, and show Resulting size as a label."""
+        """Give every expert row a height, and let spins use the same value column as the combos."""
         self._show_factor()
         for spin in self.view.root.findChildren(QSpinBox):
-            spin.setMinimumWidth(96)
-            spin.setMaximumWidth(112)
-            spin.setStyleSheet("QSpinBox { min-width: 96px; max-width: 112px; padding: 2px 4px 2px 6px; }")
             if spin.objectName() == "enlarge.long_side":
                 spin.setSpecialValueText(tr("enlarge.long_side.off"))
+        self._align_value_column()
         self._reserve_scrollbar()
+
+    def _sync_result_actions(self) -> None:
+        """Hide Compare, Save, Open folder, and Enlarge again until a result exists."""
+        bar = self.view.root.findChild(QWidget, "actionBar")
+        if bar is not None:
+            bar.setVisible(self.simple.phase is Phase.READY)
 
     def _reserve_scrollbar(self) -> None:
         """Keep the expert form inside the scroll viewport, clear of the scrollbar."""
@@ -722,37 +734,69 @@ class SimpleWindow(QWidget, JobHost):
             form.setMaximumWidth(viewport)
 
     def _show_factor(self) -> None:
-        """Replace the tall Resulting size box with a read-only label."""
+        """Turn the Resulting size box into a one-line label in the same form row."""
         form = self.view.root.findChild(QWidget, "expertForm")
-        if form is None or form.layout() is None:
+        if form is None:
             return
-        edits = form.findChildren(QPlainTextEdit, "enlarge.factor")
-        for edit in edits:
-            if _row_layout(edit) is None:
-                edit.setObjectName("")
-                edit.deleteLater()
-            else:
-                _remove_row(edit)
+        self._pull_derived()
         label = form.findChild(QLabel, "enlarge.factorValue")
-        if label is None or _row_layout(label) is None:
-            if label is not None:
-                label.setParent(None)
-                label.deleteLater()
+        if label is None:
+            edit = next(
+                (item for item in form.findChildren(QPlainTextEdit, "enlarge.factor") if _row_layout(item) is not None),
+                None,
+            )
+            row = None if edit is None else _row_layout(edit)
+            if edit is None or not isinstance(row, QBoxLayout):
+                return
             label = QLabel(form)
             label.setObjectName("enlarge.factorValue")
+            label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-            name = QLabel(tr("enlarge.factor"), form)
-            name.setObjectName("panel")
-            name.setMinimumWidth(96)
+            label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            row.insertWidget(max(0, row.indexOf(edit)), label, 1)
+            edit.setObjectName("")
+            edit.hide()
+            edit.setParent(None)
+            edit.deleteLater()
+        label.setText(str(self.simple.get("enlarge.factor") or "4×"))
+        label.setMinimumHeight(label.fontMetrics().height() + 10)
+
+    def _align_value_column(self) -> None:
+        """Wrap long labels and give every value the same width, including the spin boxes."""
+        form = self.view.root.findChild(QWidget, "expertForm")
+        scroll = self.view.root.findChild(QScrollArea, "expertScroll")
+        if form is None or form.layout() is None:
+            return
+        width = form.width()
+        if width < 80 and scroll is not None:
+            width = scroll.viewport().width()
+        label_width = 156 if width < 80 else max(128, min(168, width // 3))
+        layout = form.layout()
+        for index in range(layout.count()):
+            item = layout.itemAt(index)
+            row = None if item is None else item.layout()
+            if row is None or row.count() < 2:
+                continue
+            name_item = row.itemAt(0)
+            value_item = row.itemAt(1)
+            name = None if name_item is None else name_item.widget()
+            value = None if value_item is None else value_item.widget()
+            if not isinstance(name, QLabel) or value is None:
+                continue
             name.setWordWrap(True)
-            row = QHBoxLayout()
-            row.setSpacing(8)
-            row.addWidget(name, 1)
-            row.addWidget(label, 1)
-            layout = form.layout()
-            layout.insertLayout(max(0, layout.count() - 1), row)
-        label.setText(str(self.simple.get("enlarge.factor") or ""))
+            name.setMinimumWidth(label_width)
+            name.setMaximumWidth(label_width)
+            row.setStretch(0, 0)
+            row.setStretch(1, 1)
+            value.setMinimumWidth(0)
+            value.setMaximumWidth(16777215)
+            value.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            if isinstance(value, QSpinBox):
+                value.setStyleSheet("")
+            metrics = QFontMetrics(name.font())
+            flags = int(Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextWordWrap)
+            bounds = metrics.boundingRect(0, 0, label_width, 800, flags, name.text())
+            name.setMinimumHeight(max(metrics.height() + 8, bounds.height() + 6))
 
     def _retitle_drop(self) -> None:
         """Use the click-to-choose sentence. A chosen file stays on the next line."""
@@ -879,35 +923,6 @@ def _row_layout(widget: QWidget) -> QLayout | None:
     return None
 
 
-def _remove_row(widget: QWidget) -> None:
-    """Drop the expert row that holds ``widget`` and delete that control."""
-    parent = widget.parentWidget()
-    form = None if parent is None else parent.layout()
-    if form is None:
-        return
-    for index in range(form.count()):
-        item = form.itemAt(index)
-        nested = None if item is None else item.layout()
-        if nested is None:
-            continue
-        held: list[QWidget | None] = []
-        for position in range(nested.count()):
-            child_item = nested.itemAt(position)
-            held.append(None if child_item is None else child_item.widget())
-        if widget not in held:
-            continue
-        form.takeAt(index)
-        while nested.count():
-            taken = nested.takeAt(0)
-            row_widget = None if taken is None else taken.widget()
-            if row_widget is not None:
-                row_widget.setObjectName("")
-                row_widget.hide()
-                row_widget.setParent(None)
-                row_widget.deleteLater()
-        return
-
-
 def _click(handler: Callable[[], None]) -> Callable[[], None]:
     """Ignore the bool Qt passes from a clicked or triggered signal."""
 
@@ -990,15 +1005,30 @@ def _shared_text() -> str:
     return str(suite.resolved_models_dir())
 
 
-def _factor_text(scale: object, double: object, long_side: object = 0) -> str:
+def _factor_text(
+    scale: object,
+    double: object,
+    long_side: object = 0,
+    source: Path | None = None,
+) -> str:
+    """The multiplier, plus the saved pixel size when the picture can be read."""
     side = as_int(long_side)
-    if side > 0:
-        return f"{side} px"
     try:
-        factor = output_scale(int(str(scale)), bool(double))
-    except (TypeError, ValueError):
+        if side > 0 and source is not None and source.is_file():
+            factor = output_scale(model_scale(source, scale, side), bool(double))
+        else:
+            factor = output_scale(int(str(scale)), bool(double))
+    except (TypeError, ValueError, OSError):
         return ""
-    return f"{factor}×"
+    text = f"{factor}×"
+    if source is None or not source.is_file():
+        return text
+    try:
+        width, height = source_size(source)
+        out_w, out_h = planned_size(width, height, factor, side)
+    except (OSError, ValueError):
+        return text
+    return f"{text}, {out_w}×{out_h}"
 
 
 def _accept(event: QEvent) -> None:

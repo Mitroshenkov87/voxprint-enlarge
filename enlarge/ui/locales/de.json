@@ -1,6 +1,7 @@
 {
   "setting.group.enlarge": "Vergrößern",
   "enlarge.empty": "Ziehen Sie ein Bild hierher und drücken Sie Vergrößern.",
+  "simple.empty": "Hier erscheint das Bild.",
   "enlarge.drop.choose": "Bild hierher ziehen oder klicken, um eines zu wählen",
   "enlarge.preset.pictures": "Das sind",
   "enlarge.preset.pictures.photographs": "Fotos",
@@ -65,7 +66,7 @@
   "enlarge.note.saved": "Gespeichert.",
   "enlarge.action.compare": "Vorher/Nachher vergleichen",
   "enlarge.action.again": "Erneut vergrößern",
-  "enlarge.more.preview": "Ergebnisnamen anzeigen",
+  "enlarge.more.preview": "Dateinamen ansehen",
   "enlarge.more.gpu": "Grafikkarte prüfen",
   "enlarge.more.about": "Über",
   "enlarge.more.folder": "Ordner vergrößern…",
@@ -73,6 +74,9 @@
   "enlarge.more.hash": "Hash prüfen",
   "enlarge.more.weights": "Gewichte entfernen",
   "enlarge.about.title": "Über",
+  "enlarge.models.title": "Modelle verwalten",
+  "enlarge.models.hint": "Prüfen Sie das gewählte Modell, oder öffnen Sie die gemeinsame Modellverwaltung. Das Entfernen der Gewichte fragt zuerst.",
+  "enlarge.models.open": "Modellverwaltung öffnen",
   "enlarge.long_side": "Lange Seite",
   "enlarge.long_side.help": "Aus nutzt die Größe darüber. Eine Zahl wählt 2× oder 4× und passt dann diese Länge an.",
   "enlarge.long_side.off": "Aus",
@@ -119,5 +123,5 @@
   "enlarge.hash.missing": "Wählen Sie zuerst ein Modell.",
   "enlarge.weights.ask": "{name} aus dem gemeinsamen Modellordner entfernen?",
   "enlarge.weights.done": "Entfernt.",
-  "enlarge.dry.title": "Ergebnisnamen"
+  "enlarge.dry.title": "Dateinamen ansehen"
 }

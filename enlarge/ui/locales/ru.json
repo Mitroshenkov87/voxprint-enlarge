@@ -1,7 +1,8 @@
 {
   "setting.group.enlarge": "Увеличение",
   "enlarge.empty": "Перетащите изображение и нажмите «Увеличить».",
-  "enlarge.drop.choose": "Перетащите картину или нажмите, чтобы выбрать",
+  "simple.empty": "Здесь появится изображение",
+  "enlarge.drop.choose": "Перетащите изображение или нажмите, чтобы выбрать",
   "enlarge.preset.pictures": "Это",
   "enlarge.preset.pictures.photographs": "Фотографии",
   "enlarge.preset.pictures.detail": "Фотографии, максимум деталей",
@@ -65,7 +66,7 @@
   "enlarge.note.saved": "Сохранено.",
   "enlarge.action.compare": "Сравнить до и после",
   "enlarge.action.again": "Увеличить снова",
-  "enlarge.more.preview": "Показать имена результатов",
+  "enlarge.more.preview": "Предпросмотр имён файлов",
   "enlarge.more.gpu": "Проверить видеокарту",
   "enlarge.more.about": "О программе",
   "enlarge.more.folder": "Увеличить папку…",
@@ -73,6 +74,9 @@
   "enlarge.more.hash": "Проверить хеш",
   "enlarge.more.weights": "Удалить веса",
   "enlarge.about.title": "О программе",
+  "enlarge.models.title": "Управление моделями",
+  "enlarge.models.hint": "Проверьте выбранную модель или откройте общий менеджер моделей. Удаление весов сначала спрашивает подтверждение.",
+  "enlarge.models.open": "Открыть менеджер моделей",
   "enlarge.long_side": "Длинная сторона",
   "enlarge.long_side.help": "Выкл использует размер выше. Число выбирает 2× или 4×, затем подгоняет эту длину.",
   "enlarge.long_side.off": "Выкл",
@@ -119,5 +123,5 @@
   "enlarge.hash.missing": "Сначала выберите модель.",
   "enlarge.weights.ask": "Удалить {name} из общей папки моделей?",
   "enlarge.weights.done": "Удалено.",
-  "enlarge.dry.title": "Имена результатов"
+  "enlarge.dry.title": "Предпросмотр имён файлов"
 }

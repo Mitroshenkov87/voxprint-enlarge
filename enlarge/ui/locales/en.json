@@ -1,6 +1,7 @@
 {
   "setting.group.enlarge": "Enlarge",
   "enlarge.empty": "Drop a picture, then press Enlarge.",
+  "simple.empty": "The picture will show up here.",
   "enlarge.drop.choose": "Drop a picture or click to choose",
   "enlarge.preset.pictures": "Pictures are",
   "enlarge.preset.pictures.photographs": "Photographs",
@@ -65,7 +66,7 @@
   "enlarge.note.saved": "Saved.",
   "enlarge.action.compare": "Compare before/after",
   "enlarge.action.again": "Enlarge again",
-  "enlarge.more.preview": "Preview output names",
+  "enlarge.more.preview": "Preview file names",
   "enlarge.more.gpu": "Check my GPU",
   "enlarge.more.about": "About",
   "enlarge.more.folder": "Enlarge a folder…",
@@ -73,6 +74,9 @@
   "enlarge.more.hash": "Check hash",
   "enlarge.more.weights": "Remove weights",
   "enlarge.about.title": "About",
+  "enlarge.models.title": "Manage models",
+  "enlarge.models.hint": "Check the selected model, or open the shared model manager. Removing weights asks first.",
+  "enlarge.models.open": "Open model manager",
   "enlarge.long_side": "Long side",
   "enlarge.long_side.help": "Off uses the size above. A number picks 2× or 4×, then fits this length.",
   "enlarge.long_side.off": "Off",
@@ -119,5 +123,5 @@
   "enlarge.hash.missing": "Pick a model first.",
   "enlarge.weights.ask": "Remove {name} from the shared models folder?",
   "enlarge.weights.done": "Removed.",
-  "enlarge.dry.title": "Preview output names"
+  "enlarge.dry.title": "Preview file names"
 }

@@ -205,12 +205,29 @@ def test_shell_slots_replace_the_second_toolbar() -> None:
     assert compare is not None and compare.text() == "Compare before/after"
     assert again is not None and again.text() == "Enlarge again"
     assert save is not None and folder is not None
-    for name in ("moreFolder", "moreCredits", "moreAbout", "morePreview", "moreGpu", "moreHash", "moreWeights"):
+    for name in ("moreFolder", "moreCredits", "moreAbout", "morePreview", "moreGpu"):
         assert window.findChild(QAction, name) is not None
+    assert window.findChild(QAction, "moreHash") is None
+    assert window.findChild(QAction, "moreWeights") is None
     folder = window.findChild(QAction, "moreFolder")
     credits = window.findChild(QAction, "moreCredits")
+    preview = window.findChild(QAction, "morePreview")
     assert folder is not None and folder.text() == "Enlarge a folder…"
     assert credits is not None and credits.text() == "Credits"
+    assert preview is not None and preview.text() == "Preview file names"
+    window.resize(1200, 900)
+    window.show()
+    app = _app()
+    for _ in range(4):
+        app.processEvents()
+    bar = window.findChild(QWidget, "actionBar")
+    assert bar is not None and bar.isHidden()
+    window._open_models()
+    models = window.findChild(QDialog, "modelsScreen")
+    assert models is not None
+    assert models.findChild(QPushButton, "modelsHash") is not None
+    assert models.findChild(QPushButton, "modelsRemove") is not None
+    assert "StandardButton.No" in (_ROOT / "enlarge" / "ui" / "screens.py").read_text(encoding="utf-8")
     drop = window.findChild(QLabel, "fileDrop")
     assert drop is not None and drop.text().splitlines()[0] == "Drop a picture or click to choose"
     window.view.set_expert(True)
@@ -240,6 +257,7 @@ def test_shell_slots_replace_the_second_toolbar() -> None:
     window.show()
     for _ in range(3):
         app.processEvents()
+    assert compare is not None and not compare.isHidden()
     slider = window.view.root.findChild(QSlider, "compareSlider")
     assert slider is not None and not slider.isHidden()
     window.open_batch()
@@ -257,7 +275,32 @@ def test_shell_slots_replace_the_second_toolbar() -> None:
     russian = SimpleWindow()
     ru_drop = russian.findChild(QLabel, "fileDrop")
     assert ru_drop is not None
-    assert ru_drop.text().splitlines()[0] == "Перетащите картину или нажмите, чтобы выбрать"
+    assert ru_drop.text().splitlines()[0] == "Перетащите изображение или нажмите, чтобы выбрать"
+    hint = russian.findChild(QLabel, "emptyHint")
+    assert hint is not None and hint.text() == "Здесь появится изображение"
+    russian.resize(1200, 900)
+    russian.show()
+    russian.view.set_expert(True)
+    for _ in range(6):
+        app.processEvents()
+    ru_form = russian.findChild(QWidget, "expertForm")
+    assert ru_form is not None
+    boxes = []
+    for label in ru_form.findChildren(QLabel):
+        if not label.isVisible() or not label.text().strip() or label.height() < 8:
+            continue
+        origin = label.mapTo(ru_form, label.rect().topLeft())
+        boxes.append((label.text(), origin.x(), origin.y(), origin.x() + label.width(), origin.y() + label.height()))
+    for index, earlier in enumerate(boxes):
+        for later in boxes[index + 1 :]:
+            apart = earlier[3] <= later[1] or later[3] <= earlier[1] or earlier[4] <= later[2] or later[4] <= earlier[2]
+            assert apart, (earlier, later)
+    ru_side = russian.findChild(QSpinBox, "enlarge.long_side")
+    ru_format = russian.findChild(QWidget, "enlarge.format")
+    assert ru_side is not None and ru_format is not None
+    assert ru_side.width() >= ru_format.width() - 4
+    factor_ru = russian.findChild(QLabel, "enlarge.factorValue")
+    assert factor_ru is not None and factor_ru.text() == "4×" and factor_ru.height() >= 8
     russian.open_batch()
     ru_batch = russian.findChild(QDialog, "batchScreen")
     ru_compare = None if ru_batch is None else ru_batch.findChild(QWidget, "batchCompare")
