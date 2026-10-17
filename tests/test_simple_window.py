@@ -1,12 +1,15 @@
 """The shared simple screen: one settings state, registry ids, and the wipe."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QApplication, QPushButton, QSlider
 
+from enlarge.ipc.capabilities import ART, PHOTO_FAST, PHOTO_MAX
 from enlarge.ipc.server import MainWindow
+from enlarge.ui.preset_map import map_path, picture_map
 from enlarge.ui.simple_window import (
     ENLARGE_SURFACE,
     SimpleWindow,
@@ -19,6 +22,8 @@ from voxprint_common.ui.presets import PresetMatch
 from voxprint_common.ui.simple_image import Phase
 from voxprint_common.ui.variants import ResultKind
 
+_ROOT = Path(__file__).resolve().parents[1]
+
 
 def _app() -> QApplication:
     running = QApplication.instance()
@@ -27,45 +32,64 @@ def _app() -> QApplication:
     return QApplication([])
 
 
-def test_presets_name_registry_ids_not_files() -> None:
+def test_presets_name_registry_ids_from_one_map() -> None:
     ids = {model.id for model in registry_models()}
     written = preset_model_ids()
-    assert set(written) == {"photo", "drawing", "old"}
+    assert set(written) == {"photographs", "detail", "drawings"}
     assert set(written.values()) == known_model_ids()
+    assert written["photographs"] == PHOTO_FAST
+    assert written["detail"] == PHOTO_MAX
+    assert written["drawings"] == ART
     assert set(written.values()) <= ids
     for model_id in written.values():
         assert not model_id.endswith((".pth", ".onnx", ".pt"))
         assert "/" not in model_id
+    window_text = (_ROOT / "enlarge" / "ui" / "simple_window.py").read_text(encoding="utf-8")
+    preset_text = (_ROOT / "enlarge" / "ui" / "presets" / "enlarge.json").read_text(encoding="utf-8")
+    for model_id in written.values():
+        assert model_id not in window_text
+        assert model_id not in preset_text
+        assert model_id in map_path().read_text(encoding="utf-8")
+    assert {row.ipc_preset for row in picture_map()} == {"photo", "art"}
+
+
+def test_catalogs_share_keys() -> None:
+    folder = _ROOT / "enlarge" / "ui" / "locales"
+    catalogs = [json.loads((folder / name).read_text(encoding="utf-8")) for name in ("en.json", "ru.json", "de.json")]
+    assert set(catalogs[0]) == set(catalogs[1]) == set(catalogs[2])
 
 
 def test_preset_edit_reset_and_mode_keep_one_state() -> None:
     _app()
     set_language("en")
     window = SimpleWindow()
-    assert window.simple.get("enlarge.model") == preset_model_ids()["photo"]
-    assert window.simple.get("enlarge.scale") == "2"
+    assert window.simple.get("enlarge.model") == preset_model_ids()["photographs"]
+    assert window.simple.get("enlarge.scale") == "4"
     assert window.simple.get("enlarge.format") == "avif"
+    assert window.simple.get("enlarge.quality") == 60
+    assert window.simple.get("enlarge.lossless") is False
+    assert window.simple.get("enlarge.subfolders") is True
     before = window.simple.snapshot()
     window.view.set_expert(True)
     assert window.simple.snapshot() == before
     window.view.set_expert(False)
     assert window.simple.snapshot() == before
     window.view.set_expert(True)
-    window.simple.set_value("enlarge.tile", "512")
-    status = window.simple.preset_status("look")
+    window.simple.set_value("enlarge.quality", 80)
+    status = window.simple.preset_status("pictures")
     assert status is not None
     assert status.kind is PresetMatch.MODIFIED
-    assert status.option_id == "photo"
+    assert status.option_id == "photographs"
     window.view.refresh()
-    chip = window.view.root.findChild(QPushButton, "chip-look-photo")
+    chip = window.view.root.findChild(QPushButton, "chip-pictures-photographs")
     assert chip is not None
-    assert chip.text() == "Photo + changes"
+    assert chip.text() == "Photographs + changes"
     reset = window.view.root.findChild(QPushButton, "expertReset")
-    assert reset is not None and reset.text() == "Reset to Photo"
-    window.simple.reset_group("look")
-    assert window.simple.get("enlarge.model") == preset_model_ids()["photo"]
-    assert window.simple.get("enlarge.tile") == "256"
-    restored = window.simple.preset_status("look")
+    assert reset is not None and reset.text() == "Reset to Photographs"
+    window.simple.reset_group("pictures")
+    assert window.simple.get("enlarge.model") == preset_model_ids()["photographs"]
+    assert window.simple.get("enlarge.quality") == 60
+    restored = window.simple.preset_status("pictures")
     assert restored is not None and restored.kind is PresetMatch.EXACT
     window.close()
 

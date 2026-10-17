@@ -2,59 +2,120 @@
   "schema": "voxprint-presets/1",
   "groups": [
     {
-      "id": "look",
-      "label_key": "enlarge.preset.look",
-      "default": "photo",
+      "id": "pictures",
+      "label_key": "enlarge.preset.pictures",
+      "default": "photographs",
       "options": [
         {
-          "id": "photo",
-          "label_key": "enlarge.preset.look.photo",
+          "id": "photographs",
+          "label_key": "enlarge.preset.pictures.photographs",
           "values": {
-            "enlarge.model": "4x-nomos2-realplksr-dysample",
-            "enlarge.tile": "256",
-            "enlarge.face": false,
-            "enlarge.denoise": 0.0
+            "enlarge.quality": 60
           }
         },
         {
-          "id": "drawing",
-          "label_key": "enlarge.preset.look.drawing",
+          "id": "detail",
+          "label_key": "enlarge.preset.pictures.detail",
           "values": {
-            "enlarge.model": "realesrgan-x4plus-anime6b",
-            "enlarge.tile": "256",
-            "enlarge.face": false,
-            "enlarge.denoise": 0.0
+            "enlarge.quality": 60
           }
         },
         {
-          "id": "old",
-          "label_key": "enlarge.preset.look.old",
+          "id": "drawings",
+          "label_key": "enlarge.preset.pictures.drawings",
           "values": {
-            "enlarge.model": "4x-nomos2-hq-dat2",
-            "enlarge.tile": "128",
-            "enlarge.face": false,
-            "enlarge.denoise": 0.35
+            "enlarge.quality": 60
           }
         }
       ]
     },
     {
-      "id": "bigger",
-      "label_key": "enlarge.preset.bigger",
-      "default": "2x",
+      "id": "scale",
+      "label_key": "enlarge.preset.scale",
+      "default": "4x",
       "options": [
         {
           "id": "2x",
-          "label_key": "enlarge.preset.bigger.2x",
+          "label_key": "enlarge.preset.scale.2x",
           "values": {
             "enlarge.scale": "2"
           }
         },
         {
           "id": "4x",
-          "label_key": "enlarge.preset.bigger.4x",
+          "label_key": "enlarge.preset.scale.4x",
           "values": {
             "enlarge.scale": "4"
+          }
+        }
+      ]
+    },
+    {
+      "id": "filetype",
+      "label_key": "enlarge.preset.filetype",
+      "default": "avif",
+      "options": [
+        {
+          "id": "avif",
+          "label_key": "enlarge.preset.filetype.avif",
+          "values": {
+            "enlarge.format": "avif"
+          }
+        },
+        {
+          "id": "jxl",
+          "label_key": "enlarge.preset.filetype.jxl",
+          "values": {
+            "enlarge.format": "jxl"
+          }
+        },
+        {
+          "id": "webp",
+          "label_key": "enlarge.preset.filetype.webp",
+          "values": {
+            "enlarge.format": "webp"
+          }
+        }
+      ]
+    },
+    {
+      "id": "lossless",
+      "label_key": "enlarge.preset.lossless",
+      "default": "off",
+      "options": [
+        {
+          "id": "off",
+          "label_key": "enlarge.preset.lossless.off",
+          "values": {
+            "enlarge.lossless": false
+          }
+        },
+        {
+          "id": "on",
+          "label_key": "enlarge.preset.lossless.on",
+          "values": {
+            "enlarge.lossless": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "subfolders",
+      "label_key": "enlarge.preset.subfolders",
+      "default": "on",
+      "options": [
+        {
+          "id": "on",
+          "label_key": "enlarge.preset.subfolders.on",
+          "values": {
+            "enlarge.subfolders": true
+          }
+        },
+        {
+          "id": "off",
+          "label_key": "enlarge.preset.subfolders.off",
+          "values": {
+            "enlarge.subfolders": false
           }
         }
       ]

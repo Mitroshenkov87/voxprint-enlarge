@@ -14,16 +14,17 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices
 from PySide6.QtWidgets import QFileDialog, QVBoxLayout, QWidget
 
+from enlarge import suite
 from enlarge.appinfo import APP_DISPLAY_NAME, resource_dir
 from enlarge.images import is_image, plan_outputs
+from enlarge.ipc.capabilities import gpu_capability
 from enlarge.ui.jobs import BatchThread
 from enlarge.ui.models import start_manage_models
-from enlarge import suite
+from enlarge.ui.preset_map import load_enlarge_presets, picture_map
 from voxprint_common.i18n import add_catalogs, tr
 from voxprint_common.mdl.catalog import Model, load_manifest
 from voxprint_common.paths import state_dir
 from voxprint_common.ui.expert import ExpertMode
-from voxprint_common.ui.presets import load_presets
 from voxprint_common.ui.settings import Choice, SettingSpec, SettingType, Settings
 from voxprint_common.ui.simple_image import Phase, SimpleLayout, SimpleWidget
 from voxprint_common.ui.theme import build_shell_style
@@ -38,12 +39,15 @@ from voxprint_common.ui.variants import (
     VariantId,
 )
 from voxprint_engine.formats import DEFAULT_FORMAT, DEFAULT_QUALITY, choices
+from voxprint_engine.registry import load_builtin
 from voxprint_engine.worker import UpscaleRequest
+from voxprint_engine.worker.lanczos import output_scale
 
 # The registered enlarge surface is a still picture with no wipe, and its
-# action bar adds picture-generation commands. Clarity's compare result is the
-# wipe. Video's action bar is Save and Open folder, which is the closest bar
-# the shell offers for a file in and a picture out. See docs/SIMPLE-LAYOUT-GAPS.md.
+# action bar adds picture-generation commands. The plan's file list, batch
+# result, and compare slot are not on that surface yet. Clarity's compare
+# result is the wipe. Video's action bar is Save and Open folder. See
+# docs/SIMPLE-LAYOUT-GAPS.md.
 ENLARGE_SURFACE = AppSurface(
     "enlarge",
     VariantId.VIDEO,
@@ -56,10 +60,8 @@ ENLARGE_SURFACE = AppSurface(
     "simple.drop.picture",
 )
 
-_PHOTO = "4x-nomos2-realplksr-dysample"
-_DRAWING = "realesrgan-x4plus-anime6b"
-_OLD = "4x-nomos2-hq-dat2"
 _GPU_VALUES = {"auto": "enlarge.gpu.auto", "cuda:0": "enlarge.gpu.cuda0", "cuda:1": "enlarge.gpu.cuda1"}
+_TILES = ("auto", "128", "256", "512", "768")
 
 
 class _Allow:
@@ -98,8 +100,8 @@ def enlarge_settings(models: tuple[Model, ...]) -> Settings:
     Args:
         models: Registry models. Their ids are the model choices.
     """
-    model_choices = tuple(Choice(model.id, f"enlarge.model.{model.id}") for model in models)
-    default_model = _PHOTO if any(model.id == _PHOTO for model in models) else models[0].id
+    photographs = picture_map()[0].model_id
+    default_model = photographs if any(model.id == photographs for model in models) else models[0].id
     format_choices = tuple(Choice(key, f"enlarge.format.{key}") for _label, key in choices())
     if any(item.value == DEFAULT_FORMAT for item in format_choices):
         default_format = DEFAULT_FORMAT
@@ -115,59 +117,17 @@ def enlarge_settings(models: tuple[Model, ...]) -> Settings:
                 default_model,
                 expert=True,
                 group="enlarge",
-                choices=model_choices,
+                choices=tuple(Choice(model.id, model.id) for model in models),
             ),
             SettingSpec(
                 "enlarge.scale",
                 "enlarge.scale",
                 "enlarge.scale.help",
                 SettingType.ENUM,
-                "2",
+                "4",
                 expert=True,
                 group="enlarge",
                 choices=(Choice("2", "enlarge.scale.2"), Choice("4", "enlarge.scale.4")),
-            ),
-            SettingSpec(
-                "enlarge.tile",
-                "enlarge.tile",
-                "enlarge.tile.help",
-                SettingType.ENUM,
-                "auto",
-                expert=True,
-                group="enlarge",
-                choices=tuple(
-                    Choice(value, f"enlarge.tile.{value}") for value in ("auto", "128", "256", "512", "768")
-                ),
-            ),
-            SettingSpec(
-                "enlarge.face",
-                "enlarge.face",
-                "enlarge.face.help",
-                SettingType.BOOL,
-                False,
-                expert=True,
-                group="enlarge",
-            ),
-            SettingSpec(
-                "enlarge.denoise",
-                "enlarge.denoise",
-                "enlarge.denoise.help",
-                SettingType.FLOAT,
-                0.0,
-                expert=True,
-                group="enlarge",
-                minimum=0.0,
-                maximum=1.0,
-            ),
-            SettingSpec(
-                "enlarge.format",
-                "enlarge.format",
-                "enlarge.format.help",
-                SettingType.ENUM,
-                default_format,
-                expert=True,
-                group="enlarge",
-                choices=format_choices,
             ),
             SettingSpec(
                 "enlarge.quality",
@@ -181,6 +141,53 @@ def enlarge_settings(models: tuple[Model, ...]) -> Settings:
                 maximum=100,
             ),
             SettingSpec(
+                "enlarge.format",
+                "enlarge.format",
+                "enlarge.format.help",
+                SettingType.ENUM,
+                default_format,
+                expert=True,
+                group="enlarge",
+                choices=format_choices,
+            ),
+            SettingSpec(
+                "enlarge.lossless",
+                "enlarge.lossless",
+                "enlarge.lossless.help",
+                SettingType.BOOL,
+                False,
+                expert=True,
+                group="enlarge",
+            ),
+            SettingSpec(
+                "enlarge.tile",
+                "enlarge.tile",
+                "enlarge.tile.help",
+                SettingType.ENUM,
+                "auto",
+                expert=True,
+                group="enlarge",
+                choices=tuple(Choice(value, f"enlarge.tile.{value}") for value in _TILES),
+            ),
+            SettingSpec(
+                "enlarge.double",
+                "enlarge.double",
+                "enlarge.double.help",
+                SettingType.BOOL,
+                False,
+                expert=True,
+                group="enlarge",
+            ),
+            SettingSpec(
+                "enlarge.factor",
+                "enlarge.factor",
+                "enlarge.factor.help",
+                SettingType.TEXT,
+                "4×",
+                expert=True,
+                group="enlarge",
+            ),
+            SettingSpec(
                 "enlarge.gpu",
                 "enlarge.gpu",
                 "enlarge.gpu.help",
@@ -189,6 +196,60 @@ def enlarge_settings(models: tuple[Model, ...]) -> Settings:
                 expert=True,
                 group="enlarge",
                 choices=tuple(Choice(value, key) for value, key in _GPU_VALUES.items()),
+            ),
+            SettingSpec(
+                "enlarge.beside",
+                "enlarge.beside",
+                "enlarge.beside.help",
+                SettingType.BOOL,
+                True,
+                expert=True,
+                group="enlarge",
+            ),
+            SettingSpec(
+                "enlarge.output_dir",
+                "enlarge.output_dir",
+                "enlarge.output_dir.help",
+                SettingType.PATH,
+                "",
+                expert=True,
+                group="enlarge",
+            ),
+            SettingSpec(
+                "enlarge.custom_models",
+                "enlarge.custom_models",
+                "enlarge.custom_models.help",
+                SettingType.PATH,
+                "",
+                expert=True,
+                group="enlarge",
+            ),
+            SettingSpec(
+                "enlarge.shared_models",
+                "enlarge.shared_models",
+                "enlarge.shared_models.help",
+                SettingType.PATH,
+                "",
+                expert=True,
+                group="enlarge",
+            ),
+            SettingSpec(
+                "enlarge.licence",
+                "enlarge.licence",
+                "enlarge.licence.help",
+                SettingType.TEXT,
+                "",
+                expert=True,
+                group="enlarge",
+            ),
+            SettingSpec(
+                "enlarge.subfolders",
+                "enlarge.subfolders",
+                "enlarge.subfolders.help",
+                SettingType.BOOL,
+                True,
+                expert=False,
+                group="enlarge",
             ),
         )
     )
@@ -211,16 +272,17 @@ class SimpleWindow(QWidget):
         self._results: dict[str, Path] = {}
         self._job: BatchThread | None = None
         self._manage: object | None = None
-        presets = load_presets(Path(__file__).resolve().parent / "presets" / "enlarge.json", self._settings)
+        self._syncing = False
         self.simple = SimpleLayout(
-            presets=presets,
+            presets=load_enlarge_presets(self._settings),
             settings=self._settings,
             state_dir=state_dir() / "enlarge",
             gate=_Allow(),
             state_name="image-settings.json",
             history_name="image-history.json",
         )
-        self._align_gpu()
+        self._align_from_suite()
+        self._pull_derived()
         self._expert = ExpertMode()
         self.view = SimpleWidget(
             self.simple,
@@ -235,6 +297,9 @@ class SimpleWindow(QWidget):
         body.addWidget(self.view.root)
         self._stop_expert = self._expert.subscribe(self.view.set_expert)
         self.view.set_expert(self._expert.enabled())
+        warning = _gpu_warning()
+        if warning:
+            self.view.set_note(warning)
 
     def add_paths(self, paths: list[Path]) -> None:
         """Put the first path in the drop area.
@@ -250,17 +315,52 @@ class SimpleWindow(QWidget):
         self._stop_expert()
         super().closeEvent(event)
 
-    def _align_gpu(self) -> None:
+    def _align_from_suite(self) -> None:
         current = suite.gpu()
         if current in _GPU_VALUES and self.simple.get("enlarge.gpu") != current:
             self.simple.set_value("enlarge.gpu", current)
+        shared = _shared_text()
+        if self.simple.get("enlarge.shared_models") != shared:
+            self.simple.set_value("enlarge.shared_models", shared)
 
-    def _after_paint(self) -> None:
+    def _pull_derived(self) -> bool:
+        """Write the licence line and the resulting factor. Return True when either changed."""
+        changed = False
+        licence = _licence_line(str(self.simple.get("enlarge.model")))
+        if self.simple.get("enlarge.licence") != licence:
+            self.simple.set_value("enlarge.licence", licence)
+            changed = True
+        factor = _factor_text(self.simple.get("enlarge.scale"), self.simple.get("enlarge.double"))
+        if self.simple.get("enlarge.factor") != factor:
+            self.simple.set_value("enlarge.factor", factor)
+            changed = True
+        return changed
+
+    def _push_suite(self) -> None:
         choice = str(self.simple.get("enlarge.gpu"))
         if choice in _GPU_VALUES and choice != suite.gpu():
             suite.set_gpu(choice)
-        if self._job is not None and self.simple.phase is not Phase.BUSY:
-            self._job.cancel()
+        chosen = str(self.simple.get("enlarge.shared_models") or "").strip()
+        stored = suite.models_dir()
+        shown = "" if stored is None else str(stored)
+        baseline = shown or str(suite.resolved_models_dir())
+        if chosen == baseline:
+            return
+        suite.set_models_dir(Path(chosen) if chosen else None)
+
+    def _after_paint(self) -> None:
+        if self._syncing:
+            return
+        self._syncing = True
+        try:
+            self._push_suite()
+            changed = self._pull_derived()
+            if self._job is not None and self.simple.phase is not Phase.BUSY:
+                self._job.cancel()
+            if changed:
+                self.view.refresh()
+        finally:
+            self._syncing = False
 
     def _command(self, command_id: str) -> None:
         if command_id == "view.toggle_expert_mode":
@@ -317,13 +417,24 @@ class SimpleWindow(QWidget):
             self.view.set_note(tr("enlarge.error.missing"))
             self.view.refresh()
             return
-        scale = int(str(self.simple.get("enlarge.scale")))
         image_format = str(self.simple.get("enlarge.format"))
+        lossless = bool(self.simple.get("enlarge.lossless"))
+        if lossless and image_format != "jxl":
+            self.simple.cancel()
+            self.view.set_note(tr("enlarge.error.lossless"))
+            self.view.refresh()
+            return
+        self._push_suite()
+        scale = int(str(self.simple.get("enlarge.scale")))
         tile_text = str(self.simple.get("enlarge.tile"))
         quality = self.simple.get("enlarge.quality")
         if isinstance(quality, bool) or not isinstance(quality, int):
             quality = DEFAULT_QUALITY
-        destination = plan_outputs([source], None, scale, image_format, False)[0]
+        double = bool(self.simple.get("enlarge.double"))
+        folder_text = str(self.simple.get("enlarge.output_dir") or "").strip()
+        beside = bool(self.simple.get("enlarge.beside"))
+        folder = None if beside or not folder_text else Path(folder_text)
+        destination = plan_outputs([source], folder, scale, image_format, double)[0]
         job_id = uuid.uuid4().hex
         request = UpscaleRequest(
             id=job_id,
@@ -332,9 +443,12 @@ class SimpleWindow(QWidget):
             scale=scale,
             format=image_format,
             quality=quality,
+            lossless=lossless,
             model_id=str(self.simple.get("enlarge.model")),
             tile=0 if tile_text == "auto" else int(tile_text),
+            double=double,
             device=suite.gpu(),
+            custom_models_dir=str(self.simple.get("enlarge.custom_models") or ""),
             app_name=APP_DISPLAY_NAME,
         )
         self._job = BatchThread([request], lambda: self.simple.phase is not Phase.BUSY)
@@ -363,14 +477,45 @@ class SimpleWindow(QWidget):
 
 def preset_model_ids() -> dict[str, str]:
     """Return each picture preset and the registry id it writes."""
-    settings = enlarge_settings(registry_models())
-    document = load_presets(Path(__file__).resolve().parent / "presets" / "enlarge.json", settings)
-    group = document.group("look")
-    if group is None:
-        return {}
-    return {option.option_id: str(option.as_map()["enlarge.model"]) for option in group.options}
+    return {row.option_id: row.model_id for row in picture_map()}
 
 
 def known_model_ids() -> frozenset[str]:
-    """Return the registry ids the picture presets are allowed to name."""
-    return frozenset({_PHOTO, _DRAWING, _OLD})
+    """Return the placeholder registry ids the picture presets name."""
+    return frozenset(preset_model_ids().values())
+
+
+def _shared_text() -> str:
+    stored = suite.models_dir()
+    if stored is not None:
+        return str(stored)
+    return str(suite.resolved_models_dir())
+
+
+def _factor_text(scale: object, double: object) -> str:
+    try:
+        factor = output_scale(int(str(scale)), bool(double))
+    except (TypeError, ValueError):
+        return ""
+    return f"{factor}×"
+
+
+def _licence_line(model_id: str) -> str:
+    model = load_builtin(release=False).get(model_id)
+    if model is None:
+        return ""
+    licence = model.licence.strip()
+    author = model.author.strip()
+    if author and licence:
+        return f"{author} · {licence}"
+    return licence or author
+
+
+def _gpu_warning() -> str:
+    try:
+        report = gpu_capability()
+    except (OSError, RuntimeError, ValueError):
+        return ""
+    if report.get("status") == "warn":
+        return tr("enlarge.gpu.warn")
+    return ""
