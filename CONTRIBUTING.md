@@ -29,6 +29,10 @@ QT_QPA_PLATFORM=offscreen VOXPRINT_CI_LANCZOS=1 python -m pytest
 
 `VOXPRINT_CI_LANCZOS=1` is for tests. It is not a user setting.
 
+## Building installers
+
+The release workflow uploads `enlarge-windows` and `enlarge-linux`. It runs for a `v*` tag, for `workflow_dispatch`, for a pull request labeled `build-installers`, and for a push to `build/*`. A labeled pull request builds that pull request's head commit. To build main without a tag, push that commit to `build/` plus the first seven characters of its SHA. The publish job runs only for a `v*` tag.
+
 ## Style
 
 Public Python uses Google docstrings. Imports stay at the top of the file. A switch on a union or an enum ends with a `never` check so a new variant fails the type checker until it is handled.
