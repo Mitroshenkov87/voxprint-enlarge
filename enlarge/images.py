@@ -55,6 +55,27 @@ def collect(paths: list[Path], *, recursive: bool) -> tuple[list[Path], list[str
     return found, warnings
 
 
+def reserve_output(
+    source: Path,
+    folder: Path | None,
+    scale: int,
+    image_format: str,
+    double: bool,
+    used: set[Path],
+) -> Path:
+    """One output path. ``used`` keeps a batch from planning the same file twice."""
+    factor = output_scale(scale, double)
+    ext = output_extension(image_format)
+    directory = folder if folder is not None else source.parent
+    candidate = directory / f"{source.stem}_x{factor}{ext}"
+    number = 2
+    while candidate in used or candidate.exists():
+        candidate = directory / f"{source.stem}_x{factor}-{number}{ext}"
+        number += 1
+    used.add(candidate)
+    return candidate
+
+
 def plan_outputs(
     sources: list[Path],
     folder: Path | None,
@@ -63,17 +84,5 @@ def plan_outputs(
     double: bool,
 ) -> list[Path]:
     """One output path per source. Collisions get a numeric suffix before the extension."""
-    factor = output_scale(scale, double)
-    ext = output_extension(image_format)
     used: set[Path] = set()
-    planned: list[Path] = []
-    for src in sources:
-        directory = folder if folder is not None else src.parent
-        candidate = directory / f"{src.stem}_x{factor}{ext}"
-        number = 2
-        while candidate in used or candidate.exists():
-            candidate = directory / f"{src.stem}_x{factor}-{number}{ext}"
-            number += 1
-        used.add(candidate)
-        planned.append(candidate)
-    return planned
+    return [reserve_output(src, folder, scale, image_format, double, used) for src in sources]
