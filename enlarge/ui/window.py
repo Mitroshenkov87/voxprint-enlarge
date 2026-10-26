@@ -475,11 +475,12 @@ class MainWindow(QWidget):
         if answer != QMessageBox.StandardButton.Yes:
             self.run_page.status.setText(f"{model.name} is not installed.")
             return True
-        self._installer = ModelInstallThread(model.id)
-        self._installer.progressed.connect(self.run_page.status.setText)
-        self._installer.done.connect(self._on_installed)
+        installer = ModelInstallThread(model.id)
+        self._installer: ModelInstallThread | None = installer
+        installer.progressed.connect(self.run_page.status.setText)
+        installer.done.connect(self._on_installed)
         self.run_page.status.setText(f"Installing {model.name}…")
-        self._installer.start()
+        installer.start()
         return True
 
     def _on_installed(self, ok: bool, message: str) -> None:
