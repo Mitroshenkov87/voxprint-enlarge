@@ -1,3 +1,8 @@
+> [!WARNING]
+> **⚠️ Deep alpha.** This software is experimental; nothing is guaranteed to work. Use at your own risk.
+>
+> **⚠️ Глубокая альфа.** Программа экспериментальная, работа не гарантируется.
+
 <p align="center">
   <img src="assets/enlarge-256.png" alt="VOXPrint AI Enlarge" width="96">
 </p>
