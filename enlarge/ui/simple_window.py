@@ -9,7 +9,7 @@ from __future__ import annotations
 import contextlib
 import io
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import main as entry
@@ -600,7 +600,7 @@ class SimpleWindow(QWidget, JobHost):
             return None
         return self._results.get(item_id)
 
-    def _start(self) -> None:
+    def _start(self, _values: Mapping[str, object] | None = None) -> None:
         source = Path(self.simple.prompt)
         if not is_image(source):
             self._stop_simple(tr("enlarge.error.missing"))
