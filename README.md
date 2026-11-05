@@ -2,6 +2,8 @@
 
 Offline AI image upscaling on NVIDIA RTX GPUs.
 
+RTX 40 series and newer is the tested target. RTX 30 series is allowed but untested. Older NVIDIA cards and AMD are unsupported.
+
 > [!WARNING]
 > **Deep alpha.** This software is experimental, and nothing is guaranteed to work. Use at your own risk.
 
