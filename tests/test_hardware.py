@@ -119,5 +119,6 @@ def test_runtime_pins() -> None:
     assert "imagecodecs==2026.10.10" in requirements
     assert "voxprint-common" in requirements
     assert 'python-version: "3.14"' in workflow
-    assert "600 series" in readme
-    assert "does not start" in readme
+    assert "RTX 40 series and newer is the tested target" in readme
+    assert "RTX 30 series is allowed but untested" in readme
+    assert "Older NVIDIA cards and AMD are unsupported" in readme

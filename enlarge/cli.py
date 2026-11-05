@@ -93,7 +93,8 @@ def _parse(argv: list[str]) -> EnlargeRequest | int:
     if raw_quality is None:
         pass
     elif str(raw_quality) in {"fast", "max"}:
-        if "--quality-tier" not in argv:
+        # The equals form (--quality-tier=max) also counts as an explicit tier.
+        if not any(arg == "--quality-tier" or arg.startswith("--quality-tier=") for arg in argv):
             tier = str(raw_quality)
     else:
         try:
