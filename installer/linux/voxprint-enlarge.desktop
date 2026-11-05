@@ -2,8 +2,8 @@
 Type=Application
 Name=VOXPrint AI Enlarge
 Comment=Offline image upscaling
-Exec=python3 main.py
-Icon=voxprint-enlarge
+Exec=/opt/voxprint-ai-suite/enlarge/voxprint-enlarge
+Icon=/opt/voxprint-ai-suite/enlarge/assets/enlarge.png
 Terminal=false
 Categories=Graphics;
 StartupWMClass=VOXPrint AI Enlarge

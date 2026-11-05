@@ -155,8 +155,11 @@ def encode_with_libheif(frame: Image.Image, dest: Path, quality: int) -> None:
         if not plane or stride.value < width * 3:
             raise OSError("libheif did not allocate an RGB plane")
         row = width * 3
+        # Indexing the pointer would return an int, which addressof() refuses;
+        # the plane base address comes from the pointer itself.
+        plane_address = ctypes.cast(plane, ctypes.c_void_p).value
         for y in range(height):
-            ctypes.memmove(ctypes.addressof(plane[y * stride.value]), pixels[y * row:(y + 1) * row], row)
+            ctypes.memmove(plane_address + y * stride.value, pixels[y * row:(y + 1) * row], row)
         _check(lib.heif_context_encode_image(context, heif_image, encoder, None, None), "encode")
         dest.parent.mkdir(parents=True, exist_ok=True)
         _check(lib.heif_context_write_to_file(context, os.fsencode(dest)), "write")
