@@ -10,7 +10,7 @@ requires-python = ">=3.14,<3.15"
 readme = "docs/ENGINE.md"
 license = "Apache-2.0"
 dependencies = [
-    "Pillow>=12.3.0,<13",
+    "Pillow>=13,<14",
     "numpy>=2.5.3,<3",
     "imagecodecs==2026.10.10",
     "voxprint-common>=0.2.4,<0.4",

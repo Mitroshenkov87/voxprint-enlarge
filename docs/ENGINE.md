@@ -305,7 +305,7 @@ Encoders that ship with the app:
 
 | Format | Package | Licence |
 |---|---|---|
-| AVIF | Pillow >= 12.3.0 (libavif) | Pillow's own permissive build |
+| AVIF | Pillow >= 13, < 14 (libavif) | Pillow's own permissive build |
 | JPEG XL | `imagecodecs` 2026.10.10 (libjxl) | BSD-3-Clause |
 | WebP, JPEG | Pillow | permissive (libwebp, libjpeg-turbo) |
 

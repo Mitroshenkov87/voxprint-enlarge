@@ -5,7 +5,7 @@
 # NVIDIA index. Tests and CI set VOXPRINT_CI_LANCZOS=1.
 # docs/ENGINE.md has the CUDA 13 packages.
 PySide6>=6.8,<7
-Pillow>=12.3.0,<13
+Pillow>=13,<14
 numpy>=2.5.3,<3
 # voxprint-common 0.2.4 Malkhut. The wheel is the release asset. The ui extra is PySide6.
 # SHA256 3051bc64700964705bf5cee5182829d1311560a38a9f7436195f26481e4fa239
