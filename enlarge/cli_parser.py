@@ -142,6 +142,12 @@ def build_parser(json_errors: bool = False) -> CliParser:
         help="Convert one shared model to ONNX. The MDL post_install hook runs this.",
     )
     parser.add_argument(
+        "--install-model",
+        default="",
+        metavar="ID",
+        help="Download one model with VOXPrint MDL, then prepare its ONNX file.",
+    )
+    parser.add_argument(
         "--install-suite",
         action="store_true",
         help="Install shared Python 3.14, the CUDA wheels, and the default model.",

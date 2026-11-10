@@ -1288,9 +1288,18 @@ def _install_model(progress: Progress) -> None:
     uses the shared interpreter, so conversion does not run in the bundled
     Python that Setup starts.
     """
+    progress("Downloading the default model with VOXPrint MDL")
+    _mdl_download()
+
+
+def _mdl_download(model_ids: tuple[str, ...] = ()) -> None:
+    """Run ``voxprint-mdl download --app enlarge`` in the shared interpreter.
+
+    Each id in ``model_ids`` is passed as ``--model``; on-demand models are
+    only downloaded when named. MDL tries each mirror in order.
+    """
     python = _runtime_python()
     manifest = _mdl_manifest()
-    progress("Downloading the default model with VOXPrint MDL")
     env = os.environ.copy()
     if _SOURCE_ROOT.name.lower() == "enlarge":
         env["VOXPRINT_SUITE_ROOT"] = str(_SOURCE_ROOT.parent)
@@ -1305,9 +1314,43 @@ def _install_model(progress: Progress) -> None:
         "--manifest",
         str(manifest),
     ]
+    for model_id in model_ids:
+        command += ["--model", model_id]
     completed = subprocess.run(command, check=False, env=env, creationflags=no_window_flags())
     if completed.returncode != 0:
         raise SuiteInstallError(f"voxprint-mdl download --app enlarge failed ({completed.returncode})")
+
+
+class ModelInstallError(SuiteInstallError):
+    """``install_model`` failed. ``code`` is the CLI contract error code."""
+
+    def __init__(self, code: str, message: str) -> None:
+        """Keep the contract code beside the message."""
+        super().__init__(message)
+        self.code = code
+
+
+def install_model(model_id: str, progress: Progress | None = None) -> Path:
+    """Download one model with VOXPrint MDL, then prepare its ONNX file.
+
+    Conversion is skipped when the manifest names ``onnx_url`` and
+    ``onnx_sha256``. Raises :class:`ModelInstallError` with ``model_missing``
+    for an unknown id or a failed download, and ``internal`` when the ONNX
+    file cannot be prepared.
+    """
+    model = load_builtin(release=True).get(model_id)
+    if model is None or not model.selectable or not model.download_url:
+        raise ModelInstallError("model_missing", f"unknown or unavailable model {model_id}")
+    _emit(progress, f"Downloading {model.id} with VOXPrint MDL")
+    try:
+        _mdl_download((model.id,))
+    except SuiteInstallError as exc:
+        raise ModelInstallError("model_missing", str(exc)) from exc
+    _emit(progress, f"Preparing {model.id}")
+    try:
+        return prepare_model(model.id, progress)
+    except SuiteInstallError as exc:
+        raise ModelInstallError("internal", str(exc)) from exc
 
 
 def prepare_model(model_id: str, progress: Progress | None = None) -> Path:

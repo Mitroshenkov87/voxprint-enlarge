@@ -77,6 +77,10 @@ An argument error on a job that passed `--json-progress` is one JSON object on s
 
 Exit 0 is `done`. Exit 2 is also bad arguments, before a job id exists. `model_missing` means the id is unknown or the pinned weights are not on disk. The message names `voxprint-mdl download --app enlarge`. A headless job does not download them. `gpu_unsupported` (exit 4) is also used when a requested GPU provider stayed on CPU (`gpu_provider_unavailable`). SIGINT and SIGTERM cancel the job, delete the partial file, and exit 130.
 
+## Installing a model
+
+`voxprint-enlarge-cli --install-model <id>` downloads one registry model with `voxprint-mdl download --app enlarge --model <id>` in the shared interpreter, then prepares `models/enlarge/<id>/model.onnx` as `--prepare-model` does. Conversion is skipped when the manifest names `onnx_url` and `onnx_sha256`. This is how the on-demand models (`4x-nomos2-hq-dat2`, `realesrgan-x4plus-anime6b`) are installed. Progress lines go to stdout and the ONNX path is the last line. MDL tries each source in `mdl.json` in order. An unknown id or a failed download is `model_missing`, exit 7. A failed ONNX step is `internal`, exit 1. When a model is not installed, the window offers to install it before a run.
+
 ## GPU lock
 
 With no parent pid, Enlarge takes the suite lock for the job and releases it when the job ends. The wait is `--lock-timeout` seconds (default 600). On timeout the code is `gpu_busy`, exit 5, and the JSON field `retryable` is true.
