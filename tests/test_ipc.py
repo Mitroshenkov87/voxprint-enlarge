@@ -246,7 +246,7 @@ def test_socket_job_permissions_and_unknown_fields(tmp_path: Path, monkeypatch: 
     assert "queued" in stages
     assert "encoding" in stages
     assert server.window is not None
-    assert any(path == source for path in server.window.sources)
+    assert Path(server.window.simple.prompt) == source
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="the fake client connects to the Linux socket; Windows listens on a named pipe")

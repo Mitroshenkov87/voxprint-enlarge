@@ -389,7 +389,7 @@ def _gui(_argv: list[str]) -> int:
     root = resource_dir()
     splash = Splash(root / "assets" / "splash.jpg", BAR, load_build(root, app="enlarge"))
     splash.set_stage("Loading UI")
-    from enlarge.ui.window import MainWindow
+    from enlarge.ui.simple_window import SimpleWindow as MainWindow
 
     if not ci_lanczos():
 

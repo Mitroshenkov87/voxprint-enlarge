@@ -10,7 +10,8 @@ change to the inference surface.
 `voxprint-common>=0.2.4,<0.4` as a plain version range instead of the 0.2.4
 wheel URL, so an app that pins its own `voxprint-common` (for example the
 Yitro UI tag) can install this package next to it. Enlarge's
-`requirements.txt` still pins the 0.2.4 wheel. `mdl.json` lists a second
+`requirements.txt` pins `voxprint-common[ui]` 0.2.5 (Yitro, tag `v0.2.5`), and
+CI tests the engine with 0.2.5. `mdl.json` lists a second
 Hugging Face source for each model, after the author's GitHub release. Pin:
 
 ```text
@@ -98,13 +99,9 @@ The 1.4.0 pin stays valid for the surface before `prepare_native_runtime` and
 voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.4.0
 ```
 
-Install `voxprint-common` 0.2.4 (Malkhut) from the release wheel beside it:
-
-```text
-voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.2.4/voxprint_common-0.2.4-py3-none-any.whl
-```
-
-The wheel SHA256 is `3051bc64700964705bf5cee5182829d1311560a38a9f7436195f26481e4fa239`.
+The app pin is the `voxprint-common` line in `requirements.txt`:
+`voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common@v0.2.5`
+(0.2.5 Yitro, commit `8a94b531`).
 
 The 1.3.0 pin stays valid for the surface before those removals:
 

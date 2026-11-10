@@ -6,6 +6,7 @@ from typing import Any
 from enlarge.appinfo import product_version
 from enlarge.ipc.protocol import PROTOCOL
 from enlarge.paths import voxprint_home, voxprint_home_source
+from enlarge.ui.preset_map import model_id_for, picture_map
 from voxprint_common.gpu_probe import MIN_DRIVER_MAJOR, capability_warning, driver_major
 from voxprint_engine.nvidia_smi import query_gpus
 from voxprint_engine.formats import DEFAULT_FORMAT, heic_backend
@@ -13,9 +14,9 @@ from voxprint_engine.registry import load_builtin
 from voxprint_engine.store import weight_report
 from voxprint_engine.worker.lanczos import IMAGE_EXTENSIONS
 
-PHOTO_FAST = "4x-nomos2-realplksr-dysample"
-PHOTO_MAX = "4x-nomos2-hq-dat2"
-ART = "realesrgan-x4plus-anime6b"
+PHOTO_FAST = model_id_for("photo", "fast")
+PHOTO_MAX = model_id_for("photo", "max")
+ART = model_id_for("art", "fast")
 SCALES = [2, 4]
 _INPUT_NAMES = {
     ".png": "png",
@@ -55,10 +56,9 @@ def model_catalog() -> list[dict[str, Any]]:
     """Presets shipped today. ``installed`` is true only when the pinned file is on disk."""
     catalog = load_builtin(release=True)
     rows = [
-        ("photo", "fast", PHOTO_FAST),
-        ("photo", "max", PHOTO_MAX),
-        ("art", "fast", ART),
-        ("art", "max", ART),
+        (row.ipc_preset, quality, row.model_id)
+        for row in picture_map()
+        for quality in row.ipc_qualities
     ]
     listed: list[dict[str, Any]] = []
     for preset, quality, model_id in rows:

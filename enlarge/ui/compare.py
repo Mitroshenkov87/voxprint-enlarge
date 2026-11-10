@@ -47,6 +47,14 @@ class CompareView(QWidget):
         self._mode = ""
         self._origin = QPointF()
         self._pan_origin = QPointF()
+        self.placeholder = (
+            "Enlarge to compare before and after.\nDrag the divider. Scroll to zoom."
+        )
+
+    def set_placeholder(self, text: str) -> None:
+        """Replace the empty-state sentence. The batch screen passes a translated line."""
+        self.placeholder = text
+        self.update()
 
     def set_pair(self, before: Path | None, after: Path | None) -> None:
         """Show this original and this result."""
@@ -104,8 +112,11 @@ class CompareView(QWidget):
             font = QFont(self.font())
             font.setPixelSize(14)
             painter.setFont(font)
-            painter.drawText(self.rect().adjusted(24, 24, -24, -24), Qt.AlignmentFlag.AlignCenter,
-                             "Run an upscale to compare before and after.\nDrag the divider. Scroll to zoom.")
+            painter.drawText(
+                self.rect().adjusted(24, 24, -24, -24),
+                Qt.AlignmentFlag.AlignCenter,
+                self.placeholder,
+            )
             painter.end()
             return
         if not self.before.isNull():

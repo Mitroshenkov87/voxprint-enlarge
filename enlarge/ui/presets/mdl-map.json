@@ -1,0 +1,27 @@
+{
+  "schema": "enlarge-mdl-map/1",
+  "placeholders": true,
+  "pictures": [
+    {
+      "id": "photographs",
+      "label_key": "enlarge.preset.pictures.photographs",
+      "ipc_preset": "photo",
+      "ipc_qualities": ["fast"],
+      "model_id": "4x-nomos2-realplksr-dysample"
+    },
+    {
+      "id": "detail",
+      "label_key": "enlarge.preset.pictures.detail",
+      "ipc_preset": "photo",
+      "ipc_qualities": ["max"],
+      "model_id": "4x-nomos2-hq-dat2"
+    },
+    {
+      "id": "drawings",
+      "label_key": "enlarge.preset.pictures.drawings",
+      "ipc_preset": "art",
+      "ipc_qualities": ["fast", "max"],
+      "model_id": "realesrgan-x4plus-anime6b"
+    }
+  ]
+}
