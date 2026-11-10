@@ -5,6 +5,9 @@
     {
       "id": "4x-nomos2-realplksr-dysample",
       "version": "1",
+      "label": "Nomos2 x4 photo upscaler (fast)",
+      "purpose": "The default x4 upscaler for photos, quick and sharp.",
+      "group": "upscale",
       "vram_tier": "any",
       "display_name": "4xNomos2_realplksr_dysample",
       "files": [
@@ -25,14 +28,23 @@
         }
       ],
       "post_install": {
-        "argv": ["voxprint-enlarge-cli", "--prepare-model", "{id}"],
+        "argv": [
+          "voxprint-enlarge-cli",
+          "--prepare-model",
+          "{id}"
+        ],
         "timeout_s": 1800,
-        "produces": ["model.onnx"]
+        "produces": [
+          "model.onnx"
+        ]
       }
     },
     {
       "id": "4x-nomos2-hq-dat2",
       "version": "1",
+      "label": "Nomos2 x4 photo upscaler (high quality)",
+      "purpose": "Slower x4 upscaler for photos when detail matters most.",
+      "group": "upscale",
       "vram_tier": "any",
       "display_name": "4xNomos2_hq_dat2",
       "on_demand": true,
@@ -54,14 +66,23 @@
         }
       ],
       "post_install": {
-        "argv": ["voxprint-enlarge-cli", "--prepare-model", "{id}"],
+        "argv": [
+          "voxprint-enlarge-cli",
+          "--prepare-model",
+          "{id}"
+        ],
         "timeout_s": 1800,
-        "produces": ["model.onnx"]
+        "produces": [
+          "model.onnx"
+        ]
       }
     },
     {
       "id": "realesrgan-x4plus-anime6b",
       "version": "1",
+      "label": "Real-ESRGAN x4 for anime and drawings",
+      "purpose": "x4 upscaler tuned for anime, cartoons and line art.",
+      "group": "upscale",
       "vram_tier": "any",
       "display_name": "RealESRGAN_x4plus_anime_6B",
       "on_demand": true,
@@ -83,9 +104,15 @@
         }
       ],
       "post_install": {
-        "argv": ["voxprint-enlarge-cli", "--prepare-model", "{id}"],
+        "argv": [
+          "voxprint-enlarge-cli",
+          "--prepare-model",
+          "{id}"
+        ],
         "timeout_s": 1800,
-        "produces": ["model.onnx"]
+        "produces": [
+          "model.onnx"
+        ]
       }
     }
   ]
